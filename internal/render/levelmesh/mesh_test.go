@@ -114,9 +114,54 @@ func TestPeggingAndSkyPortal(t *testing.T) {
 	m.Sectors[0].CeilingPic = "F_SKY1"
 	m.Sectors[1].CeilingPic = "F_SKY1"
 	tris = Build(nil, m, nil, []Heights{{0, 128}, {32, 96}}, nil, nil)
+	skyBySector := map[int]int{}
 	for _, tri := range tris {
 		if tri.Kind == Upper {
 			t.Fatal("sky-to-sky boundary has upper wall")
 		}
+		if !tri.Sky {
+			continue
+		}
+		skyBySector[tri.Sector]++
+		wantBottom := 96.0
+		if tri.Sector == 1 {
+			wantBottom = 128
+		}
+		for _, v := range tri.Vertices {
+			if v.Z != wantBottom && v.Z != 32768 {
+				t.Fatalf("sector %d sky curtain vertex Z=%g want %g or 32768", tri.Sector, v.Z, wantBottom)
+			}
+		}
+	}
+	if skyBySector[0] != 2 || skyBySector[1] != 2 {
+		t.Fatalf("sky curtains=%v want two triangles per directed portal side", skyBySector)
+	}
+}
+
+func TestSkyCeilingUsesBoundaryCurtainNotHorizontalPlane(t *testing.T) {
+	m := portalMap()
+	m.Linedefs[0].Flags = 0
+	m.Linedefs[0].SideNum[1] = -1
+	m.Sectors[0].CeilingPic = "F_SKY1"
+	planes := [][]PlaneTriangle{{{{X: 0, Y: 0}, {X: 0, Y: 64}, {X: 64, Y: 0}}}}
+	tris := Build(nil, m, planes, []Heights{{0, 128}, {0, 128}}, nil, nil)
+	floors, skies := 0, 0
+	for _, tri := range tris {
+		switch {
+		case tri.Sky:
+			skies++
+			for _, v := range tri.Vertices {
+				if v.Z != 128 && v.Z != 32768 {
+					t.Fatalf("sky curtain has horizontal-plane vertex %+v", v)
+				}
+			}
+		case tri.Kind == Ceiling:
+			t.Fatal("sky sector retained a physical ceiling plane")
+		case tri.Kind == Floor:
+			floors++
+		}
+	}
+	if floors != 1 || skies != 2 {
+		t.Fatalf("floors=%d skies=%d want 1/2", floors, skies)
 	}
 }

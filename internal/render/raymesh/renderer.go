@@ -47,6 +47,10 @@ uniform float shadeRamp[32];
 uniform float shadeRows;
 uniform float gammaEnabled;
 uniform float gammaTable[256];
+uniform float skyYaw;
+uniform vec2 skyViewport;
+uniform vec2 skySize;
+uniform float skyOriginY;
 out vec4 finalColor;
 float doomShade() {
 	if (fragLightTag == 6.0) return 1.0;
@@ -79,6 +83,15 @@ float doomShade() {
     return mix(shadeRamp[lo], shadeRamp[min(lo + 1, 31)], fract(row));
 }
 void main() {
+	if (fragLightTag == 9.0 && viewMode == 0.0) {
+		vec2 p = gl_FragCoord.xy;
+		p.y -= skyOriginY;
+		float angle = skyYaw + atan((skyViewport.x*0.5-p.x)/(skyViewport.x*0.5));
+		float u = angle*4.0/6.28318530718;
+		float v = (100.0+(skyViewport.y*0.5-p.y)*320.0/skyViewport.x)/skySize.y;
+		finalColor = vec4(texture(texture0,vec2(u,v)).rgb,1.0);
+		return;
+	}
     if (fragLightTag == 7.0 && fuzzEnabled != 0.0) {
         vec2 p = floor(vec2(gl_FragCoord.x, fuzzView.y-(gl_FragCoord.y-fuzzOrigin)));
         ivec2 size = textureSize(texture1,0);
@@ -149,6 +162,8 @@ type Renderer struct {
 	fuzzLocation, fuzzViewLocation, fuzzOriginLocation int32
 	fuzzTexture                                        rl.Texture2D
 	gammaLocation, gammaTableLocation                  int32
+	skyYawLocation, skyViewportLocation                int32
+	skySizeLocation, skyOriginLocation                 int32
 	gammaTable                                         []float32
 	gammaEnabled, gammaDirty                           bool
 	lightingMode                                       LightingMode
@@ -185,7 +200,12 @@ func NewRendererWithTextureOptions(options TextureOptions) (*Renderer, error) {
 	r.fuzzOriginLocation = rl.GetShaderLocation(shader, "fuzzOrigin")
 	r.gammaLocation = rl.GetShaderLocation(shader, "gammaEnabled")
 	r.gammaTableLocation = rl.GetShaderLocation(shader, "gammaTable[0]")
-	if r.alphaLocation < 0 || r.blendLocation < 0 || r.modeLocation < 0 || r.lightingLocation < 0 || r.rampLocation < 0 || r.rowsLocation < 0 {
+	r.skyYawLocation = rl.GetShaderLocation(shader, "skyYaw")
+	r.skyViewportLocation = rl.GetShaderLocation(shader, "skyViewport")
+	r.skySizeLocation = rl.GetShaderLocation(shader, "skySize")
+	r.skyOriginLocation = rl.GetShaderLocation(shader, "skyOriginY")
+	if r.alphaLocation < 0 || r.blendLocation < 0 || r.modeLocation < 0 || r.lightingLocation < 0 || r.rampLocation < 0 || r.rowsLocation < 0 ||
+		r.skyYawLocation < 0 || r.skyViewportLocation < 0 || r.skySizeLocation < 0 || r.skyOriginLocation < 0 {
 		rl.UnloadShader(shader)
 		return nil, fmt.Errorf("Raylib mesh shader is missing required uniforms")
 	}
@@ -419,6 +439,9 @@ func (r *Renderer) drawBatches(c levelmesh.Camera, width, height int, mode level
 	rl.SetShaderValue(r.shader, r.fuzzLocation, []float32{fuzz}, rl.ShaderUniformFloat)
 	rl.SetShaderValue(r.shader, r.fuzzViewLocation, []float32{float32(width), float32(height)}, rl.ShaderUniformVec2)
 	rl.SetShaderValue(r.shader, r.fuzzOriginLocation, []float32{float32(rl.GetRenderHeight() - height)}, rl.ShaderUniformFloat)
+	rl.SetShaderValue(r.shader, r.skyYawLocation, []float32{float32(c.Yaw)}, rl.ShaderUniformFloat)
+	rl.SetShaderValue(r.shader, r.skyViewportLocation, []float32{float32(width), float32(height)}, rl.ShaderUniformVec2)
+	rl.SetShaderValue(r.shader, r.skyOriginLocation, []float32{float32(rl.GetRenderHeight() - height)}, rl.ShaderUniformFloat)
 	r.material.GetMap(rl.MapMetalness).Texture = r.fuzzTexture
 	if mode == levelmesh.Wireframe {
 		rl.EnableWireMode()
@@ -427,6 +450,9 @@ func (r *Renderer) drawBatches(c levelmesh.Camera, width, height int, mode level
 	identity := rl.MatrixIdentity()
 	for _, b := range batches {
 		r.material.GetMap(rl.MapAlbedo).Texture = r.residentTexture(b.Texture, b.Key.Masked)
+		if b.Key.Sky {
+			rl.SetShaderValue(r.shader, r.skySizeLocation, []float32{float32(b.Texture.Width), float32(b.Texture.Height)}, rl.ShaderUniformVec2)
+		}
 		blend := float32(0)
 		r.material.GetMap(rl.MapNormal).Texture = rl.Texture2D{}
 		if b.Texture.HasBlend() {

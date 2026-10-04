@@ -17,8 +17,11 @@ func TestBatchesPreserveWindingUVAndResolvedMaterials(t *testing.T) {
 	masked.Masked = true
 	var builder Builder
 	b := builder.Build([]levelmesh.Triangle{t1, t2, sky, masked}, func(levelmesh.Triangle) levelmesh.Texture { return tex }, func(int) float64 { return 1 }, levelmesh.Textured)
-	if len(b) != 2 || len(b[0].Positions) != 18 || len(b[1].Positions) != 9 {
+	if len(b) != 3 || len(b[0].Positions) != 18 || len(b[1].Positions) != 9 || len(b[2].Positions) != 9 {
 		t.Fatalf("incorrect batching: %+v", b)
+	}
+	if got := b[1].LightingUVs[0]; got != 9 {
+		t.Fatalf("sky light tag=%v want 9", got)
 	}
 	p, uv := b[0].Positions, b[0].UVs
 	if p[0] != 0 || p[1] != 0.75 || p[2] != 0 || p[3] != 1 || p[4] != 0.75 || p[5] != 0 || p[6] != 0 || p[7] != 0.75 || p[8] != -1 || uv[2] != 1 || uv[5] != 1 {

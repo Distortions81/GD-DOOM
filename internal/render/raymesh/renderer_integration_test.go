@@ -141,6 +141,60 @@ func TestRaylibResidentMeshDepthAndMask(t *testing.T) {
 	t.Logf("hardware depth and alpha discard: %d opaque foreground and %d background pixels", green, redPixels)
 }
 
+func TestRaylibSkyCurtainWritesDepth(t *testing.T) {
+	if os.Getenv("GD_RAYLIB_INTEGRATION") == "" {
+		t.Skip("set GD_RAYLIB_INTEGRATION=1 for actual GPU checks")
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	rl.SetTraceLogLevel(rl.LogWarning)
+	rl.SetConfigFlags(rl.FlagWindowHidden)
+	rl.InitWindow(128, 128, "Raylib sky portal depth regression")
+	defer rl.CloseWindow()
+	r, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	red := levelmesh.Texture{RGBA: []byte{255, 0, 0, 255}, Width: 1, Height: 1}
+	green := levelmesh.Texture{RGBA: []byte{0, 255, 0, 255}, Width: 1, Height: 1}
+	wall := [4]levelmesh.Vertex{
+		{X: 128, Y: -128, Z: -128}, {X: 128, Y: -128, Z: 128},
+		{X: 128, Y: 128, Z: 128}, {X: 128, Y: 128, Z: -128},
+	}
+	curtain := [4]levelmesh.Vertex{
+		{X: 64, Y: -128, Z: 0}, {X: 64, Y: -128, Z: 32768},
+		{X: 64, Y: 128, Z: 32768}, {X: 64, Y: 128, Z: 0},
+	}
+	tris := []levelmesh.Triangle{
+		{Vertices: [3]levelmesh.Vertex{wall[0], wall[1], wall[2]}},
+		{Vertices: [3]levelmesh.Vertex{wall[0], wall[2], wall[3]}},
+		{Kind: levelmesh.Ceiling, Sky: true, Vertices: [3]levelmesh.Vertex{curtain[0], curtain[1], curtain[2]}},
+		{Kind: levelmesh.Ceiling, Sky: true, Vertices: [3]levelmesh.Vertex{curtain[0], curtain[2], curtain[3]}},
+	}
+	r.Sync(tris, func(tri levelmesh.Triangle) levelmesh.Texture {
+		if tri.Sky {
+			return green
+		}
+		return red
+	}, func(int) float64 { return 1 }, levelmesh.Textured)
+	rl.BeginDrawing()
+	rl.ClearBackground(rl.Blue)
+	r.Draw(levelmesh.Camera{}, 128, 128, levelmesh.Textured)
+	img := rl.LoadImageFromScreen()
+	rl.EndDrawing()
+	defer rl.UnloadImage(img)
+	colors := rl.LoadImageColors(img)
+	defer rl.UnloadImageColors(colors)
+	upper, lower := colors[16*128+64], colors[96*128+64]
+	if upper.G != 255 || upper.R != 0 || upper.B != 0 {
+		t.Fatalf("sky curtain did not occlude farther room: upper=%v", upper)
+	}
+	if lower.R != 255 || lower.G != 0 || lower.B != 0 {
+		t.Fatalf("sky curtain occluded outside its projection: lower=%v", lower)
+	}
+}
+
 func TestRaylibFilteredTextureMinification(t *testing.T) {
 	if os.Getenv("GD_RAYLIB_INTEGRATION") == "" {
 		t.Skip("set GD_RAYLIB_INTEGRATION=1 for actual GPU checks")

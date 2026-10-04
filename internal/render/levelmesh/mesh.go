@@ -62,8 +62,14 @@ func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []H
 				z, tex := h.Floor, s.FloorPic
 				if kind == Ceiling {
 					z, tex = h.Ceiling, s.CeilingPic
+					// Doom sky is clipped at portal boundaries rather than drawn as
+					// a horizontal world plane. Sky curtains are built with the walls
+					// below; a physical ceiling over-occludes taller sky neighbors.
+					if sky(tex) {
+						continue
+					}
 				}
-				t := Triangle{Sector: sector, Sidedef: -1, Kind: kind, Texture: tex, Sky: sky(tex)}
+				t := Triangle{Sector: sector, Sidedef: -1, Kind: kind, Texture: tex}
 				for i, p := range tri {
 					t.Vertices[i] = Vertex{p.X, p.Y, z, p.X, p.Y}
 				}
@@ -126,6 +132,21 @@ func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []H
 					dst = append(dst, Triangle{Vertices: [3]Vertex{v[ids[0]], v[ids[1]], v[ids[2]]}, Sector: sector, Sidedef: int(idx), Kind: kind, Texture: tex, Masked: masked})
 				}
 			}
+			skyCurtain := func(bottom float64) {
+				const skyTop = 32768.0
+				if bottom >= skyTop {
+					return
+				}
+				v := [4]Vertex{
+					{float64(a.X), float64(a.Y), bottom, 0, 0},
+					{float64(b.X), float64(b.Y), bottom, 0, 0},
+					{float64(b.X), float64(b.Y), skyTop, 0, 0},
+					{float64(a.X), float64(a.Y), skyTop, 0, 0},
+				}
+				for _, ids := range [][3]int{{0, 1, 2}, {0, 2, 3}} {
+					dst = append(dst, Triangle{Vertices: [3]Vertex{v[ids[0]], v[ids[1]], v[ids[2]]}, Sector: sector, Sidedef: int(idx), Kind: Ceiling, Texture: m.Sectors[sector].CeilingPic, Sky: true})
+				}
+			}
 			other := line.SideNum[1-side]
 			backExists := line.Flags&4 != 0 && other >= 0 && int(other) < len(m.Sidedefs) && int(m.Sidedefs[other].Sector) < len(heights)
 			if !backExists {
@@ -134,11 +155,26 @@ func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []H
 					anchor = front.Floor + texHeight(sd.Mid, Middle)
 				}
 				quad(Middle, sd.Mid, front.Floor, front.Ceiling, anchor, false)
+				if sky(m.Sectors[sector].CeilingPic) {
+					skyCurtain(front.Ceiling)
+				}
 				continue
 			}
 			backSector := int(m.Sidedefs[other].Sector)
 			back := heights[backSector]
-			bothSky := sky(m.Sectors[sector].CeilingPic) && sky(m.Sectors[backSector].CeilingPic)
+			frontSky := sky(m.Sectors[sector].CeilingPic)
+			backSky := sky(m.Sectors[backSector].CeilingPic)
+			bothSky := frontSky && backSky
+			if frontSky {
+				bottom := front.Ceiling
+				if backSky {
+					// Vanilla's sky hack clips this side at the opposite sector's
+					// ceiling, suppressing the upper wall without opening a view
+					// into geometry beyond the sky portal.
+					bottom = back.Ceiling
+				}
+				skyCurtain(bottom)
+			}
 			if back.Ceiling < front.Ceiling && !bothSky {
 				anchor := back.Ceiling + texHeight(sd.Top, Upper)
 				if line.Flags&8 != 0 {

@@ -174,6 +174,15 @@ func (n *NativeMeshGame) LightRamp() [32]float32 { return n.lightRamp }
 func (n *NativeMeshGame) LightRows() int         { return n.lightRows }
 
 func (n *NativeMeshGame) Texture(t levelmesh.Triangle) levelmesh.Texture {
+	if t.Sky {
+		// Raylib renders sky portal curtains as world geometry so they participate
+		// in depth testing. The mesh shader projects this panorama in screen space,
+		// matching the backdrop while preventing rooms beyond a sky portal from
+		// showing through it.
+		if _, tex, ok := n.g.runtimeSkyTextureEntryForMap(n.g.m.Name); ok {
+			return nativeTexture(tex)
+		}
+	}
 	return n.fixedWorldTexture(n.g.meshMaterial(n.g.ensureMeshExperiment(), t))
 }
 

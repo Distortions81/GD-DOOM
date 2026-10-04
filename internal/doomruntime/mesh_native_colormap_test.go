@@ -100,6 +100,12 @@ func TestNativeInvulnerabilityMatchesWADColormapAndKeepsOverlayArtwork(t *testin
 		if len(tex.RGBA) == 0 {
 			continue
 		}
+		if tri.Sky {
+			if len(tex.FixedRGBA) != 0 {
+				t.Fatal("sky received inverse palette")
+			}
+			continue
+		}
 		if len(tex.FixedRGBA) != len(tex.RGBA) {
 			t.Fatal("world texture lacks inverse palette")
 		}

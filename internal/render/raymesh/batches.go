@@ -17,7 +17,7 @@ type TextureKey struct {
 
 type BatchKey struct {
 	Texture       TextureKey
-	Masked        bool
+	Masked, Sky   bool
 	Instance      int
 	Blend         TextureKey
 	BlendInstance int
@@ -68,14 +68,11 @@ func (b *Builder) Build(tris []levelmesh.Triangle, texture func(levelmesh.Triang
 	b.generation++
 	b.active = b.active[:0]
 	for _, tri := range tris {
-		if tri.Sky {
-			continue
-		}
 		tex := texture(tri)
 		if tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 			tex = missingTexture
 		}
-		key := BatchKey{Texture: TextureKey{&tex.RGBA[0], tex.Width, tex.Height}, Masked: tri.Masked, Instance: tri.Instance}
+		key := BatchKey{Texture: TextureKey{&tex.RGBA[0], tex.Width, tex.Height}, Masked: tri.Masked, Sky: tri.Sky, Instance: tri.Instance}
 		if tex.HasBlend() {
 			key.Blend = TextureKey{&tex.BlendRGBA[0], tex.Width, tex.Height}
 			key.BlendInstance = tex.BlendInstance

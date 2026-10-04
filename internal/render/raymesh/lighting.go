@@ -30,10 +30,14 @@ func linearLightRamp() (ramp [32]float32) {
 }
 
 // The second UV attribute carries static surface lighting metadata: planes
-// use 4, masked mids 5, sprites 8, walls their Doom axis bias (-1, 0, +1).
+// use 4, masked mids 5, sprites 8, sky portal curtains 9, walls their Doom axis bias
+// (-1, 0, +1).
 // Raw sector light travels
 // in vertex-color alpha, independently of RGB used by the diagnostic views.
 func surfaceLightTag(tri levelmesh.Triangle) float32 {
+	if tri.Sky {
+		return 9
+	}
 	if tri.Kind == levelmesh.Billboard {
 		return 8
 	}
