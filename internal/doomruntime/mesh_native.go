@@ -11,7 +11,10 @@ import (
 // NativeMeshGame lets an alternate window/render backend drive the existing
 // Doom simulation without calling Ebiten's input, drawing or window loop.
 // It is a single-level geometry experiment, not a second gameplay engine.
-type NativeMeshGame struct{ g *game }
+type NativeMeshGame struct {
+	g         *game
+	lightRamp [32]float32
+}
 
 type NativeMeshInput struct {
 	Forward, Side, Turn int     // -1, 0, +1; positive side/turn mean right/left.
@@ -28,6 +31,7 @@ type NativeMeshFrame struct {
 	Ammo          int
 	Weapon        string
 	Exited, Dead  bool
+	Fullbright    bool // Active light-amplification powerup, including its blink.
 }
 
 func NewNativeMeshGame(m *mapdata.Map, opts Options) *NativeMeshGame {
@@ -36,7 +40,15 @@ func NewNativeMeshGame(m *mapdata.Map, opts Options) *NativeMeshGame {
 	opts.SFXVolume = 0 // This geometry host does not initialize an audio backend.
 	g := newGame(m, opts)
 	g.syncRenderState()
-	return &NativeMeshGame{g: g}
+	n := &NativeMeshGame{g: g}
+	ramp := buildDoomRowShadeMulLUT(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows)
+	for row := range n.lightRamp {
+		n.lightRamp[row] = 1 - float32(row)/31
+		if row < len(ramp) {
+			n.lightRamp[row] = float32(ramp[row]) / 256
+		}
+	}
+	return n
 }
 
 // Tick advances exactly one Doom tic (35 Hz). The external host owns timing.
@@ -80,8 +92,11 @@ func (n *NativeMeshGame) Frame(alpha float64) NativeMeshFrame {
 		WorldTic:  g.worldTic, Health: g.stats.Health, Armor: g.stats.Armor,
 		Ammo: weaponAmmoCount(g.stats, def.ammo), Weapon: def.name,
 		Exited: g.levelExitRequested, Dead: g.isDead,
+		Fullbright: g.playerInfraredBright(),
 	}
 }
+
+func (n *NativeMeshGame) LightRamp() [32]float32 { return n.lightRamp }
 
 func (n *NativeMeshGame) Texture(t levelmesh.Triangle) levelmesh.Texture {
 	return n.g.meshMaterial(n.g.ensureMeshExperiment(), t)

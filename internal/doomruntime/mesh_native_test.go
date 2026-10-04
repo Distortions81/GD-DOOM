@@ -4,7 +4,9 @@ import (
 	"math"
 	"testing"
 
+	"gddoom/internal/mapdata"
 	"gddoom/internal/render/levelmesh"
+	"gddoom/internal/wad"
 )
 
 func TestNativeMeshGameUsesDoomSimulation(t *testing.T) {
@@ -119,5 +121,68 @@ func TestNativeMeshInspectionPoseUsesDestinationSector(t *testing.T) {
 	c := n.Frame(1).Camera
 	if c.X != -600 || c.Y != -1600 || math.Abs(c.Z-89) > 0.01 {
 		t.Fatalf("stationary inspection camera moved after physics ticks: %+v", c)
+	}
+}
+
+func TestNativeMeshAnimatedLightsAndPowerupSnapshot(t *testing.T) {
+	fixture := loadMeshExperimentMap(t, "E1M3")
+	// The fixture's game has already consumed the map's light specials.
+	// Load an original map, as the native launcher does, before starting it.
+	wf, err := wad.Open(findDOOM1WAD(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := mapdata.LoadMap(wf, "E1M3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := fixture.opts
+	opts.SourcePortSectorLighting = true
+	// An intentionally non-linear colormap proves that the native host passes
+	// the WAD's brightness curve rather than an assumed linear falloff.
+	opts.DoomPaletteRGBA = make([]byte, 256*4)
+	opts.DoomColorMapRows = 32
+	opts.DoomColorMap = make([]byte, 32*256)
+	for i := range 256 {
+		opts.DoomPaletteRGBA[i*4], opts.DoomPaletteRGBA[i*4+1], opts.DoomPaletteRGBA[i*4+2], opts.DoomPaletteRGBA[i*4+3] = byte(i), byte(i), byte(i), 255
+		for row := range 32 {
+			if row != 3 {
+				opts.DoomColorMap[row*256+i] = byte(i)
+			}
+		}
+	}
+	n := NewNativeMeshGame(m, opts)
+	if ramp := n.LightRamp(); ramp[0] != 1 || ramp[3] != 0 || ramp[4] != 1 {
+		t.Fatal("native host did not preserve the WAD's non-linear light ramp")
+	}
+	changed := false
+	for range 64 {
+		before := make([]int16, len(n.g.m.Sectors))
+		for sector := range before {
+			before[sector] = n.g.m.Sectors[sector].Light
+		}
+		n.Tick(NativeMeshInput{})
+		n.Frame(1)
+		for sector, old := range before {
+			current := n.g.m.Sectors[sector].Light
+			if current != old {
+				changed = true
+				if n.Light(sector)*256 != float64(current) {
+					t.Fatal("native light snapshot retained an old flicker/glow state")
+				}
+			}
+		}
+	}
+	if !changed {
+		t.Fatal("fixture did not animate its sector lights")
+	}
+	for _, power := range []struct {
+		tics   int
+		bright bool
+	}{{160, true}, {7, false}, {8, true}, {0, false}} {
+		n.g.inventory.LightAmpTics = power.tics
+		if n.Frame(1).Fullbright != power.bright {
+			t.Fatal("native frame lost the light-amplification blink")
+		}
 	}
 }

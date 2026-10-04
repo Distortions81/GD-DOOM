@@ -24,6 +24,7 @@ type Batch struct {
 	Key            BatchKey
 	Texture        levelmesh.Texture
 	Positions, UVs []float32
+	LightingUVs    []float32
 	Colors         []byte
 	generation     uint64
 }
@@ -72,10 +73,13 @@ func (b *Builder) Build(tris []levelmesh.Triangle, texture func(levelmesh.Triang
 		}
 		if batch.generation != b.generation {
 			batch.Positions, batch.UVs, batch.Colors = batch.Positions[:0], batch.UVs[:0], batch.Colors[:0]
+			batch.LightingUVs = batch.LightingUVs[:0]
 			batch.generation = b.generation
 			b.active = append(b.active, batch)
 		}
 		shade := math.Max(0, math.Min(1, light(tri.Sector)))
+		sectorLight := byte(math.Min(255, math.Round(shade*256)))
+		lightTag := surfaceLightTag(tri)
 		red, green, blue := byte(255), byte(255), byte(255)
 		if mode != levelmesh.Textured {
 			hash := uint32(tri.Sector+1) * 2654435761
@@ -90,7 +94,8 @@ func (b *Builder) Build(tris []levelmesh.Triangle, texture func(levelmesh.Triang
 			// inward-facing winding while matching the CPU camera's handedness.
 			batch.Positions = append(batch.Positions, float32(v.X)*WorldScale, float32(v.Z)*WorldScale, -float32(v.Y)*WorldScale)
 			batch.UVs = append(batch.UVs, float32(v.U)/float32(tex.Width), float32(v.V)/float32(tex.Height))
-			batch.Colors = append(batch.Colors, red, green, blue, 255)
+			batch.Colors = append(batch.Colors, red, green, blue, sectorLight)
+			batch.LightingUVs = append(batch.LightingUVs, lightTag, 0)
 		}
 	}
 	return b.active

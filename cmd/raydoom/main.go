@@ -39,7 +39,19 @@ func run() error {
 	capture := flag.String("capture", "", "PNG screenshot path, taken on final frame")
 	pose := flag.String("camera", "", "inspection pose x,y,eye-z,yaw-degrees")
 	modeFlag := flag.String("mode", "textured", "textured, sectors, or wireframe")
+	textureScale := flag.Int("texture-scale", 2, "texture upload scale (1 or 2; nearest-neighbor enlargement)")
+	textureFilter := flag.String("texture-filter", "anisotropic", "nearest, trilinear, or anisotropic (8x)")
+	lightingFlag := flag.String("lighting", "doom", "doom, sector, or fullbright")
+	msaa := flag.Bool("msaa", true, "request 4x multisample antialiasing for geometry edges and seams")
 	flag.Parse()
+	lightingMode := raymesh.LightingMode(*lightingFlag)
+	if err := lightingMode.Validate(); err != nil {
+		return err
+	}
+	textureOptions := raymesh.TextureOptions{Scale: *textureScale, Filter: raymesh.TextureFilter(*textureFilter)}
+	if err := textureOptions.Validate(); err != nil {
+		return err
+	}
 	if *width < 320 || *height < 200 || *fps < 0 || *frames < 0 {
 		return fmt.Errorf("invalid window size, frame limit, or frame count")
 	}
@@ -74,21 +86,33 @@ func run() error {
 		}
 	}
 	rl.SetTraceLogLevel(rl.LogWarning)
-	rl.SetConfigFlags(rl.FlagWindowResizable)
+	windowFlags := uint32(rl.FlagWindowResizable)
+	aaLabel := "off"
+	if *msaa {
+		// Raylib's MSAA hint must precede InitWindow. Draw directly to its
+		// multisampled framebuffer; ordinary render textures are single-sample.
+		windowFlags |= rl.FlagMsaa4xHint
+		aaLabel = "4x MSAA requested"
+	}
+	rl.SetConfigFlags(windowFlags)
 	rl.InitWindow(int32(*width), int32(*height), "GD-DOOM | Raylib GPU mesh experiment")
-	defer rl.CloseWindow()
 	if !rl.IsWindowReady() {
 		return fmt.Errorf("Raylib window could not initialize")
 	}
+	defer rl.CloseWindow()
 	rl.SetTargetFPS(int32(*fps))
 	if *frames == 0 {
 		rl.DisableCursor()
 	}
-	renderer, err := raymesh.NewRenderer()
+	renderer, err := raymesh.NewRendererWithTextureOptions(textureOptions)
 	if err != nil {
 		return err
 	}
 	defer renderer.Close()
+	if err := renderer.SetLightingMode(lightingMode); err != nil {
+		return err
+	}
+	renderer.SetLightRamp(game.LightRamp())
 	const tic = 1.0 / 35
 	accumulator := 0.0
 	last := time.Now()
@@ -107,6 +131,32 @@ func run() error {
 				mode = levelmesh.Wireframe
 			default:
 				mode = levelmesh.Textured
+			}
+		}
+		if rl.IsKeyPressed(rl.KeyF8) {
+			switch textureOptions.Filter {
+			case raymesh.Nearest:
+				textureOptions.Filter = raymesh.Trilinear
+			case raymesh.Trilinear:
+				textureOptions.Filter = raymesh.Anisotropic
+			default:
+				textureOptions.Filter = raymesh.Nearest
+			}
+			if err := renderer.SetTextureFilter(textureOptions.Filter); err != nil {
+				return err
+			}
+		}
+		if rl.IsKeyPressed(rl.KeyF9) {
+			switch lightingMode {
+			case raymesh.DoomLighting:
+				lightingMode = raymesh.SectorLighting
+			case raymesh.SectorLighting:
+				lightingMode = raymesh.FullbrightLighting
+			default:
+				lightingMode = raymesh.DoomLighting
+			}
+			if err := renderer.SetLightingMode(lightingMode); err != nil {
+				return err
 			}
 		}
 		if rl.IsKeyPressed(rl.KeyR) {
@@ -140,6 +190,7 @@ func run() error {
 		} // Deterministic still camera for capture checks.
 		snapshot := game.Frame(alpha)
 		renderer.Sync(snapshot.Triangles, game.Texture, game.Light, mode)
+		renderer.SetFullbright(snapshot.Fullbright)
 		w, h := rl.GetScreenWidth(), rl.GetScreenHeight()
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.NewColor(42, 49, 65, 255))
@@ -147,6 +198,8 @@ func run() error {
 		stats := renderer.Stats()
 		rl.DrawText(fmt.Sprintf("Raylib GPU | %s | %d tris | %d batches | F7 cycle", mode, stats.Triangles, stats.DrawCalls), 8, 8, 18, rl.White)
 		rl.DrawText(fmt.Sprintf("Resident meshes: %d | uploads: %d | buffer updates: %d", stats.ResidentMeshes, stats.MeshUploads, stats.BufferUpdates), 8, 30, 16, rl.White)
+		rl.DrawText(fmt.Sprintf("Textures: %dx | %s | F8 filter", textureOptions.Scale, textureOptions.Filter), 8, 50, 16, rl.White)
+		rl.DrawText(fmt.Sprintf("Lighting: %s | F9 cycle | AA: %s", lightingMode, aaLabel), 8, 70, 16, rl.White)
 		rl.DrawRectangle(0, int32(h-48), int32(w), 48, rl.NewColor(12, 16, 24, 255))
 		rl.DrawText(fmt.Sprintf("HEALTH %d  ARMOR %d  %s %d  | WASD move | mouse/arrows turn | E/Space use | ESC quit", snapshot.Health, snapshot.Armor, strings.ToUpper(snapshot.Weapon), snapshot.Ammo), 12, int32(h-34), 18, rl.White)
 		if snapshot.Exited {
@@ -154,7 +207,6 @@ func run() error {
 		}
 		var captureErr error
 		if *frames > 0 && frame+1 >= *frames && *capture != "" {
-			rl.DrawRenderBatchActive() // Include queued HUD draws before reading pixels.
 			captureErr = captureScreen(*capture)
 		}
 		rl.EndDrawing()
@@ -162,7 +214,7 @@ func run() error {
 			return captureErr
 		}
 		if *frames > 0 && frame+1 >= *frames {
-			fmt.Printf("raylib-mesh map=%s frames=%d triangles=%d batches=%d resident=%d uploads=%d updates=%d\n", m.Name, frame+1, stats.Triangles, stats.DrawCalls, stats.ResidentMeshes, stats.MeshUploads, stats.BufferUpdates)
+			fmt.Printf("raylib-mesh map=%s frames=%d triangles=%d batches=%d resident=%d uploads=%d updates=%d texture-scale=%d texture-filter=%s lighting=%s msaa=%t\n", m.Name, frame+1, stats.Triangles, stats.DrawCalls, stats.ResidentMeshes, stats.MeshUploads, stats.BufferUpdates, textureOptions.Scale, textureOptions.Filter, lightingMode, *msaa)
 			break
 		}
 	}
@@ -181,6 +233,14 @@ func axis(positive, negative int32) int {
 }
 
 func loadAssets(wf *wad.File) (doomruntime.Options, error) {
+	var colorMap []byte
+	if lump, ok := wf.LumpByName("COLORMAP"); ok {
+		var err error
+		colorMap, err = wf.LumpData(lump)
+		if err != nil {
+			return doomruntime.Options{}, err
+		}
+	}
 	set, err := doomtex.LoadFromWAD(wf)
 	if err != nil {
 		return doomruntime.Options{}, err
@@ -201,14 +261,17 @@ func loadAssets(wf *wad.File) (doomruntime.Options, error) {
 		}
 		walls[name] = doomruntime.WallTexture{RGBA: pixels, Width: w, Height: h}
 	}
-	return doomruntime.Options{NoMonsters: true, Invulnerable: true, SourcePortSectorLighting: true, MouseLookSpeed: 1, KeyboardTurnSpeed: 1, AutoWeaponSwitch: true, FlatBank: flats, WallTexBank: walls, DoomPaletteRGBA: palette, WallTextureAnimSequences: doomtex.LoadWallTextureAnimSequences(set, doomtex.DoomWallAnimDefs), FlatTextureAnimSequences: doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)}, nil
+	return doomruntime.Options{NoMonsters: true, Invulnerable: true, SourcePortSectorLighting: true, MouseLookSpeed: 1, KeyboardTurnSpeed: 1, AutoWeaponSwitch: true, FlatBank: flats, WallTexBank: walls, DoomPaletteRGBA: palette, DoomColorMap: colorMap, DoomColorMapRows: len(colorMap) / 256, WallTextureAnimSequences: doomtex.LoadWallTextureAnimSequences(set, doomtex.DoomWallAnimDefs), FlatTextureAnimSequences: doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)}, nil
 }
 
 func captureScreen(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	img := rl.LoadImageFromScreen()
+	img, err := raymesh.CaptureWindow()
+	if err != nil {
+		return err
+	}
 	defer rl.UnloadImage(img)
 	if !rl.ExportImage(*img, path) {
 		return fmt.Errorf("could not save screenshot %q", path)
