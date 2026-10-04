@@ -19,6 +19,19 @@ func (m *nativeMenu) isSharedPage() bool {
 	return false
 }
 
+// Shared actions retain their original IDs; native removes the voice row from
+// drawing, keyboard navigation and mouse hit testing without changing main.
+var nativeOptionActions = [...]int{0, 1, 2, 3, 4, 5, 7, 8}
+
+func nativeOptionRow(action int) int {
+	for row, id := range nativeOptionActions {
+		if id == action {
+			return row
+		}
+	}
+	return 0
+}
+
 func (m *nativeMenu) sharedState() sessionflow.Frontend {
 	f := m.flow
 	f.Active, f.MenuActive, f.InGame = true, true, !m.frontend
@@ -27,7 +40,7 @@ func (m *nativeMenu) sharedState() sessionflow.Frontend {
 	case menuMain:
 		f.Mode, f.ItemOn = sessionflow.FrontendModeTitle, m.row
 	case menuOptions:
-		f.Mode, f.OptionsOn = sessionflow.FrontendModeOptions, m.row
+		f.Mode, f.OptionsOn = sessionflow.FrontendModeOptions, nativeOptionActions[m.row]
 	case menuSound:
 		f.Mode, f.SoundOn = sessionflow.FrontendModeSound, m.row
 	case menuNewGame:
@@ -57,7 +70,7 @@ func (m *nativeMenu) applySharedState(f sessionflow.Frontend) {
 			m.page = menuClosed
 		}
 	case sessionflow.FrontendModeOptions:
-		m.page, m.row = menuOptions, f.OptionsOn
+		m.page, m.row = menuOptions, nativeOptionRow(f.OptionsOn)
 	case sessionflow.FrontendModeSound:
 		m.page, m.row = menuSound, f.SoundOn
 	case sessionflow.FrontendModeEpisode:
@@ -92,7 +105,7 @@ func (m *nativeMenu) updateShared(in menuInput, s *nativeSettings) menuCommand {
 	if in.mouseRow >= 0 && in.mouseRow < len(m.rows(*s)) {
 		m.row = in.mouseRow
 	}
-	if m.page == menuOptions && m.row == 8 && in.confirm {
+	if m.page == menuOptions && m.row == len(nativeOptionActions)-1 && in.confirm {
 		m.open(menuGraphics)
 		return menuNoCommand
 	}
@@ -107,14 +120,10 @@ func (m *nativeMenu) updateShared(in menuInput, s *nativeSettings) menuCommand {
 		}
 	}
 	cfg.ReadThisPageCount = doomruntime.NativeReadThisPageCount(m.opts)
-	cfg.OptionRows = append(append([]int(nil), cfg.OptionRows...), 8)
+	cfg.OptionRows = nativeOptionActions[:]
 	input := sessionflow.FrontendInput{Escape: in.back, Up: in.up, Down: in.down, Left: in.left, Right: in.right, Select: in.confirm, Skip: in.back || in.up || in.down || in.left || in.right || in.confirm || in.anyKey}
 	result := sessionflow.StepFrontend(old, input, cfg)
 	m.applySharedState(result.State)
-	if result.State.Mode == sessionflow.FrontendModeVoice {
-		m.applySharedState(old)
-		m.setStatus("VOICE SUPPORT IS NOT READY YET", 70)
-	}
 	if result.ChangeMessages {
 		s.messages = !s.messages
 		message := "MESSAGES OFF"
@@ -237,6 +246,7 @@ func (m *nativeMenu) drawShared(s nativeSettings, frame int) []levelmesh.Patch {
 	opts.SourcePortMode, opts.SFXVolume, opts.MusicVolume = true, s.sfxVolume, s.musicPlaybackVolume()
 	opts.MusicBackend, opts.MusicSoundFontPath, opts.PCSpeakerVolume, opts.MouseLookSpeed, opts.InputBindings = s.musicBackend, s.soundFont, s.speakerVolume, s.mouseSensitivity, s.bindings
 	v := doomruntime.NativeMenuView{State: m.sharedState(), Frame: frame, BindingRow: m.row, BindingSlot: m.bindingSlot, BindingCapture: m.capture, MusicRow: m.row, MusicWAD: m.musicWAD, MusicGroup: m.musicGroup, MusicTrack: m.musicTrack, NowPlaying: m.nowPlaying, Slots: m.saveSlots, Messages: s.messages, ShowFPS: s.showFPS, ScreenBlocks: s.screenBlocks, HUDScale: s.hudScale}
+	v.HideVoiceOptions = true
 	if m.page == menuBindings {
 		v.State.Mode = doomruntime.NativeMenuBindings
 		for _, action := range nativeBindingRows(s.bindings) {
@@ -254,8 +264,8 @@ func (m *nativeMenu) drawShared(s nativeSettings, frame int) []levelmesh.Patch {
 	}
 	m.patches = append(m.patches[:0], m.shared.Draw(opts, v)...)
 	if m.page == menuOptions {
-		m.textScaled("RAYLIB OPTIONS", 36, 167, 1.2)
-		m.textScaled("OPEN", 251, 167, 1.2)
+		m.textScaled("RAYLIB OPTIONS", 36, 151, 1.2)
+		m.textScaled("OPEN", 251, 151, 1.2)
 	}
 	return m.patches
 }

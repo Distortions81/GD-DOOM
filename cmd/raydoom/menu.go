@@ -103,6 +103,8 @@ type nativeMenu struct {
 	quitSequence                     int
 	quitFrom                         menuPage
 	quitFromRow                      int
+	bindingsFrom                     menuPage
+	bindingsFromRow                  int
 }
 
 func newNativeMenu(opts doomruntime.Options, maps []mapdata.MapName, current mapdata.MapName) *nativeMenu {
@@ -128,6 +130,12 @@ func newNativeMenu(opts doomruntime.Options, maps []mapdata.MapName, current map
 func (m *nativeMenu) open(page menuPage) {
 	if m.page == menuQuit {
 		return
+	}
+	if page == menuBindings {
+		m.bindingsFrom, m.bindingsFromRow = m.page, m.row
+		if m.bindingsFrom != menuOptions && m.bindingsFrom != menuControls {
+			m.bindingsFrom, m.bindingsFromRow = menuOptions, nativeOptionRow(7)
+		}
 	}
 	if page == menuQuit {
 		m.quitFrom, m.quitFromRow = m.page, m.row
@@ -181,7 +189,7 @@ func (m *nativeMenu) rows(s nativeSettings) []menuRow {
 		}
 		return rows
 	case menuOptions:
-		return []menuRow{{label: "MESSAGES"}, {label: "STATUS BAR MODE"}, {label: "HUD SIZE"}, {label: "FPS"}, {label: "MOUSE SENSITIVITY"}, {label: "SOUND OPTIONS"}, {label: "VOICE OPTIONS"}, {label: "KEY BINDINGS"}, {label: "RAYLIB OPTIONS"}}
+		return []menuRow{{label: "MESSAGES"}, {label: "STATUS BAR MODE"}, {label: "HUD SIZE"}, {label: "FPS"}, {label: "MOUSE SENSITIVITY"}, {label: "SOUND OPTIONS"}, {label: "KEY BINDINGS"}, {label: "RAYLIB OPTIONS"}}
 	case menuControls:
 		return []menuRow{{label: "KEY BINDINGS"}, {label: "MOUSE AIM", value: onoff(s.mouseLook)}, {label: "MOUSE INVERT", value: onoff(s.mouseInvert)}, {label: "MOUSE SPEED", value: fmt.Sprintf("%.1f", s.mouseSensitivity)}, {label: "KEY TURN SPEED", value: fmt.Sprintf("%.1f", s.keyboardSpeed)}, {label: "ALWAYS RUN", value: onoff(s.alwaysRun)}, {label: "AUTO WEAPONS", value: onoff(s.autoWeaponSwitch)}, {label: "SMOOTH CAMERA", value: onoff(s.smoothCameraYaw)}, {label: "BACK"}}
 	case menuBindings:
@@ -227,13 +235,18 @@ func (m *nativeMenu) back() {
 		m.open(menuSound)
 		m.row = 4
 	case menuBindings:
-		m.open(menuOptions)
-		m.row = 7
-	case menuControls, menuSpeaker:
+		page, row := m.bindingsFrom, m.bindingsFromRow
+		m.open(page)
+		m.row = row
+	case menuControls:
 		m.open(menuGraphics)
+		m.row = 5
+	case menuSpeaker:
+		m.open(menuGraphics)
+		m.row = 6
 	case menuGraphics:
 		m.open(menuOptions)
-		m.row = 8
+		m.row = nativeOptionRow(8)
 	case menuOptions, menuNewGame, menuHelp, menuSave, menuLoad:
 		m.open(menuMain)
 	default:

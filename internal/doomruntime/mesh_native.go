@@ -164,7 +164,7 @@ func (n *NativeMeshGame) Frame(alpha float64) NativeMeshFrame {
 		Fullbright:    g.playerInfraredBright(),
 		FixedColormap: fixedColormap,
 		Sprites:       n.sprites, HUD: n.hud, WeaponPatches: n.weapon, Sky: sky,
-		HUDMode: int(g.statusBarDisplayMode()), HUDScale: g.hudScaleValue(),
+		HUDMode: n.HUDMode(), HUDScale: g.hudScaleValue(),
 		Message: message, DamageFlash: g.damageFlashTic, BonusFlash: g.bonusFlashTic,
 		FlashOverlay: hud.FlashOverlayColor(g.statusDamageCount, g.statusBonusCount, g.inventory.StrengthCount, g.inventory.RadSuitTics),
 	}

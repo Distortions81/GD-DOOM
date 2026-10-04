@@ -1046,7 +1046,7 @@ func run() (runErr error) {
 			}
 			if automap && playing && !chatHandled {
 				sw, sh := campaign.SceneSize(rl.GetScreenWidth(), rl.GetScreenHeight())
-				game.MapViewport(sw, sh-raymesh.HUDHeight(sw, sh))
+				game.MapViewport(sw, nativeViewHeight(sw, sh, game.HUDMode()))
 				sampleNativeMapInput(&pendingMap, cheatTyping)
 			}
 			sampled := sampleNativeMovement(settings.bindings, settings.alwaysRun, automap, cheatTyping, nativeBindingNameHeld, nativeBindingNamePressed)
@@ -1184,12 +1184,8 @@ func run() (runErr error) {
 		renderer.SetGammaTable(game.GammaTable())
 		w, h := rl.GetScreenWidth(), rl.GetScreenHeight()
 		sceneW, sceneH := campaign.SceneSize(w, h)
-		sceneViewH := sceneH
-		viewH := h
-		if snapshot.HUDMode == 0 {
-			viewH -= raymesh.HUDHeight(w, h)
-			sceneViewH -= raymesh.HUDHeight(sceneW, sceneH)
-		}
+		sceneViewH := nativeViewHeight(sceneW, sceneH, snapshot.HUDMode)
+		viewH := nativeViewHeight(w, h, snapshot.HUDMode)
 		presentation.SetSceneSize(sceneW, sceneH)
 		if needScene && !automap && showScene && campaign.Phase() == doomruntime.NativeCampaignPlaying {
 			presentation.SyncSpritesViewport(snapshot.Sprites, snapshot.Camera, sceneW, sceneViewH)
@@ -1440,7 +1436,7 @@ func loadAssets(wf *wad.File) (doomruntime.Options, error) {
 			sprites[lump.Name] = tex
 		}
 	}
-	return doomruntime.Options{SourcePortSectorLighting: true, MouseLookSpeed: 1, KeyboardTurnSpeed: 1, AutoWeaponSwitch: true, FlatBank: flats, FlatBankIndexed: flatIndices, WallTexBank: walls, StatusPatchBank: status, SpritePatchBank: sprites, MenuPatchBank: menus, IntermissionPatchBank: intermission, MessageFontBank: font, DoomPaletteRGBA: palette, DoomColorMap: colorMap, DoomColorMapRows: len(colorMap) / 256, WallTextureAnimSequences: doomtex.LoadWallTextureAnimSequences(set, doomtex.DoomWallAnimDefs), FlatTextureAnimSequences: doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)}, nil
+	return doomruntime.Options{SourcePortThingRenderMode: "sprites", SourcePortSectorLighting: true, MouseLookSpeed: 1, KeyboardTurnSpeed: 1, AutoWeaponSwitch: true, FlatBank: flats, FlatBankIndexed: flatIndices, WallTexBank: walls, StatusPatchBank: status, SpritePatchBank: sprites, MenuPatchBank: menus, IntermissionPatchBank: intermission, MessageFontBank: font, DoomPaletteRGBA: palette, DoomColorMap: colorMap, DoomColorMapRows: len(colorMap) / 256, WallTextureAnimSequences: doomtex.LoadWallTextureAnimSequences(set, doomtex.DoomWallAnimDefs), FlatTextureAnimSequences: doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)}, nil
 }
 
 func captureScreen(path string) error {

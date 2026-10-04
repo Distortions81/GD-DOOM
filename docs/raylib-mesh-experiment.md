@@ -412,6 +412,29 @@ filtering, antialiasing and frame-limit controls.
 | Demo playback/recording, broadcast/watch, chat | Main demo traces and replay checksums; actual local-relay launcher, late join, mandatory keyframes and chat lifecycle |
 | IWAD/PWAD overlays, startup options, preferences, timing, HUD/detail shortcuts | Last-wins asset/geometry tests; launch/config precedence; shared speed and AUTO timing; persistent settings and real X11 keyboard checks |
 
+### Remaining parity work
+
+The desktop cleanup now uses one HUD-aware viewport calculation for map input
+and drawing at every detail level. Source-port HUDs overlay the full scene or
+are hidden; they no longer cause a spurious status-bar reservation during input.
+The automap starts with all thing sprites, shares main's content-derived legend
+layout and uses its unchanged bitmap font for legend/mark text. Native Options
+removes the excluded voice entry from drawing, navigation and mouse hit testing;
+submenu returns now restore the row that opened them, while main's voice options
+remain available.
+
+**Platform validation remains:** real HiDPI displays, Windows/macOS graphics and
+audio, and physical Linux PC-speaker output. Current framebuffer checks use
+Linux/Xvfb; audio checks use native streams, null PCM and fake hardware. These
+are validation gaps, not confirmed missing gameplay features.
+
+Broader parity with every main-host mode would additionally require a faithful
+presentation mode, a Raylib browser/touch backend, and native equivalents of
+main-only inspection/export/profiling commands. These are larger scope items
+than completing this desktop source-port experiment. Doom II cast presentation
+is absent from both hosts, so it is a shared feature request rather than a
+Raylib parity blocker.
+
 Browser touch/pointer-lock handling and WASM deployment continue through the
 existing Ebiten entry point. Main-only map inspection, asset export and Go
 profiling commands remain available through `cmd/gddoom`; they are developer
@@ -703,8 +726,16 @@ GD_RAYLIB_SAVE_INTEGRATION=1 xvfb-run -a go test \
   -tags raylib,x11,integration ./cmd/raydoom -run TestNativeSavePreviewGPU
 
 # Textured automap framebuffer, updates and resizing in the E1M3 exit room.
-GD_RAYLIB_MAP_INTEGRATION=1 go test -tags raylib,x11,integration \
+GD_RAYLIB_MAP_INTEGRATION=1 xvfb-run -a go test -tags raylib,x11,integration \
   ./cmd/raydoom -run '^TestNativeAutomapGPUFloorUpdatesAndResize$' -v
+
+# Actual main bitmap-font pixels/shadows and retained native atlas.
+GD_RAYLIB_INTEGRATION=1 xvfb-run -a go test -tags raylib,x11,integration \
+  ./internal/render/raymesh -run '^TestRaylibDebugTextMatchesMainBitmapFont$' -v
+
+# Full source-port map viewport at all detail/HUD modes, filtered options.
+xvfb-run -a go test -tags raylib,x11 ./cmd/raydoom \
+  -run 'TestNative(AutomapInput|OptionsRemove)' -v
 
 # Activate a real exit switch, render intermissions and enter the next level.
 GD_RAYLIB_CAMPAIGN_INTEGRATION=1 go test -tags raylib,x11,integration \

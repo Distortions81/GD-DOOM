@@ -6,7 +6,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 type Glyph int
@@ -107,42 +106,9 @@ func DrawThingLegend(screen *ebiten.Image, in LegendInputs, colors LegendColors)
 		return
 	}
 
-	entries := ThingLegendEntries(in, colors)
-	lineEntries := LineLegendEntries(colors)
-
-	maxLen := len("THING LEGEND")
-	for _, e := range entries {
-		if len(e.Label) > maxLen {
-			maxLen = len(e.Label)
-		}
-	}
-	if len("LINE COLORS") > maxLen {
-		maxLen = len("LINE COLORS")
-	}
-	for _, e := range lineEntries {
-		if len(e.Label) > maxLen {
-			maxLen = len(e.Label)
-		}
-	}
-
-	x := in.ViewWidth - maxLen*7 - 36
-	if x < 10 {
-		x = 10
-	}
-	y := 28
-
-	ebitenutil.DebugPrintAt(screen, "THING LEGEND", x, y)
-	for i, e := range entries {
-		ly := y + 16 + i*14
-		DrawThingGlyph(screen, ThingStyle{Glyph: e.Glyph, Color: e.Color}, float64(x+8), float64(ly+5), 0, 4.6, in.AntiAlias)
-		ebitenutil.DebugPrintAt(screen, e.Label, x+18, ly)
-	}
-
-	ly0 := y + 16 + len(entries)*14 + 8
-	ebitenutil.DebugPrintAt(screen, "LINE COLORS", x, ly0)
-	for i, e := range lineEntries {
-		ly := ly0 + 16 + i*14
-		vector.StrokeLine(screen, float32(x+2), float32(ly+5), float32(x+14), float32(ly+5), 2.4, e.Color, in.AntiAlias)
-		ebitenutil.DebugPrintAt(screen, e.Label, x+18, ly)
+	f := LayoutThingLegend(in, colors)
+	mapview.DrawSegments(screen, f.Segments, in.AntiAlias)
+	for _, label := range f.Labels {
+		ebitenutil.DebugPrintAt(screen, label.Text, label.X, label.Y)
 	}
 }

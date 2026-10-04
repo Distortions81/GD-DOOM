@@ -176,8 +176,8 @@ func TestNativeBindingMenuCaptureCancelClearAndDefaults(t *testing.T) {
 		t.Fatal("mouse selected wrong binding column")
 	}
 	input(menuInput{back: true})
-	if m.page != menuOptions || m.row != 7 {
-		t.Fatal("bindings back did not return to the shared options row")
+	if m.page != menuControls || m.row != 0 {
+		t.Fatal("bindings back did not return to controls")
 	}
 }
 
@@ -267,7 +267,7 @@ func TestNativeSpeakerMenuControlsAreIndependent(t *testing.T) {
 		t.Fatalf("speaker settings affected digital music: %+v", s)
 	}
 	change("BACK", menuInput{confirm: true})
-	if m.page != menuGraphics {
+	if m.page != menuGraphics || m.row != 6 {
 		t.Fatal("speaker extension did not return to renderer options")
 	}
 }

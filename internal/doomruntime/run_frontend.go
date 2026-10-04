@@ -1288,11 +1288,19 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.drawFrontendTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawFrontendTextAt(screen, "SOUND OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
+	bindingsRow, selectedRow := 7, sg.frontend.OptionsOn
+	if sg.nativeHideVoiceOptions {
+		bindingsRow = 6
+		if selectedRow >= 7 {
+			selectedRow--
+		}
+	} else {
+		sg.drawFrontendTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+		sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	}
+	sg.drawFrontendTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+bindingsRow*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+bindingsRow*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawMenuSkull(screen, optionsSkullX, menuY+selectedRow*lineHeight, scale, ox, oy)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 		sg.drawIntermissionText(screen, sg.ellipsizeIntermissionText(msg, 288), 160, 182, scale, ox, oy, true)
 	}

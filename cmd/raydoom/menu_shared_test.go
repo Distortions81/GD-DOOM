@@ -111,6 +111,65 @@ func TestNativeSharedOptionsAffectPresentation(t *testing.T) {
 	}
 }
 
+func TestNativeOptionsRemoveVoiceAndKeepActionsAndMouseAligned(t *testing.T) {
+	m := newNativeMenu(doomruntime.Options{}, nil, "")
+	s := nativeSettings{}
+	m.open(menuOptions)
+	rows := m.rows(s)
+	if len(rows) != 8 {
+		t.Fatalf("options rows=%d", len(rows))
+	}
+	for _, row := range rows {
+		if strings.Contains(row.label, "VOICE") {
+			t.Fatal("voice row is still visible")
+		}
+	}
+	// Navigation from sound lands directly on bindings, with no dead entry.
+	m.row = 5
+	m.update(menuInput{down: true, mouseRow: -1}, &s)
+	if m.row != 6 || rows[m.row].label != "KEY BINDINGS" {
+		t.Fatal("navigation did not skip excluded voice")
+	}
+	m.update(menuInput{confirm: true, mouseRow: -1}, &s)
+	if m.page != menuBindings {
+		t.Fatal("bindings row opened the wrong action")
+	}
+	m.update(menuInput{back: true, mouseRow: -1}, &s)
+	if m.page != menuOptions || m.row != 6 {
+		t.Fatal("binding back did not restore the key bindings row")
+	}
+	m.row = 7
+	// The graphics row now occupies the eighth row, including hit testing.
+	scale, ox, oy := raymesh.MenuTransform(1280, 800)
+	row := m.rowAt(ox+100*scale, oy+(37+7*16+3)*scale, 1280, 800)
+	if row != 7 {
+		t.Fatalf("graphics mouse row=%d", row)
+	}
+	m.update(menuInput{confirm: true, mouseRow: row}, &s)
+	if m.page != menuGraphics {
+		t.Fatal("graphics row opened the wrong menu")
+	}
+	m.update(menuInput{back: true, mouseRow: -1}, &s)
+	if m.page != menuOptions || m.row != 7 {
+		t.Fatal("graphics back did not restore the Raylib options row")
+	}
+}
+
+func TestNativeBindingsReturnToTheirOpeningMenu(t *testing.T) {
+	m := newNativeMenu(doomruntime.Options{}, nil, "")
+	s := nativeSettings{}
+	m.open(menuControls)
+	m.row = 0
+	m.update(menuInput{confirm: true, mouseRow: -1}, &s)
+	if m.page != menuBindings {
+		t.Fatal("controls did not open bindings")
+	}
+	m.update(menuInput{back: true, mouseRow: -1}, &s)
+	if m.page != menuControls || m.row != 0 {
+		t.Fatal("bindings did not return to controls")
+	}
+}
+
 func TestNativeMenuQuitDelayCyclesAndRestoresPreviousPage(t *testing.T) {
 	m := newNativeMenu(doomruntime.Options{}, nil, "")
 	s := nativeSettings{}

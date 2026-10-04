@@ -11,9 +11,17 @@ import (
 	"image/color"
 )
 
-type nativeAutomap struct{ texture rl.Texture2D }
+type nativeAutomap struct {
+	texture rl.Texture2D
+	font    raymesh.DebugText
+}
 
 func (a *nativeAutomap) Close() {
+	a.font.Close()
+	a.closeFloor()
+}
+
+func (a *nativeAutomap) closeFloor() {
 	if a.texture.ID != 0 {
 		rl.UnloadTexture(a.texture)
 		a.texture = rl.Texture2D{}
@@ -23,7 +31,7 @@ func (a *nativeAutomap) draw(f doomruntime.NativeMapFrame, p *raymesh.Presentati
 	rl.BeginScissorMode(0, 0, int32(f.Width), int32(f.Height))
 	rl.DrawRectangle(0, 0, int32(f.Width), int32(f.Height), rl.NewColor(12, 16, 20, 255))
 	if a.texture.ID == 0 || int(a.texture.Width) != f.Width || int(a.texture.Height) != f.Height {
-		a.Close()
+		a.closeFloor()
 		a.texture = rl.LoadTextureFromImage(rl.NewImage(f.Pixels, int32(f.Width), int32(f.Height), 1, rl.UncompressedR8g8b8a8))
 		rl.SetTextureFilter(a.texture, rl.FilterPoint)
 		rl.SetTextureWrap(a.texture, rl.WrapClamp)
@@ -45,28 +53,13 @@ func (a *nativeAutomap) draw(f doomruntime.NativeMapFrame, p *raymesh.Presentati
 	p.DrawScreenPatches(f.Patches)
 	segments(f.Segments[f.ActorSegments:])
 	for _, l := range f.Labels {
-		rl.DrawText(l.Text, int32(l.X), int32(l.Y), 12, rl.NewColor(120, 210, 255, 255))
+		a.font.Draw(l.Text, int(l.X), int(l.Y))
 	}
 	if f.Legend {
-		x := float64(max(8, f.Width-235))
-		y := float64(28)
-		rl.DrawRectangle(int32(x-8), int32(y-5), 235, 235, rl.NewColor(0, 0, 0, 200))
-		label := func(text string) { rl.DrawText(text, int32(x+18), int32(y), 12, rl.White) }
-		label("THING LEGEND")
-		y += 16
-		for _, e := range presenter.ThingLegendEntries(presenter.LegendInputs{SourcePortMode: true, SourcePortThingLabel: f.ThingMode}, f.LegendColors) {
-			segments(presenter.AppendThingGlyph(nil, presenter.ThingStyle{Glyph: e.Glyph, Color: e.Color}, x+8, y+5, 0, 4.6))
-			label(e.Label)
-			y += 14
-		}
-		y += 8
-		label("LINE COLORS")
-		y += 16
-		for _, e := range presenter.LineLegendEntries(f.LegendColors) {
-			c := color.RGBAModel.Convert(e.Color).(color.RGBA)
-			rl.DrawLineEx(rl.Vector2{X: float32(x + 2), Y: float32(y + 5)}, rl.Vector2{X: float32(x + 14), Y: float32(y + 5)}, 2.4, c)
-			label(e.Label)
-			y += 14
+		layout := presenter.LayoutThingLegend(presenter.LegendInputs{ViewWidth: f.Width, SourcePortMode: true, SourcePortThingLabel: f.ThingMode}, f.LegendColors)
+		segments(layout.Segments)
+		for _, l := range layout.Labels {
+			a.font.Draw(l.Text, l.X, l.Y)
 		}
 	}
 

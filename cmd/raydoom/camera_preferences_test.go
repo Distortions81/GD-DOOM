@@ -86,7 +86,7 @@ func TestNativeControlsCameraToggleAndPersistence(t *testing.T) {
 		t.Fatal("controls lost back row")
 	}
 	m.update(menuInput{confirm: true, mouseRow: -1}, &s)
-	if m.page != menuGraphics {
+	if m.page != menuGraphics || m.row != 5 {
 		t.Fatal("back did not return to renderer options")
 	}
 }

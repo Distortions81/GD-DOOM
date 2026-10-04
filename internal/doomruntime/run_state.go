@@ -77,6 +77,7 @@ const (
 type sessionGame struct {
 	nativePatches            *[]levelmesh.Patch // Alternate backend collection; nil during Ebiten drawing.
 	nativeBindingActions     []int              // Optional action ordering for alternate backend menus.
+	nativeHideVoiceOptions   bool               // Voice is excluded by the native host.
 	nativeSaveSlots          []NativeSaveSlot   // Menu snapshot supplied by the native host.
 	g                        *game
 	rt                       sessionRuntime

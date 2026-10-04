@@ -25,6 +25,7 @@ type NativeMenuView struct {
 	BindingRow, BindingSlot                    int
 	BindingCapture                             bool
 	BindingActions                             []int
+	HideVoiceOptions                           bool
 	MusicRow, MusicWAD, MusicGroup, MusicTrack int
 	NowPlaying                                 string
 	Slots                                      []NativeSaveSlot
@@ -54,7 +55,11 @@ func (r *NativeMenuRenderer) Draw(opts Options, v NativeMenuView) []levelmesh.Pa
 	sg.nowPlayingLevel, sg.nowPlayingMusic = v.NowPlaying, ""
 	sg.nativePatches, sg.nativeSaveSlots = &r.patches, v.Slots
 	sg.nativeBindingActions = v.BindingActions
-	defer func() { sg.nativePatches, sg.nativeSaveSlots, sg.nativeBindingActions = nil, nil, nil }()
+	sg.nativeHideVoiceOptions = v.HideVoiceOptions
+	defer func() {
+		sg.nativePatches, sg.nativeSaveSlots, sg.nativeBindingActions = nil, nil, nil
+		sg.nativeHideVoiceOptions = false
+	}()
 	sg.quitPrompt = sessionflow.QuitPrompt{Active: len(v.QuitLines) > 0, Lines: v.QuitLines}
 	if sg.quitPrompt.Active {
 		sg.drawQuitPrompt(nil)
@@ -127,6 +132,10 @@ func NativeDefaultMenuHUD(opts Options) (int, int) {
 func (n *NativeMeshGame) SetMenuHUDSettings(messages bool, blocks, scale int) {
 	n.g.hudMessagesEnabled = messages
 	n.g.screenBlocks, n.g.hudScaleStep = blocks, scale
+}
+
+func (n *NativeMeshGame) HUDMode() int {
+	return int(n.g.statusBarDisplayMode())
 }
 
 func (n *NativeMeshGame) AdjustMenuHUDSettings(blockDirection, scaleDirection int) (int, int) {

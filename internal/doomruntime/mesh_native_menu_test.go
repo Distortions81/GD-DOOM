@@ -80,3 +80,33 @@ func TestNativeMouseSensitivityMatchesMainSliderSpacing(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeOptionsHideVoiceWithoutChangingMainLayout(t *testing.T) {
+	opts := Options{MessageFontBank: map[rune]WallTexture{}}
+	for ch := rune(33); ch <= 95; ch++ {
+		pixels := make([]byte, 4*7*4)
+		pixels[0] = byte(ch)
+		opts.MessageFontBank[ch] = WallTexture{Width: 4, Height: 7, RGBA: pixels}
+	}
+	r := NewNativeMenuRenderer()
+	for _, hidden := range []bool{true, false, true} {
+		v := NativeMenuView{State: sessionflow.Frontend{Active: true, MenuActive: true, Mode: sessionflow.FrontendModeOptions, OptionsOn: 7}, HideVoiceOptions: hidden}
+		patches := r.Draw(opts, v)
+		y := float64(151)
+		if hidden {
+			y = 135
+		}
+		label := ""
+		for _, p := range patches {
+			if p.Y == y && p.X < 250 {
+				label += string(rune(p.Texture.RGBA[0]))
+			}
+		}
+		if label != "KEYBINDINGS" {
+			t.Fatalf("hidden=%t bindings label at y=%g=%q", hidden, y, label)
+		}
+		if r.session.nativeHideVoiceOptions {
+			t.Fatal("native visibility leaked after drawing")
+		}
+	}
+}
