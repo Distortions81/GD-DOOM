@@ -56,6 +56,9 @@ lowering, bobbing, attack animations and muzzle-flash composites use existing
 psprite state and CPU patch composition. HUD/weapon textures use nearest
 sampling, while world sprite textures use the selected world filter. GPU images
 remain cached; unchanged HUD patch lists and sprite buffers are reused.
+Weapon/HUD uploads have a one-pixel transparent gutter and clamp sampling to
+prevent opposite-edge bleed at fractional animation positions with MSAA.
+The source rectangle excludes the gutter, preserving artwork size and offsets.
 
 The sky uses the WAD's map-specific SKY texture with a yaw-driven panoramic
 shader. Damage/pickup flashes and expiring pickup messages are exposed to the
@@ -276,3 +279,6 @@ cutout holes, UV flips without mesh uploads and self-lit frames in dark sectors.
 The audio check loads actual DMX samples into Raylib, starts overlapping aliases
 and releases them on pause/restart; it validates the mixer path, not subjective
 sound quality.
+An MSAA patch regression uses contrasting colors on all four edges at fractional
+positions to check that no edge wraps onto its opposite. It also checks original
+interior pixels, cached uploads and separate sampling state for repeating skies.

@@ -50,6 +50,26 @@ func prepareTexture(tex levelmesh.Texture, scale int, masked bool) levelmesh.Tex
 	return levelmesh.Texture{RGBA: out, Width: w, Height: h}
 }
 
+// padPatchTexture gives an isolated patch one transparent texel on every edge.
+// A multisampled quad can cover samples whose pixel center is outside its UV
+// range. The gutter makes those samples transparent instead of repeating an
+// opposite edge. Preserve adjacent RGB beneath zero alpha for filtered use.
+func padPatchTexture(tex levelmesh.Texture) levelmesh.Texture {
+	w, h := tex.Width+2, tex.Height+2
+	out := make([]byte, w*h*4)
+	for y := range h {
+		for x := range w {
+			sx, sy := max(0, min(tex.Width-1, x-1)), max(0, min(tex.Height-1, y-1))
+			src, dst := (sy*tex.Width+sx)*4, (y*w+x)*4
+			copy(out[dst:dst+4], tex.RGBA[src:src+4])
+			if x == 0 || y == 0 || x == w-1 || y == h-1 {
+				out[dst+3] = 0
+			}
+		}
+	}
+	return levelmesh.Texture{RGBA: out, Width: w, Height: h}
+}
+
 // Filtered alpha cutouts need edge colors under transparent texels, otherwise
 // black RGB bleeds into visible edges. Flood nearest opaque colors across the
 // repeating image without changing alpha or the source WAD texture.

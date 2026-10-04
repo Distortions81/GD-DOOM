@@ -29,10 +29,15 @@ void main() {
 type Presentation struct {
 	Sprites                                     *Renderer
 	triangles                                   []levelmesh.Triangle
-	patches                                     map[TextureKey]rl.Texture2D
+	patches                                     map[presentationTextureKey]rl.Texture2D
 	skyShader                                   rl.Shader
 	yawLocation, viewportLocation, sizeLocation int32
 	originLocation                              int32
+}
+
+type presentationTextureKey struct {
+	TextureKey
+	Padded bool // HUD/weapon patches have a gutter; panoramic skies repeat.
 }
 
 func NewPresentation(options TextureOptions) (*Presentation, error) {
@@ -45,27 +50,33 @@ func NewPresentation(options TextureOptions) (*Presentation, error) {
 		sprites.Close()
 		return nil, fmt.Errorf("Raylib sky shader could not compile")
 	}
-	return &Presentation{Sprites: sprites, patches: make(map[TextureKey]rl.Texture2D), skyShader: shader,
+	return &Presentation{Sprites: sprites, patches: make(map[presentationTextureKey]rl.Texture2D), skyShader: shader,
 		yawLocation: rl.GetShaderLocation(shader, "yaw"), viewportLocation: rl.GetShaderLocation(shader, "viewport"), sizeLocation: rl.GetShaderLocation(shader, "skySize"), originLocation: rl.GetShaderLocation(shader, "originY")}, nil
 }
 
-func (p *Presentation) texture(tex levelmesh.Texture) (rl.Texture2D, bool) {
+func (p *Presentation) texture(tex levelmesh.Texture, padded bool) (rl.Texture2D, bool) {
 	if tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 		return rl.Texture2D{}, false
 	}
-	key := TextureKey{Pixels: &tex.RGBA[0], Width: tex.Width, Height: tex.Height}
+	key := presentationTextureKey{TextureKey: TextureKey{Pixels: &tex.RGBA[0], Width: tex.Width, Height: tex.Height}, Padded: padded}
 	if cached, ok := p.patches[key]; ok {
 		return cached, true
+	}
+	if padded {
+		tex = padPatchTexture(tex)
 	}
 	img := rl.NewImage(tex.RGBA, int32(tex.Width), int32(tex.Height), 1, rl.UncompressedR8g8b8a8)
 	texture := rl.LoadTextureFromImage(img)
 	rl.SetTextureFilter(texture, rl.FilterPoint)
+	if padded {
+		rl.SetTextureWrap(texture, rl.WrapClamp)
+	}
 	p.patches[key] = texture
 	return texture, true
 }
 
 func (p *Presentation) DrawSky(tex levelmesh.Texture, c levelmesh.Camera, width, height int) {
-	t, ok := p.texture(tex)
+	t, ok := p.texture(tex, false)
 	if !ok {
 		return
 	}
@@ -96,11 +107,13 @@ func (p *Presentation) SyncSprites(sprites []levelmesh.Sprite, c levelmesh.Camer
 
 func (p *Presentation) drawPatches(patches []levelmesh.Patch, x, y, sx, sy float64) {
 	for _, patch := range patches {
-		t, ok := p.texture(patch.Texture)
+		t, ok := p.texture(patch.Texture, true)
 		if !ok {
 			continue
 		}
-		rl.DrawTexturePro(t, rl.NewRectangle(0, 0, float32(t.Width), float32(t.Height)), rl.NewRectangle(float32(x+patch.X*sx), float32(y+patch.Y*sy), float32(patch.W*sx), float32(patch.H*sy)), rl.Vector2{}, 0, rl.White)
+		// Draw only the original artwork; the transparent upload gutter does
+		// not change patch offsets, animation alignment, or on-screen size.
+		rl.DrawTexturePro(t, rl.NewRectangle(1, 1, float32(patch.Texture.Width), float32(patch.Texture.Height)), rl.NewRectangle(float32(x+patch.X*sx), float32(y+patch.Y*sy), float32(patch.W*sx), float32(patch.H*sy)), rl.Vector2{}, 0, rl.White)
 	}
 }
 

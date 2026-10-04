@@ -54,3 +54,32 @@ func TestFilteredMaskBleedsAcrossRepeatWithoutChangingAlpha(t *testing.T) {
 		t.Fatal("fully transparent mask acquired visible pixels")
 	}
 }
+
+func TestPatchGutterPreservesArtworkAndAlpha(t *testing.T) {
+	tex := levelmesh.Texture{Width: 2, Height: 2, RGBA: []byte{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 10, 20, 30, 255}}
+	original := slices.Clone(tex.RGBA)
+	pad := padPatchTexture(tex)
+	if pad.Width != 4 || pad.Height != 4 {
+		t.Fatalf("expected a one-texel border: %dx%d", pad.Width, pad.Height)
+	}
+	for y := range 4 {
+		for x := range 4 {
+			i := (y*4 + x) * 4
+			sx, sy := max(0, min(1, x-1)), max(0, min(1, y-1))
+			src := (sy*2 + sx) * 4
+			if !slices.Equal(pad.RGBA[i:i+3], original[src:src+3]) {
+				t.Fatal("padding lost original or adjacent edge colors")
+			}
+			alpha := byte(0)
+			if x > 0 && x < 3 && y > 0 && y < 3 {
+				alpha = original[src+3]
+			}
+			if pad.RGBA[i+3] != alpha {
+				t.Fatal("gutter is not transparent or artwork alpha changed")
+			}
+		}
+	}
+	if !slices.Equal(tex.RGBA, original) {
+		t.Fatal("padding modified shared WAD artwork")
+	}
+}
