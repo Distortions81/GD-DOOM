@@ -34,27 +34,26 @@ func (g *game) ensureMeshExperiment() *experimentalMeshRenderer {
 	if g.meshExperiment != nil {
 		return g.meshExperiment
 	}
-	r := &experimentalMeshRenderer{mode: levelmesh.Mode(g.opts.MeshRenderer), planes: make([][]levelmesh.PlaneTriangle, len(g.sectorPlaneTris)), heights: make([]levelmesh.Heights, len(g.m.Sectors)), materials: make(map[meshMaterialKey]levelmesh.Texture)}
-	for sector, tris := range g.sectorPlaneTris {
-		for _, t := range tris {
-			r.planes[sector] = append(r.planes[sector], levelmesh.PlaneTriangle{{X: t.a.x, Y: t.a.y}, {X: t.b.x, Y: t.b.y}, {X: t.c.x, Y: t.c.y}})
+	r := &experimentalMeshRenderer{mode: levelmesh.Mode(g.opts.MeshRenderer), planes: make([][]levelmesh.PlaneTriangle, len(g.m.Sectors)), heights: make([]levelmesh.Heights, len(g.m.Sectors)), materials: make(map[meshMaterialKey]levelmesh.Texture)}
+	// Use the same original directed sides as the minimap. Ring extraction can
+	// silently discard an outer room while retaining its pillars (E1M3 sector
+	// 7), so successful ring triangulation does not prove complete geometry.
+	g.ensureMapFloorBoundarySetsBuilt()
+	for sector, set := range g.mapFloorBoundarySets {
+		edges := make([]levelmesh.PlaneEdge, 0, len(set.Edges))
+		for _, e := range set.Edges {
+			edges = append(edges, levelmesh.PlaneEdge{A: levelmesh.Point2{X: e.A.X, Y: e.A.Y}, B: levelmesh.Point2{X: e.B.X, Y: e.B.Y}})
 		}
-	}
-	// Every subsector can have triangles while their union still has gaps or
-	// spills. Prefer original sector boundaries for the 3D planes; keep the
-	// existing cache only for sectors whose rings cannot be triangulated.
-	for sector, set := range g.buildSectorLoopSets() {
-		rings := make([][]levelmesh.Point2, len(set.rings))
-		for i, ring := range set.rings {
-			for _, p := range ring {
-				rings[i] = append(rings[i], levelmesh.Point2{X: p.x, Y: p.y})
-			}
-		}
-		tris, err := levelmesh.TriangulateRings(rings)
-		if err == nil && len(tris) > 0 {
+		tris, err := levelmesh.TriangulateEdges(edges)
+		if err == nil {
 			r.planes[sector] = tris
-		} else {
-			r.fallback++
+			continue
+		}
+		r.fallback++
+		if sector < len(g.sectorPlaneTris) {
+			for _, t := range g.sectorPlaneTris[sector] {
+				r.planes[sector] = append(r.planes[sector], levelmesh.PlaneTriangle{{X: t.a.x, Y: t.a.y}, {X: t.b.x, Y: t.b.y}, {X: t.c.x, Y: t.c.y}})
+			}
 		}
 	}
 	for ss := range g.m.SubSectors {
@@ -132,7 +131,7 @@ func (g *game) drawWorld3D(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Mesh: %s | F7 cycle | %d tris (%d submitted)\nPlane fallbacks: %d | geometry only", r.mode, len(r.triangles), r.raster.Drawn, r.fallback), 8, 8)
 }
 
-func (g *game) renderMeshExperiment(r *experimentalMeshRenderer) {
+func (g *game) buildMeshExperimentGeometry(r *experimentalMeshRenderer) {
 	clear(r.materials)
 	for sector, s := range g.m.Sectors {
 		h := levelmesh.Heights{Floor: float64(s.FloorHeight), Ceiling: float64(s.CeilingHeight)}
@@ -144,6 +143,10 @@ func (g *game) renderMeshExperiment(r *experimentalMeshRenderer) {
 	r.triangles = levelmesh.Build(r.triangles, g.m, r.planes, r.heights, func(name string, side int, kind levelmesh.Kind) float64 {
 		return float64(g.meshMaterial(r, levelmesh.Triangle{Texture: name, Sidedef: side, Kind: kind}).Height)
 	}, func(special uint16) float64 { return wallSpecialScrollXOffset(special, g.worldTic) })
+}
+
+func (g *game) renderMeshExperiment(r *experimentalMeshRenderer) {
+	g.buildMeshExperimentGeometry(r)
 	r.raster.Render(r.triangles, g.viewW, g.viewH, levelmesh.Camera{X: g.renderPX, Y: g.renderPY, Z: g.playerEyeZ(), Yaw: angleToRadians(g.renderAngle), Focal: doomFocalLength(g.viewW), FocalY: g.verticalFocalLength(doomFocalLength(g.viewW))}, r.mode, func(t levelmesh.Triangle) levelmesh.Texture { return g.meshMaterial(r, t) }, func(sector int) float64 {
 		return float64(sectorLightMul(g.sectorLightForRender(sector, &g.m.Sectors[sector]))) / 256
 	})

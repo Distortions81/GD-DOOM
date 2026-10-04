@@ -204,8 +204,8 @@ func TestMeshExperimentOptInAndCycle(t *testing.T) {
 	}
 }
 
-// Audit all supplied maps without treating unsupported sector rings as proof
-// that their subsector fallback is watertight. The HUD exposes these fallbacks.
+// Audit plane coverage against independent original-sidedef winding queries.
+// Open rows are reported separately because they do not define a bounded floor.
 func TestMeshExperimentMaps(t *testing.T) {
 	paths := os.Getenv("GD_GEOMETRY_WADS")
 	if paths == "" {
@@ -217,7 +217,7 @@ func TestMeshExperimentMaps(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		maps, fallbacks := 0, 0
+		maps, fallbacks, covered, open := 0, 0, 0, 0
 		for _, lump := range wf.Lumps {
 			if !marker.MatchString(lump.Name) {
 				continue
@@ -238,6 +238,29 @@ func TestMeshExperimentMaps(t *testing.T) {
 					}
 				}
 			}
+			for sec, set := range g.mapFloorBoundarySets {
+				if len(set.Edges) == 0 {
+					continue
+				}
+				sx, sy := (set.BBox.MaxX-set.BBox.MinX+2.17)/40, (set.BBox.MaxY-set.BBox.MinY+1.79)/40
+				for py := 0; py < 40; py += 7 {
+					for px := 0; px < 40; px += 7 {
+						x := set.BBox.MinX - 1.11 + (float64(px)+0.5)*sx
+						y := set.BBox.MinY - 0.93 + (float64(py)+0.5)*sy
+						winding, total := automapBoundaryWinding(m, sec, x, y)
+						if total != 0 {
+							open++
+							continue
+						}
+						want := x >= set.BBox.MinX && x < set.BBox.MaxX && y >= set.BBox.MinY && y < set.BBox.MaxY && winding != 0
+						hits := meshPlaneHits(x, y, r.planes[sec])
+						if (hits > 0) != want || hits > 1 {
+							t.Fatalf("%s %s sector %d (%g,%g): triangle hits=%d want %t", filepath.Base(path), m.Name, sec, x, y, hits, want)
+						}
+						covered++
+					}
+				}
+			}
 			if r.fallback > 0 {
 				t.Logf("%s %s: %d fallback sector planes", filepath.Base(path), m.Name, r.fallback)
 			}
@@ -247,6 +270,6 @@ func TestMeshExperimentMaps(t *testing.T) {
 		if maps == 0 {
 			t.Fatalf("no supported maps in %s", path)
 		}
-		t.Logf("%s: %d maps, %d fallback sector planes", filepath.Base(path), maps, fallbacks)
+		t.Logf("%s: %d maps, %d fallback sector planes, %d bounded samples verified, %d open-boundary samples", filepath.Base(path), maps, fallbacks, covered, open)
 	}
 }

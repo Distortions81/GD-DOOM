@@ -33,7 +33,7 @@ type Triangle struct {
 type Heights struct{ Floor, Ceiling float64 }
 
 // Build reuses dst's capacity. The caller supplies cached triangulated planes
-// (including hole-fill patches) and current render heights. Wall quads use the
+// and current render heights. Wall quads use the
 // original linedefs so BSP splitting cannot introduce cracks or UV seams.
 // height returns the current wall texture height, including animated frames.
 func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []Heights, height func(string, int, Kind) float64, scroll func(uint16) float64) []Triangle {

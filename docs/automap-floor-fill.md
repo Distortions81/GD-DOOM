@@ -13,8 +13,10 @@ closure, and cached triangulation no longer decide whether the room exists.
 Texture coordinates, lighting, and automap reveal policy remain unchanged.
 Map geometry and gameplay BSP data are not modified.
 
-This is a 2D fill fix. It does not establish complete 3D plane geometry for
-maps with open sectors or rendering tricks. Fill stays between finite wall
+The experiment now also triangulates finite wall-crossing intervals from this
+edge cache for floor and ceiling meshes; see [the mesh renderer notes](mesh-renderer-experiment.md).
+This does not establish complete 3D plane geometry for maps with open sectors
+or rendering tricks. Fill stays between finite wall
 crossings; a lone side does not imply an infinite textured half-plane.
 
 ## Source-port comparison

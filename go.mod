@@ -7,6 +7,7 @@ require (
 	github.com/Distortions81/g726 v0.0.8
 	github.com/Distortions81/impsynth v0.1.3
 	github.com/dustin/go-humanize v1.1.0
+	github.com/gen2brain/raylib-go/raylib v0.60.1
 	github.com/hajimehoshi/ebiten/v2 v2.10.4
 	github.com/klauspost/compress v1.20.1
 	github.com/remeh/sizedwaitgroup v1.0.0
@@ -16,7 +17,11 @@ require (
 	golang.org/x/sys v0.48.0
 )
 
-require github.com/jfreymuth/pulse v0.1.3 // indirect
+require (
+	github.com/jfreymuth/pulse v0.1.3 // indirect
+	github.com/jupiterrider/ffi v0.7.0 // indirect
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
+)
 
 replace github.com/sinshu/go-meltysynth => github.com/Distortions81/go-meltysynth v0.1.2
 
