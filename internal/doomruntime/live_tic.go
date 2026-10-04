@@ -65,6 +65,10 @@ func (g *game) recordGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 		return
 	}
 	tc := g.buildOutgoingDemoTic(cmd, usePressed, fireHeld)
+	g.recordOutgoingDemoTic(tc)
+}
+
+func (g *game) recordOutgoingDemoTic(tc demo.Tic) {
 	if g.opts.LiveTicSink != nil {
 		_ = g.opts.LiveTicSink.BroadcastTic(tc)
 	}
@@ -126,6 +130,14 @@ func (g *game) respawnDemoPlayer() {
 	reloaded.opts.DemoTracePath = old.opts.DemoTracePath
 
 	reloaded.inheritDemoPlayback(&old)
+	if old.snd != nil && old.snd.nativePlay != nil {
+		reloaded.snd.nativePlay = old.snd.nativePlay
+		reloaded.snd.vanillaVolume = old.snd.vanillaVolume
+	}
+	if old.snd != nil && old.snd.pcSpeaker != nil {
+		reloaded.snd.pcSpeaker, reloaded.snd.pcSpeakerBank = old.snd.pcSpeaker, old.snd.pcSpeakerBank
+		reloaded.snd.vanillaVolume = old.snd.vanillaVolume
+	}
 	*g = *reloaded
 }
 

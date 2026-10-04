@@ -486,6 +486,13 @@ func saveGameSlotFromFileName(name string) (int, bool) {
 }
 
 func (sg *sessionGame) availableSaveSlots(includeNew bool) []int {
+	if sg != nil && sg.nativeSaveSlots != nil {
+		slots := make([]int, len(sg.nativeSaveSlots))
+		for i, slot := range sg.nativeSaveSlots {
+			slots[i] = slot.Slot
+		}
+		return slots
+	}
 	slots := []int{0}
 	if sg == nil {
 		if includeNew {
@@ -522,6 +529,14 @@ func (sg *sessionGame) availableSaveSlots(includeNew bool) []int {
 }
 
 func (sg *sessionGame) readSaveSlotInfo(slot int) (saveSlotInfo, bool) {
+	if sg != nil && sg.nativeSaveSlots != nil {
+		for _, info := range sg.nativeSaveSlots {
+			if info.Slot == slot {
+				return saveSlotInfo{Slot: slot, Description: info.Description, Current: mapdata.MapName(info.Current), WADSources: captureSaveWADSources(info.WADSources), Health: info.Health, WorldTic: info.WorldTic, ModTime: info.ModTime, Present: info.Present}, info.Present
+			}
+		}
+		return saveSlotInfo{}, false
+	}
 	if sg == nil {
 		return saveSlotInfo{}, false
 	}

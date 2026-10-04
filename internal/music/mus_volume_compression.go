@@ -3,15 +3,15 @@ package music
 type MUSVolumeCompressionStats struct {
 	Ratio float64
 
-	NoteOnCount          int
+	NoteOnCount           int
 	AvgNoteVelocityBefore float64
 	AvgNoteVelocityAfter  float64
 
-	ControllerVolumeCount   int
+	ControllerVolumeCount     int
 	AvgControllerVolumeBefore float64
 	AvgControllerVolumeAfter  float64
 
-	ControllerExpressionCount   int
+	ControllerExpressionCount     int
 	AvgControllerExpressionBefore float64
 	AvgControllerExpressionAfter  float64
 }
@@ -20,7 +20,7 @@ func ApplyMUSVolumeCompression(parsed *ParsedMUS, ratio float64) *ParsedMUS {
 	if parsed == nil {
 		return nil
 	}
-	ratio = clampMUSVolumeCompression(ratio)
+	ratio = NormalizeMUSVolumeCompression(ratio)
 	if ratio <= 1 {
 		return parsed
 	}
@@ -45,7 +45,7 @@ func ApplyMUSVolumeCompression(parsed *ParsedMUS, ratio float64) *ParsedMUS {
 }
 
 func AnalyzeMUSVolumeCompression(parsed *ParsedMUS, ratio float64) MUSVolumeCompressionStats {
-	stats := MUSVolumeCompressionStats{Ratio: clampMUSVolumeCompression(ratio)}
+	stats := MUSVolumeCompressionStats{Ratio: NormalizeMUSVolumeCompression(ratio)}
 	if parsed == nil {
 		return stats
 	}

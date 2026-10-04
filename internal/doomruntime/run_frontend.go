@@ -8,6 +8,7 @@ import (
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/music"
+	"gddoom/internal/render/levelmesh"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionaudio"
@@ -927,8 +928,10 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 }
 
 func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
-	sw := max(screen.Bounds().Dx(), 1)
-	sh := max(screen.Bounds().Dy(), 1)
+	sg.drawFrontendContents(screen, max(screen.Bounds().Dx(), 1), max(screen.Bounds().Dy(), 1))
+}
+
+func (sg *sessionGame) drawFrontendContents(screen *ebiten.Image, sw, sh int) {
 	scale := float64(sw) / 320.0
 	scaleY := float64(sh) / 200.0
 	if scaleY < scale {
@@ -944,7 +947,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 	case frontendModeReadThis:
 		sg.drawFrontendAttractBackground(screen)
 		name := sg.readThisPageName(sg.frontend.ReadThisPage)
-		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC") {
+		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC") && screen != nil {
 			screen.Fill(color.Black)
 		}
 		if (sg.frontend.Tic/16)&1 == 0 {
@@ -1063,7 +1066,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 				sg.drawIntermissionText(screen, line, detailX, detailY+i*10, scale, ox, oy, false)
 			}
 		}
-		if sg.opts.SourcePortMode {
+		if sg.opts.SourcePortMode && sg.nativePatches == nil {
 			const (
 				thumbX = 222
 				thumbY = 18
@@ -1137,7 +1140,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 				promptH+padY*2,
 				color.RGBA{A: 144},
 			)
-			sg.rt.sessionDrawHUTextAt(screen, prompt, x, y, textScale, textScale)
+			sg.drawFrontendTextAt(screen, prompt, x, y, textScale, textScale)
 		}
 	}
 }
@@ -1159,7 +1162,7 @@ func (sg *sessionGame) drawFrontendPresented(screen *ebiten.Image) {
 }
 
 func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox, oy float64) {
-	if sg == nil || screen == nil {
+	if sg == nil || (screen == nil && sg.nativePatches == nil) {
 		return
 	}
 	_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
@@ -1263,33 +1266,36 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	_ = sg.drawMenuPatch(screen, "M_OPTTTL", menuX, 15, scale, ox, oy, false)
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
-	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(17)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "MESSAGES", ox+float64(menuX)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "STATUS BAR MODE", ox+float64(menuX)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(17)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "MESSAGES", ox+float64(menuX)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "STATUS BAR MODE", ox+float64(menuX)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	msgLabel := "OFF"
 	if sig.HUDMessages {
 		msgLabel = "ON"
 	}
-	sg.rt.sessionDrawHUTextAt(screen, msgLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, sg.g.screenSizeLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "HUD SIZE", ox+float64(menuX)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, sg.g.hudScaleLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "FPS", ox+float64(menuX)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, msgLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, sg.g.screenSizeLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "HUD SIZE", ox+float64(menuX)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, sg.g.hudScaleLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "FPS", ox+float64(menuX)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	fpsLabel := "OFF"
 	if sig.ShowPerf {
 		fpsLabel = "ON"
 	}
-	sg.rt.sessionDrawHUTextAt(screen, fpsLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "MOUSE SENSITIVITY", ox+float64(menuX)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, fpsLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "MOUSE SENSITIVITY", ox+float64(menuX)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	optionsSkullX := sg.frontendOptionsSkullX(menuX)
-	sg.rt.sessionDrawHUTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "SOUND OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "SOUND OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
+	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
+		sg.drawIntermissionText(screen, sg.ellipsizeIntermissionText(msg, 288), 160, 182, scale, ox, oy, true)
+	}
 }
 
 func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy float64) {
@@ -1301,22 +1307,22 @@ func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy
 	const lineHeight = 16
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
-	sg.rt.sessionDrawHUTextAt(screen, "VOICE", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
-	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "VOICE", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
 	labels := []string{"PRESET"}
 	values := []string{sg.voicePresetLabel()}
 	labels = append(labels, voiceCodecDetailMenuLabel(sg.opts.VoiceCodec), "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD", "PUSH-TO-TALK")
 	values = append(values, sg.voiceCodecDetailLabel(), sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel(), sg.voicePushToTalkLabel())
 	for i := 0; i < len(labels); i++ {
 		y := menuY + i*lineHeight + 2
-		sg.rt.sessionDrawHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
-		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		sg.drawFrontendTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		sg.drawFrontendTextAt(screen, values[i], ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 	}
 	infoY := menuY + len(labels)*lineHeight + 12
-	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputLevelLabel(), ox+float64(menuX)*scale, oy+float64(infoY)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, sg.voiceInputLevelLabel(), ox+float64(menuX)*scale, oy+float64(infoY)*scale, scale*1.0, scale*1.0)
 	sg.drawFrontendLevelBar(screen, menuX+86, infoY-4, 108, 10, sg.voiceInputLevel(), sg.voiceInputGateActive(), scale, ox, oy)
-	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputDeviceLabel(), ox+float64(menuX)*scale, oy+float64(infoY+12)*scale, scale*1.0, scale*1.0)
-	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(infoY+28)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, sg.voiceInputDeviceLabel(), ox+float64(menuX)*scale, oy+float64(infoY+12)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(infoY+28)*scale, scale*1.0, scale*1.0)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 		sg.drawIntermissionText(screen, msg, 160, infoY+54, scale, ox, oy, true)
 	}
@@ -1334,8 +1340,8 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	const valueX = 70
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
-	sg.rt.sessionDrawHUTextAt(screen, "MUSIC PLAYER", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
-	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "MUSIC PLAYER", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
 	wad := sg.frontendMusicPlayerWAD()
 	episode := sg.frontendMusicPlayerEpisode()
 	track := sg.frontendMusicPlayerTrack()
@@ -1353,9 +1359,10 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	for i, label := range labels {
 		y := menuY + i*lineHeight + 2
 		if strings.TrimSpace(label) != "" {
-			sg.rt.sessionDrawHUTextAt(screen, label, ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+			sg.drawFrontendTextAt(screen, label, ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 		}
-		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+valueX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		value := sg.ellipsizeIntermissionText(values[i], int(math.Floor(float64(320-menuX-valueX-8)/1.2)))
+		sg.drawFrontendTextAt(screen, value, ox+float64(menuX+valueX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 	}
 	songLabel := "-"
 	if track != nil {
@@ -1365,11 +1372,12 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 		}
 	}
 	songY := menuY + frontendMusicPlayerInfoRowSong*lineHeight + 2
-	sg.rt.sessionDrawHUTextAt(screen, "SONG", ox+float64(menuX)*scale, oy+float64(songY)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, songLabel, ox+float64(menuX+valueX)*scale, oy+float64(songY)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "CURRENTLY PLAYING", ox+float64(menuX)*scale, oy+float64(116)*scale, scale*1.0, scale*1.0)
-	sg.rt.sessionDrawHUTextAt(screen, sg.nowPlayingMusicLabel(), ox+float64(menuX)*scale, oy+float64(128)*scale, scale*1.0, scale*1.0)
-	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER PLAY", ox+float64(menuX)*scale, oy+float64(160)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "SONG", ox+float64(menuX)*scale, oy+float64(songY)*scale, scale*1.2, scale*1.2)
+	songLabel = sg.ellipsizeIntermissionText(songLabel, int(math.Floor(float64(320-menuX-valueX-8)/1.2)))
+	sg.drawFrontendTextAt(screen, songLabel, ox+float64(menuX+valueX)*scale, oy+float64(songY)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "CURRENTLY PLAYING", ox+float64(menuX)*scale, oy+float64(116)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, sg.frontendFitTextLines(sg.nowPlayingMusicLabel(), 320-menuX-8), ox+float64(menuX)*scale, oy+float64(128)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "LEFT/RIGHT CHANGE  ENTER PLAY", ox+float64(menuX)*scale, oy+float64(160)*scale, scale*1.0, scale*1.0)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 		sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
 	}
@@ -1386,8 +1394,8 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 	const lineHeight = 16
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
-	sg.rt.sessionDrawHUTextAt(screen, "SOUND", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
-	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
+	sg.drawFrontendTextAt(screen, "SOUND", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
 	labels := [frontendSoundMenuRowCount]string{"EFFECTS", "MUSIC", "SYNTH", "SOUNDFONT", "PLAYER"}
 	values := [frontendSoundMenuRowCount]string{
 		formatInt(sessionflow.VolumeDot(sig.SFXVolume)),
@@ -1411,9 +1419,10 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 			alpha = 0.4
 		}
 		sg.drawFrontendHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2, alpha)
-		sg.drawFrontendHUTextAt(screen, values[i], ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2, alpha)
+		value := sg.ellipsizeIntermissionText(values[i], int(math.Floor(float64(320-menuX-170-8)/1.2)))
+		sg.drawFrontendHUTextAt(screen, value, ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2, alpha)
 	}
-	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(156)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(156)*scale, scale*1.0, scale*1.0)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 		sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
 	}
@@ -1421,9 +1430,13 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 }
 
 func (sg *sessionGame) drawFrontendHUTextAt(screen *ebiten.Image, text string, x, y, sx, sy, alpha float64) {
+	if sg != nil && sg.nativePatches != nil {
+		sg.appendNativeMenuText(text, x, y, sx, sy, alpha)
+		return
+	}
 	if sg == nil || sg.g == nil || alpha >= 0.999 {
 		if sg != nil && sg.rt != nil {
-			sg.rt.sessionDrawHUTextAt(screen, text, x, y, sx, sy)
+			sg.drawFrontendTextAt(screen, text, x, y, sx, sy)
 		}
 		return
 	}
@@ -1431,7 +1444,7 @@ func (sg *sessionGame) drawFrontendHUTextAt(screen *ebiten.Image, text string, x
 		return
 	}
 	if len(sg.g.opts.MessageFontBank) == 0 {
-		sg.rt.sessionDrawHUTextAt(screen, text, x, y, sx, sy)
+		sg.drawFrontendTextAt(screen, text, x, y, sx, sy)
 		return
 	}
 	px := x
@@ -1591,16 +1604,24 @@ func (sg *sessionGame) frontendMusicPlayerSkullX(menuX int) int {
 	return menuX - 32
 }
 
+var nativeQuitShade = []byte{16, 16, 16, 255}
+
 func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {
-	if sg == nil || !sg.quitPrompt.Active || screen == nil {
+	if sg == nil || !sg.quitPrompt.Active || (screen == nil && sg.nativePatches == nil) {
 		return
 	}
-	sw := max(screen.Bounds().Dx(), 1)
-	sh := max(screen.Bounds().Dy(), 1)
+	sw, sh := 320, 200
+	if screen != nil {
+		sw, sh = max(screen.Bounds().Dx(), 1), max(screen.Bounds().Dy(), 1)
+	}
 	scale := quitPromptScaleForSize(sw, sh)
 	ox := (float64(sw) - 320.0*scale) * 0.5
 	oy := (float64(sh) - 200.0*scale) * 0.5
-	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	if sg.nativePatches != nil {
+		*sg.nativePatches = append(*sg.nativePatches, levelmesh.Patch{Texture: levelmesh.Texture{RGBA: nativeQuitShade, Width: 1, Height: 1}, W: float64(sw), H: float64(sh), Alpha: 128.0 / 255})
+	} else {
+		ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	}
 	lines := sg.quitPromptLinesForRenderSize(sw, sh)
 	startY := 84 - ((len(lines) - 2) * 7)
 	for i, line := range lines {
@@ -1702,6 +1723,10 @@ func (sg *sessionGame) drawMenuPatchAlpha(screen *ebiten.Image, name string, x, 
 		px -= float64(p.Width) * scale * 0.5
 		py -= float64(p.Height) * scale * 0.5
 	}
+	if sg.nativePatches != nil {
+		*sg.nativePatches = append(*sg.nativePatches, levelmesh.Patch{Texture: nativeTexture(&p), X: px - float64(p.OffsetX)*scale, Y: py - float64(p.OffsetY)*scale, W: float64(p.Width) * scale, H: float64(p.Height) * scale, Alpha: alpha})
+		return true
+	}
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
 	op.GeoM.Scale(scale, scale)
@@ -1742,6 +1767,9 @@ func (sg *sessionGame) menuPatch(name string) (*ebiten.Image, WallTexture, bool)
 	p, ok := sg.opts.MenuPatchBank[key]
 	if !ok {
 		return nil, WallTexture{}, false
+	}
+	if sg.nativePatches != nil {
+		return nil, p, p.Width > 0 && p.Height > 0 && len(p.RGBA) == p.Width*p.Height*4
 	}
 	img, ok := sg.cachedPatchImage(&sg.menuPatchImages, key, p)
 	if !ok {

@@ -16,8 +16,18 @@ type TextureKey struct {
 }
 
 type BatchKey struct {
-	Texture TextureKey
-	Masked  bool
+	Texture       TextureKey
+	Masked        bool
+	Instance      int
+	Blend         TextureKey
+	BlendInstance int
+}
+
+// Ordered sprite instances need separate meshes, but share texture uploads.
+func (k BatchKey) textureBatch() BatchKey {
+	k.Instance = 0
+	k.Blend, k.BlendInstance = TextureKey{}, 0
+	return k
 }
 
 type Batch struct {
@@ -65,13 +75,18 @@ func (b *Builder) Build(tris []levelmesh.Triangle, texture func(levelmesh.Triang
 		if tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 			tex = missingTexture
 		}
-		key := BatchKey{Texture: TextureKey{&tex.RGBA[0], tex.Width, tex.Height}, Masked: tri.Masked}
+		key := BatchKey{Texture: TextureKey{&tex.RGBA[0], tex.Width, tex.Height}, Masked: tri.Masked, Instance: tri.Instance}
+		if tex.HasBlend() {
+			key.Blend = TextureKey{&tex.BlendRGBA[0], tex.Width, tex.Height}
+			key.BlendInstance = tex.BlendInstance
+		}
 		batch := b.batches[key]
 		if batch == nil {
 			batch = &Batch{Key: key, Texture: tex}
 			b.batches[key] = batch
 		}
 		if batch.generation != b.generation {
+			batch.Texture = tex // Fixed-colormap metadata may change without changing the batch identity.
 			batch.Positions, batch.UVs, batch.Colors = batch.Positions[:0], batch.UVs[:0], batch.Colors[:0]
 			batch.LightingUVs = batch.LightingUVs[:0]
 			batch.generation = b.generation

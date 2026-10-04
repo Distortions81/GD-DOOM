@@ -8,6 +8,7 @@ import (
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
+	"gddoom/internal/render/levelmesh"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionaudio"
 	"gddoom/internal/sessionflow"
@@ -23,7 +24,7 @@ const (
 	bootSplashHoldTics = 2 * doomTicsPerSecond
 	// Sourceport melt uses Doom-like 2-pixel column pairs over a 320-wide
 	// virtual layout, i.e. 160 moving slices.
-	sourcePortMeltInitCols = 160
+	sourcePortMeltInitCols = sessiontransition.SourcePortMeltColumns
 	sourcePortMeltMoveCols = sourcePortMeltInitCols
 
 	menuSkullBlinkTics = 8
@@ -74,6 +75,9 @@ const (
 )
 
 type sessionGame struct {
+	nativePatches            *[]levelmesh.Patch // Alternate backend collection; nil during Ebiten drawing.
+	nativeBindingActions     []int              // Optional action ordering for alternate backend menus.
+	nativeSaveSlots          []NativeSaveSlot   // Menu snapshot supplied by the native host.
 	g                        *game
 	rt                       sessionRuntime
 	gameFactory              gameplay.RuntimeFactory[Options, *game]

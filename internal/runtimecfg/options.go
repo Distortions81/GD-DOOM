@@ -10,6 +10,19 @@ import (
 	"gddoom/internal/sound"
 )
 
+// DefaultAlwaysRun is shared by native and Ebiten launchers. The run modifier
+// inverts it while held, so Shift walks with the default setting.
+const DefaultAlwaysRun = true
+
+// Common launcher defaults keep the native and Ebiten controls and audio aligned.
+const (
+	DefaultMouseLookSpeed    = 0.5
+	DefaultKeyboardTurnSpeed = 1.0
+	DefaultSmoothCameraYaw   = true
+	DefaultMusicVolume       = 1.0
+	DefaultSFXVolume         = 0.5
+)
+
 type MusicPlayerTrack struct {
 	MapName   mapdata.MapName
 	Label     string

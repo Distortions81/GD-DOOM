@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/levelmesh"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionflow"
@@ -586,7 +587,9 @@ func (sg *sessionGame) drawIntermissionPresented(screen *ebiten.Image) {
 }
 
 func (sg *sessionGame) drawIntermissionStatsScreen(screen *ebiten.Image, scale, ox, oy float64, im *sessionIntermission) {
-	screen.Fill(color.Black)
+	if screen != nil {
+		screen.Fill(color.Black)
+	}
 	sg.drawIntermissionBackdrop(screen, scale, ox, oy, im.state)
 	sg.drawIntermissionAnimatedBack(screen, scale, ox, oy, im.state)
 	sg.drawIntermissionFinished(screen, scale, ox, oy, im.state)
@@ -609,7 +612,9 @@ func (sg *sessionGame) drawIntermissionStatsScreen(screen *ebiten.Image, scale, 
 }
 
 func (sg *sessionGame) drawIntermissionMapScreen(screen *ebiten.Image, scale, ox, oy float64, im *sessionIntermission) {
-	screen.Fill(color.Black)
+	if screen != nil {
+		screen.Fill(color.Black)
+	}
 	sg.drawIntermissionBackdrop(screen, scale, ox, oy, im.state)
 	sg.drawIntermissionAnimatedBack(screen, scale, ox, oy, im.state)
 	if !im.state.Commercial {
@@ -653,9 +658,15 @@ func (sg *sessionGame) drawFinale(screen *ebiten.Image) {
 	}
 	ox := (float64(sw) - 320.0*scale) * 0.5
 	oy := (float64(sh) - 200.0*scale) * 0.5
+	sg.drawFinaleContents(screen, scale, ox, oy)
+}
+
+func (sg *sessionGame) drawFinaleContents(screen *ebiten.Image, scale, ox, oy float64) {
 	f := &sg.finale
 
-	screen.Fill(color.Black)
+	if screen != nil {
+		screen.Fill(color.Black)
+	}
 	switch f.Stage {
 	case sessionflow.FinaleStageText:
 		sg.drawFinaleFlatBackdrop(screen, f.Flat, scale, ox, oy)
@@ -717,6 +728,18 @@ func intermissionBackgroundName(state intermissionState) (string, bool) {
 
 func (sg *sessionGame) drawFinaleFlatBackdrop(screen *ebiten.Image, flat string, scale, ox, oy float64) {
 	if sg == nil || sg.g == nil {
+		return
+	}
+	if sg.nativePatches != nil {
+		tex, ok := sg.g.opts.FlatBank[flat]
+		if !ok || len(tex) != 64*64*4 {
+			return
+		}
+		for y := 0; y < 200; y += 64 {
+			for x := 0; x < 320; x += 64 {
+				*sg.nativePatches = append(*sg.nativePatches, levelmesh.Patch{Texture: levelmesh.Texture{RGBA: tex, Width: 64, Height: 64}, X: ox + float64(x)*scale, Y: oy + float64(y)*scale, W: 64 * scale, H: 64 * scale})
+			}
+		}
 		return
 	}
 	img, ok := sg.g.flatImage(flat)
@@ -829,11 +852,18 @@ func (sg *sessionGame) drawCenteredPatch(screen *ebiten.Image, name string, x, y
 
 func (sg *sessionGame) drawHorizCenteredPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64) bool {
 	img, p, ok := sg.intermissionPatch(name)
-	if !ok || img == nil || p.Width <= 0 || p.Height <= 0 {
+	if !ok || p.Width <= 0 || p.Height <= 0 {
 		return false
 	}
 	px := ox + float64(x)*scale - float64(p.Width)*scale*0.5 - float64(p.OffsetX)*scale
 	py := oy + float64(y)*scale - float64(p.OffsetY)*scale
+	if sg.nativePatches != nil {
+		*sg.nativePatches = append(*sg.nativePatches, levelmesh.Patch{Texture: nativeTexture(&p), X: px, Y: py, W: float64(p.Width) * scale, H: float64(p.Height) * scale})
+		return true
+	}
+	if img == nil {
+		return false
+	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(px, py)
@@ -843,7 +873,7 @@ func (sg *sessionGame) drawHorizCenteredPatch(screen *ebiten.Image, name string,
 
 func (sg *sessionGame) drawIntermissionPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64, centered bool) bool {
 	img, p, ok := sg.intermissionPatch(name)
-	if !ok || img == nil || p.Width <= 0 || p.Height <= 0 {
+	if !ok || p.Width <= 0 || p.Height <= 0 {
 		return false
 	}
 	px := ox + float64(x)*scale
@@ -851,6 +881,13 @@ func (sg *sessionGame) drawIntermissionPatch(screen *ebiten.Image, name string, 
 	if centered {
 		px -= float64(p.Width) * scale * 0.5
 		py -= float64(p.Height) * scale * 0.5
+	}
+	if sg.nativePatches != nil {
+		*sg.nativePatches = append(*sg.nativePatches, levelmesh.Patch{Texture: nativeTexture(&p), X: px - float64(p.OffsetX)*scale, Y: py - float64(p.OffsetY)*scale, W: float64(p.Width) * scale, H: float64(p.Height) * scale})
+		return true
+	}
+	if img == nil {
+		return false
 	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(scale, scale)
@@ -867,6 +904,12 @@ func (sg *sessionGame) intermissionPatch(name string) (*ebiten.Image, WallTextur
 	p, ok := sg.opts.IntermissionPatchBank[key]
 	if !ok {
 		return nil, WallTexture{}, false
+	}
+	if sg.nativePatches != nil {
+		if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+			return nil, WallTexture{}, false
+		}
+		return nil, p, true
 	}
 	img, ok := sg.cachedPatchImage(&sg.intermissionImages, key, p)
 	if !ok {
@@ -973,6 +1016,18 @@ func (sg *sessionGame) drawIntermissionText(screen *ebiten.Image, text string, x
 	if centered {
 		px -= float64(sg.intermissionTextWidth(text)) * scale * 0.5
 	}
+	if sg != nil && sg.nativePatches != nil {
+		for _, ch := range strings.ToUpper(text) {
+			p, ok := sg.g.messageFontTexture(ch)
+			if !ok || ch == ' ' {
+				px += 4 * scale
+				continue
+			}
+			*sg.nativePatches = append(*sg.nativePatches, levelmesh.Patch{Texture: nativeTexture(&p), X: px - float64(p.OffsetX)*scale, Y: py - float64(p.OffsetY)*scale, W: float64(p.Width) * scale, H: float64(p.Height) * scale})
+			px += float64(p.Width) * scale
+		}
+		return
+	}
 	if sg == nil || sg.g == nil || len(sg.g.opts.MessageFontBank) == 0 {
 		ebitenutil.DebugPrintAt(screen, text, int(px), int(py))
 		return
@@ -1013,12 +1068,12 @@ func (sg *sessionGame) intermissionTextWidth(text string) int {
 			w += 4
 			continue
 		}
-		_, gw, _, _, _, ok := sg.g.messageFontGlyph(uc)
+		p, ok := sg.g.messageFontTexture(uc)
 		if !ok {
 			w += 4
 			continue
 		}
-		w += gw
+		w += p.Width
 	}
 	return w
 }
@@ -1029,9 +1084,9 @@ func (sg *sessionGame) intermissionTextLineHeight() int {
 	}
 	lineHeight := 0
 	for ch := huFontStart; ch <= huFontEnd; ch++ {
-		_, _, gh, _, _, ok := sg.g.messageFontGlyph(ch)
-		if ok && gh > lineHeight {
-			lineHeight = gh
+		p, ok := sg.g.messageFontTexture(ch)
+		if ok && p.Height > lineHeight {
+			lineHeight = p.Height
 		}
 	}
 	if lineHeight <= 0 {

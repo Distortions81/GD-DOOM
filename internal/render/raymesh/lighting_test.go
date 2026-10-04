@@ -14,18 +14,25 @@ func TestBatchesPreserveDoomSurfaceLightWithoutExtraDrawCalls(t *testing.T) {
 		{Kind: levelmesh.Lower, Vertices: [3]levelmesh.Vertex{{}, {X: 64, Y: 64}, {X: 64, Y: 64, Z: 128}}},
 		{Kind: levelmesh.Floor, Vertices: [3]levelmesh.Vertex{{}, {X: 64}, {Y: 64}}},
 		{Kind: levelmesh.Ceiling, Vertices: [3]levelmesh.Vertex{{Z: 128}, {Y: 64, Z: 128}, {X: 64, Z: 128}}},
+		{Kind: levelmesh.Billboard},
+		{Kind: levelmesh.EmissiveBillboard},
+		{Kind: levelmesh.ShadowBillboard},
+		{Kind: levelmesh.Middle, Masked: true},
 	}
 	var builder Builder
 	b := builder.Build(tris, func(levelmesh.Triangle) levelmesh.Texture { return tex }, func(int) float64 { return 160.0 / 256 }, levelmesh.Textured)
-	if len(b) != 1 {
+	if len(b) != 2 {
 		t.Fatal("surface light classification split the shared texture batch")
 	}
-	for tri, want := range []float32{-1, 1, 0, 4, 4} {
+	for tri, want := range []float32{-1, 1, 0, 4, 4, 8, 6, 7} {
 		for vertex := range 3 {
 			i := tri*3 + vertex
 			if b[0].LightingUVs[i*2] != want || b[0].Colors[i*4+3] != 160 {
 				t.Fatal("batch lost original sector light or Doom wall direction")
 			}
 		}
+	}
+	if b[1].LightingUVs[0] != 5 {
+		t.Fatal("masked mid lost its independent shading policy")
 	}
 }

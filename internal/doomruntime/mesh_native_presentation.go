@@ -11,7 +11,7 @@ func nativeTexture(tex *WallTexture) levelmesh.Texture {
 	if tex == nil {
 		return levelmesh.Texture{}
 	}
-	return levelmesh.Texture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height}
+	return levelmesh.Texture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height, Indexed: tex.Indexed}
 }
 
 func (n *NativeMeshGame) buildPresentation() {
@@ -36,7 +36,7 @@ func (n *NativeMeshGame) buildPresentation() {
 			oy = float64(tex.Height)
 		}
 		n.sprites = append(n.sprites, levelmesh.Sprite{
-			Texture: nativeTexture(tex), Name: ref.key,
+			Texture: n.fixedWorldTexture(nativeTexture(tex)), Name: ref.key,
 			X: float64(x) / fracUnit, Y: float64(y) / fracUnit, Z: float64(z) / fracUnit,
 			OffsetX: float64(tex.OffsetX), OffsetY: oy, ScaleY: fy,
 			Light: n.Light(sector), Flip: flip, Fullbright: ref.fullBright, Shadow: shadow,

@@ -735,7 +735,9 @@ func clampUnit(v float64) float64 {
 	return v
 }
 
-func clampMUSVolumeCompression(v float64) float64 {
+// NormalizeMUSVolumeCompression returns the effective ratio used by all synths.
+// Values below one and NaN disable compression; values above eight clamp to eight.
+func NormalizeMUSVolumeCompression(v float64) float64 {
 	if math.IsNaN(v) || v < 1 {
 		return 1
 	}
@@ -746,7 +748,7 @@ func clampMUSVolumeCompression(v float64) float64 {
 }
 
 func compressMUSLevel(v uint8, ratio float64) uint8 {
-	ratio = clampMUSVolumeCompression(ratio)
+	ratio = NormalizeMUSVolumeCompression(ratio)
 	if ratio <= 1 {
 		return v
 	}

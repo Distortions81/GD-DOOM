@@ -54,6 +54,7 @@ type LinuxPCSpeakerPlayer struct {
 	stopCh         chan struct{}
 	lastDivisor    uint16
 	usedSpeaker    bool
+	paused         bool
 }
 
 const (
@@ -89,16 +90,17 @@ func (p *LinuxPCSpeakerPlayer) Close() error {
 		p.mu.Unlock()
 		return nil
 	}
-	close(p.stopCh)
+	if p.stopCh != nil {
+		close(p.stopCh)
+	}
 	f := p.f
 	usedSpeaker := p.shouldSilenceOnCloseLocked()
 	p.f = nil
-	p.mu.Unlock()
 	if usedSpeaker {
 		_ = writeLinuxPCSpeakerTone(f, 0)
 	}
 	err := f.Close()
-	p.f = nil
+	p.mu.Unlock()
 	return err
 }
 
@@ -174,6 +176,38 @@ func (p *LinuxPCSpeakerPlayer) ClearMusic() {
 
 func (p *LinuxPCSpeakerPlayer) SetVolume(v float64) {}
 
+// A physical speaker has no emulated coloration or gain control.
+func (p *LinuxPCSpeakerPlayer) SetVariant(v PCSpeakerVariant) {}
+
+// ClearEffects preserves the music cursor when entering menus or restarting.
+func (p *LinuxPCSpeakerPlayer) ClearEffects() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.effectSeq, p.effectTickPos = nil, 0
+	p.mixTick, p.currentSource = 0, linuxPCSpeakerSourceNone
+	if len(p.musicSeq) == 0 {
+		_ = p.setDivisorLocked(0)
+	}
+	p.mu.Unlock()
+	p.notify()
+}
+
+// SetPaused silences output while retaining both playback cursors.
+func (p *LinuxPCSpeakerPlayer) SetPaused(paused bool) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.paused = paused
+	if paused {
+		_ = p.setDivisorLocked(0)
+	}
+	p.mu.Unlock()
+	p.notify()
+}
+
 func (p *LinuxPCSpeakerPlayer) loop() {
 	var nextTick time.Time
 	for {
@@ -182,7 +216,7 @@ func (p *LinuxPCSpeakerPlayer) loop() {
 			p.mu.Unlock()
 			return
 		}
-		active := len(p.effectSeq) > 0 || len(p.musicSeq) > 0
+		active := !p.paused && (len(p.effectSeq) > 0 || len(p.musicSeq) > 0)
 		rate := normalizeLinuxPCSpeakerTickRate(max(p.effectTickRate, p.musicTickRate))
 		p.mu.Unlock()
 		if !active {
@@ -221,6 +255,9 @@ func (p *LinuxPCSpeakerPlayer) loop() {
 func (p *LinuxPCSpeakerPlayer) stepDivisor() uint16 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.paused {
+		return 0
+	}
 	rate := normalizeLinuxPCSpeakerTickRate(max(p.effectTickRate, p.musicTickRate))
 	effectTone, effectOK := p.currentEffectToneLocked(rate)
 	musicTone, musicOK := p.currentMusicToneLocked(rate)
@@ -323,8 +360,17 @@ func (p *LinuxPCSpeakerPlayer) setDivisor(div uint16) error {
 		return fmt.Errorf("linux pc speaker player is closed")
 	}
 	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.paused {
+		div = 0
+	}
+	return p.setDivisorLocked(div)
+}
+
+// Serialize writes with pause and close so an in-flight tone cannot restore
+// sound after either operation has silenced the device.
+func (p *LinuxPCSpeakerPlayer) setDivisorLocked(div uint16) error {
 	f, changed, err := p.prepareDivisorChangeLocked(div)
-	p.mu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -334,14 +380,10 @@ func (p *LinuxPCSpeakerPlayer) setDivisor(div uint16) error {
 	if err := writeLinuxPCSpeakerTone(f, div); err != nil {
 		return err
 	}
-	p.mu.Lock()
-	if p.f == f {
-		p.lastDivisor = div
-		if div != 0 {
-			p.usedSpeaker = true
-		}
+	p.lastDivisor = div
+	if div != 0 {
+		p.usedSpeaker = true
 	}
-	p.mu.Unlock()
 	return nil
 }
 

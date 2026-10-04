@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -903,5 +904,31 @@ func TestLoadConfigRewritesFileAtomically(t *testing.T) {
 	}
 	if _, err := os.Stat(cfgPath + ".tmp"); !os.IsNotExist(err) {
 		t.Fatalf("expected no leftover tmp file, stat err=%v", err)
+	}
+}
+
+func TestMainConfigUpdatesPreserveRaylibPreferences(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	original := []byte("music_volume=0.5\n[raylib]\nwidth=1600\nheight=1000\nfps=240\nfullscreen=true\nmsaa=false\ntexture_scale=2\ntexture_filter=\"trilinear\"\nlighting=\"sector\"\nmesh_mode=\"wireframe\"\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := loadConfig(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := *before.Raylib
+	if err := saveRuntimeSettings(path, doomsession.RuntimeSettings{MusicVolume: .8}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveInputBindings(path, runtimecfg.DefaultInputBindings()); err != nil {
+		t.Fatal(err)
+	}
+	after, err := loadConfig(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(*after.Raylib, want) {
+		t.Fatal("main preference writes destroyed native renderer settings")
 	}
 }

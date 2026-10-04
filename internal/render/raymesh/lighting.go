@@ -24,17 +24,18 @@ func (m LightingMode) Validate() error {
 
 func linearLightRamp() (ramp [32]float32) {
 	for row := range ramp {
-		ramp[row] = 1 - float32(row)/31
+		ramp[row] = float32(256-row*256/31) / 256
 	}
 	return ramp
 }
 
 // The second UV attribute carries static surface lighting metadata: planes
-// use 4, walls use their Doom axis bias (-1, 0, +1). Raw sector light travels
+// use 4, masked mids 5, sprites 8, walls their Doom axis bias (-1, 0, +1).
+// Raw sector light travels
 // in vertex-color alpha, independently of RGB used by the diagnostic views.
 func surfaceLightTag(tri levelmesh.Triangle) float32 {
 	if tri.Kind == levelmesh.Billboard {
-		return 0
+		return 8
 	}
 	if tri.Kind == levelmesh.EmissiveBillboard {
 		return 6
@@ -44,6 +45,9 @@ func surfaceLightTag(tri levelmesh.Triangle) float32 {
 	}
 	if tri.Kind == levelmesh.Floor || tri.Kind == levelmesh.Ceiling {
 		return 4
+	}
+	if tri.Kind == levelmesh.Middle && tri.Masked {
+		return 5
 	}
 	minX, maxX := tri.Vertices[0].X, tri.Vertices[0].X
 	minY, maxY := tri.Vertices[0].Y, tri.Vertices[0].Y

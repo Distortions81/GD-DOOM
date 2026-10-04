@@ -65,3 +65,26 @@ func TestTextureBatchPreservesDifferentSectorLighting(t *testing.T) {
 		}
 	}
 }
+
+func TestCrossfadeBatchesKeepIndependentSwitchWeightsAndResidentIdentity(t *testing.T) {
+	tex := levelmesh.Texture{RGBA: []byte{255, 0, 0, 255}, Width: 1, Height: 1, BlendRGBA: []byte{0, 255, 0, 255}, BlendAlpha: 64}
+	var builder Builder
+	tris := []levelmesh.Triangle{{Sidedef: 1}, {Sidedef: 2}}
+	lookup := func(t levelmesh.Triangle) levelmesh.Texture {
+		out := tex
+		out.BlendInstance, out.BlendAlpha = t.Sidedef, tex.BlendAlpha+uint8(t.Sidedef)
+		return out
+	}
+	b := builder.Build(tris, lookup, func(int) float64 { return 1 }, levelmesh.Textured)
+	if len(b) != 2 || b[0].Texture.BlendAlpha == b[1].Texture.BlendAlpha || b[0].Key.textureBatch() != b[1].Key.textureBatch() {
+		t.Fatal("switch phases were merged or duplicate source uploads were requested")
+	}
+	a, other := b[0], b[1]
+	for alpha := 1; alpha < 250; alpha++ {
+		tex.BlendAlpha = uint8(alpha)
+		b = builder.Build(tris, lookup, func(int) float64 { return 1 }, levelmesh.Textured)
+		if len(builder.batches) != 2 || b[0] != a || b[1] != other || b[0].Texture.BlendAlpha != uint8(alpha+1) {
+			t.Fatal("blend weight changed resident batch identity or retained a stale weight")
+		}
+	}
+}

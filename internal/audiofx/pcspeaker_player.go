@@ -1,7 +1,9 @@
 package audiofx
 
 import (
+	"io"
 	"sync"
+	"time"
 
 	"gddoom/internal/music"
 	"gddoom/internal/sound"
@@ -29,6 +31,68 @@ type PCSpeakerPlayer struct {
 	volume float64
 }
 
+// PCSpeakerBackend consumes the shared speaker's streaming PCM. Window hosts
+// supply playback operations while tone arbitration stays in PCSpeakerPlayer.
+type PCSpeakerBackend interface {
+	Play()
+	Pause()
+	Rewind() error
+	SetBufferSize(time.Duration)
+	SetVolume(float64)
+	IsPlaying() bool
+	Close() error
+}
+
+func NewPCSpeakerWithBackend(volume float64, variant PCSpeakerVariant, create func(io.ReadSeeker) (PCSpeakerBackend, error)) (*PCSpeakerPlayer, error) {
+	src := gobeep86.NewSource(variant)
+	src.SetGain(clampVolume(volume))
+	player, err := create(src)
+	if err != nil {
+		return nil, err
+	}
+	player.SetBufferSize(pcSpeakerPlayerBufferDuration())
+	return &PCSpeakerPlayer{player: player, src: src, volume: clampVolume(volume)}, nil
+}
+
+func (p *PCSpeakerPlayer) SetVariant(variant PCSpeakerVariant) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.src != nil {
+		p.src.SetVariant(variant)
+	}
+}
+
+func (p *PCSpeakerPlayer) ClearEffects() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.src != nil {
+		p.src.SetEffectMixed(nil, music.OutputSampleRate, 140)
+	}
+}
+
+// SetPaused retains both source cursors and already buffered samples.
+func (p *PCSpeakerPlayer) SetPaused(paused bool) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.player == nil {
+		return
+	}
+	if paused {
+		p.player.Pause()
+	} else if !p.player.IsPlaying() && p.src.TotalSamples() > 0 {
+		p.player.Play()
+	}
+}
+
 type PCSpeakerVariant = gobeep86.Variant
 
 const (
@@ -46,14 +110,13 @@ func NewPCSpeakerPlayer(volume float64, variant PCSpeakerVariant) *PCSpeakerPlay
 	if ctx == nil {
 		return nil
 	}
-	src := gobeep86.NewSource(variant)
-	src.SetGain(volume)
-	ap, err := ctx.NewPlayer(src)
+	p, err := NewPCSpeakerWithBackend(volume, variant, func(src io.ReadSeeker) (PCSpeakerBackend, error) {
+		return ctx.NewPlayer(src)
+	})
 	if err != nil {
 		return nil
 	}
-	ap.SetBufferSize(pcSpeakerPlayerBufferDuration())
-	return &PCSpeakerPlayer{player: ap, src: src, volume: clampVolume(volume)}
+	return p
 }
 
 func (p *PCSpeakerPlayer) Play(seq []sound.PCSpeakerTone) {

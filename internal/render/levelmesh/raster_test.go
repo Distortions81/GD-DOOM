@@ -46,6 +46,35 @@ func TestDepthOrderAndAlphaHoles(t *testing.T) {
 	}
 }
 
+func TestTextureCrossfadeKeepsCutoutUnionAndRearDepth(t *testing.T) {
+	near, far := facingTriangle(10, "near"), facingTriangle(20, "far")
+	near.Masked = true
+	tex := solidTexture(60, 120, 180, 0)
+	tex.BlendRGBA, tex.BlendAlpha = []byte{240, 60, 0, 255}, 128
+	lookup := func(tri Triangle) Texture {
+		if tri.Texture == "near" {
+			return tex
+		}
+		return solidTexture(0, 255, 0, 255)
+	}
+	var r Rasterizer
+	r.Render([]Triangle{near, far}, 64, 64, Camera{}, Textured, lookup, nil)
+	i := (32*64 + 32) * 4
+	if !bytes.Equal(r.Pixels[i:i+4], []byte{150, 90, 90, 255}) || r.Depth[32*64+32] != .1 {
+		t.Fatal("second frame's opaque texel was lost from the cutout union")
+	}
+	tex.BlendRGBA[3] = 0
+	r.Render([]Triangle{near, far}, 64, 64, Camera{}, Textured, lookup, nil)
+	if !bytes.Equal(r.Pixels[i:i+4], []byte{0, 255, 0, 255}) || r.Depth[32*64+32] != .05 {
+		t.Fatal("a hole shared by both animation frames hid the rear geometry")
+	}
+	tex.BlendRGBA[3], tex.BlendAlpha = 255, 0
+	r.Render([]Triangle{near, far}, 64, 64, Camera{}, Textured, lookup, nil)
+	if r.Depth[32*64+32] != .05 {
+		t.Fatal("disabled blend used the next frame's mask")
+	}
+}
+
 func TestMaskedMidRepeatsWithOffsetsAndAlphaHoles(t *testing.T) {
 	// A 3x2 texture exercises non-power-of-two U wrapping, V wrapping above
 	// and below the image, and transparent texels in the repeated rows.

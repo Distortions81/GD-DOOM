@@ -238,7 +238,14 @@ func (g *game) tickChatHistory() {
 }
 
 func (g *game) drawChatOverlay(screen *ebiten.Image) {
-	if g == nil || screen == nil || (!g.chatComposeOpen && len(g.chatHistory) == 0) {
+	if screen == nil {
+		return
+	}
+	g.drawChatOverlayText(func(text string, x, y, sx, sy float64) { g.drawHUTextAt(screen, text, x, y, sx, sy) })
+}
+
+func (g *game) drawChatOverlayText(draw func(string, float64, float64, float64, float64)) {
+	if g == nil || (!g.chatComposeOpen && len(g.chatHistory) == 0) {
 		return
 	}
 	maxWidth := max(80, min(g.viewW-chatMarginX*2-chatWrapPadding, g.viewW/2))
@@ -256,7 +263,7 @@ func (g *game) drawChatOverlay(screen *ebiten.Image) {
 		if x < 0 {
 			x = 0
 		}
-		g.drawHUTextAt(screen, line, x, y, 1, 1)
+		draw(line, x, y, 1, 1)
 		y += chatLineAdvance
 	}
 	if g.chatComposeOpen {
@@ -270,7 +277,7 @@ func (g *game) drawChatOverlay(screen *ebiten.Image) {
 			if strings.TrimSpace(line) == "" {
 				continue
 			}
-			g.drawHUTextAt(screen, line, float64(chatMarginX), y, 1, 1)
+			draw(line, float64(chatMarginX), y, 1, 1)
 			y += chatLineAdvance
 		}
 	}

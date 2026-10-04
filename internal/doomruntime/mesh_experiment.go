@@ -101,10 +101,17 @@ func (g *game) meshMaterial(r *experimentalMeshRenderer, t levelmesh.Triangle) l
 	tex := levelmesh.Texture{}
 	if t.Kind == levelmesh.Floor || t.Kind == levelmesh.Ceiling {
 		if sample, ok := g.flatTextureBlend(t.Texture); ok {
-			tex = levelmesh.Texture{RGBA: sample.fromRGBA, Width: 64, Height: 64}
+			tex = levelmesh.Texture{RGBA: sample.fromRGBA, Width: 64, Height: 64, Indexed: sample.fromIndexed}
+			tex.BlendRGBA, tex.BlendIndexed, tex.BlendAlpha = sample.toRGBA, sample.toIndexed, sample.alpha
 		}
 	} else if sample, ok := g.wallTextureBlend(t.Texture, t.Sidedef, meshTextureSlot(t.Kind)); ok && sample.from != nil {
-		tex = levelmesh.Texture{RGBA: sample.from.RGBA, Width: sample.from.Width, Height: sample.from.Height}
+		tex = nativeTexture(sample.from)
+		if sample.to != nil {
+			tex.BlendRGBA, tex.BlendIndexed, tex.BlendAlpha = sample.to.RGBA, sample.to.Indexed, sample.alpha
+			if blend := g.switchTextureBlendFor(t.Sidedef, meshTextureSlot(t.Kind), t.Texture); blend.fromKey != "" {
+				tex.BlendInstance = t.Sidedef*3 + int(meshTextureSlot(t.Kind)) + 1
+			}
+		}
 	}
 	r.materials[key] = tex
 	return tex

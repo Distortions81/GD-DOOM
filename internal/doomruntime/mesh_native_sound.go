@@ -1,6 +1,21 @@
 package doomruntime
 
-import "math"
+import (
+	"gddoom/internal/audiofx"
+	"gddoom/internal/sound"
+	"math"
+)
+
+// SetPCSpeakerSound uses the shared sound-event policy, including excluded DP
+// effects and the no-pitch-RNG PC-speaker path. The native host owns the output.
+func (n *NativeMeshGame) SetPCSpeakerSound(bank map[string][]sound.PCSpeakerTone, speaker audiofx.PCSpeaker, sfxVolume float64) {
+	s := n.g.snd
+	if sfxVolume <= 0 {
+		speaker = nil
+	}
+	s.pcSpeaker, s.pcSpeakerBank = speaker, bank
+	s.vanillaVolume = vanillaSFXVolume(sfxVolume)
+}
 
 // NativeSound describes a sound selected by the original Doom sound queue.
 // Coordinates are map units; Pitch is a playback multiplier (1 = normal).

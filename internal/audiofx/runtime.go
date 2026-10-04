@@ -108,17 +108,17 @@ func NewMenuPlayer(bank media.SoundBank, volume float64) *MenuPlayer {
 		move:    firstMenuSample(bank.MenuCursor, bank.SwitchOn),
 		confirm: firstMenuSample(bank.ShootPistol, bank.SwitchOn),
 		back:    firstMenuSample(bank.SwitchOff, bank.NoWay),
-		quit1: []media.PCMSample{
-			firstMenuSample(bank.PlayerDeath, bank.MonsterDeath),
-			firstMenuSample(bank.MonsterPainDemon, bank.MonsterPainHumanoid),
-			firstMenuSample(bank.MonsterPainHumanoid, bank.Pain),
-			firstMenuSample(bank.ImpactRocket, bank.Oof),
-			firstMenuSample(bank.PowerUp, bank.SwitchOn),
-			firstMenuSample(bank.SeePosit1, bank.SeePosit2),
-			firstMenuSample(bank.SeePosit3, bank.SeePosit1),
-			firstMenuSample(bank.AttackSgt, bank.ShootShotgun),
-		},
-		quit2: []media.PCMSample{
+		quit1:   MenuQuitSamples(bank, false),
+		quit2:   MenuQuitSamples(bank, true),
+		voices:  make([]*menuVoice, 0, maxMenuVoices()),
+	}
+}
+
+// MenuQuitSamples exposes the main host's ordered quit sounds and fallbacks.
+// It selects samples without creating an audio context or player.
+func MenuQuitSamples(bank media.SoundBank, commercial bool) []media.PCMSample {
+	if commercial {
+		return []media.PCMSample{
 			firstMenuSample(bank.ActiveVilAct, bank.SeeVileSit),
 			firstMenuSample(bank.PowerUp, bank.ItemUp),
 			firstMenuSample(bank.SeeCyberSit, bank.SeeBruiserSit),
@@ -127,8 +127,17 @@ func NewMenuPlayer(bank media.SoundBank, volume float64) *MenuPlayer {
 			firstMenuSample(bank.DeathKnight, bank.DeathBaron),
 			firstMenuSample(bank.ActiveBSPAct, bank.ActiveDMAct),
 			firstMenuSample(bank.AttackSgt, bank.ShootShotgun),
-		},
-		voices: make([]*menuVoice, 0, maxMenuVoices()),
+		}
+	}
+	return []media.PCMSample{
+		firstMenuSample(bank.PlayerDeath, bank.MonsterDeath),
+		firstMenuSample(bank.MonsterPainDemon, bank.MonsterPainHumanoid),
+		firstMenuSample(bank.MonsterPainHumanoid, bank.Pain),
+		firstMenuSample(bank.ImpactRocket, bank.Oof),
+		firstMenuSample(bank.PowerUp, bank.SwitchOn),
+		firstMenuSample(bank.SeePosit1, bank.SeePosit2),
+		firstMenuSample(bank.SeePosit3, bank.SeePosit1),
+		firstMenuSample(bank.AttackSgt, bank.ShootShotgun),
 	}
 }
 

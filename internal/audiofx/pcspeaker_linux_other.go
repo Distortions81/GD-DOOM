@@ -25,5 +25,8 @@ func (p *LinuxPCSpeakerPlayer) PlaySequence(seq []sound.PCSpeakerTone, tickRate 
 func (p *LinuxPCSpeakerPlayer) Play(seq []sound.PCSpeakerTone) {}
 func (p *LinuxPCSpeakerPlayer) SetMusic(seq []sound.PCSpeakerTone, tickRate int, loop bool) {
 }
-func (p *LinuxPCSpeakerPlayer) ClearMusic()         {}
-func (p *LinuxPCSpeakerPlayer) SetVolume(v float64) {}
+func (p *LinuxPCSpeakerPlayer) ClearMusic()                   {}
+func (p *LinuxPCSpeakerPlayer) SetVolume(v float64)           {}
+func (p *LinuxPCSpeakerPlayer) SetVariant(v PCSpeakerVariant) {}
+func (p *LinuxPCSpeakerPlayer) ClearEffects()                 {}
+func (p *LinuxPCSpeakerPlayer) SetPaused(paused bool)         {}

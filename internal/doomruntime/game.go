@@ -2801,6 +2801,16 @@ func (g *game) updateDemoMode() error {
 		ebiten.SetCursorMode(ebiten.CursorModeVisible)
 		return nil
 	}
+	return g.advanceDemoTic()
+}
+
+// advanceDemoTic consumes the shared playback stream without sampling window
+// input. Both native and Ebiten hosts own their menu and command-tic timing.
+func (g *game) advanceDemoTic() error {
+	script := g.opts.DemoScript
+	if script == nil {
+		return nil
+	}
 	g.capturePrevState()
 	if !g.demoBenchStarted {
 		g.demoBenchStarted = true
@@ -3064,13 +3074,7 @@ func (g *game) updateWalkMode() {
 	g.input.mouseTurnRawAccum = 0
 
 	cmd.run = speed == 1
-	if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
-		// Quantize cmd to demo format precision before running gameplay,
-		// matching vanilla's G_WriteDemoTiccmd -> G_ReadDemoTiccmd round-trip.
-		cmd = quantizeMoveCmdToDemo(cmd)
-	}
-	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.recordDemoTic(cmd, usePressed, fireHeld)
+	g.runLocalGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 }
@@ -3313,32 +3317,25 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 		return
 	}
 	if g.bindingJustPressed(bindingWeapon1) {
-		g.selectWeaponSlot(1)
-		g.demoWeaponSlot = 1
+		g.selectLocalWeaponSlot(1)
 	}
 	if g.bindingJustPressed(bindingWeapon2) {
-		g.selectWeaponSlot(2)
-		g.demoWeaponSlot = 2
+		g.selectLocalWeaponSlot(2)
 	}
 	if g.bindingJustPressed(bindingWeapon3) {
-		g.selectWeaponSlot(3)
-		g.demoWeaponSlot = 3
+		g.selectLocalWeaponSlot(3)
 	}
 	if g.bindingJustPressed(bindingWeapon4) {
-		g.selectWeaponSlot(4)
-		g.demoWeaponSlot = 4
+		g.selectLocalWeaponSlot(4)
 	}
 	if g.bindingJustPressed(bindingWeapon5) {
-		g.selectWeaponSlot(5)
-		g.demoWeaponSlot = 5
+		g.selectLocalWeaponSlot(5)
 	}
 	if g.bindingJustPressed(bindingWeapon6) {
-		g.selectWeaponSlot(6)
-		g.demoWeaponSlot = 6
+		g.selectLocalWeaponSlot(6)
 	}
 	if g.bindingJustPressed(bindingWeapon7) {
-		g.selectWeaponSlot(7)
-		g.demoWeaponSlot = 7
+		g.selectLocalWeaponSlot(7)
 	}
 	if !allowCycleInput {
 		return
@@ -3455,13 +3452,17 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
 				return
 			}
-			g.crtEnabled = !g.crtEnabled
-			if g.crtEnabled {
-				g.setHUDMessage("CRT ON", 70)
-			} else {
-				g.setHUDMessage("CRT OFF", 70)
-			}
+			g.toggleCRT()
 		}
+	}
+}
+
+func (g *game) toggleCRT() {
+	g.crtEnabled = !g.crtEnabled
+	if g.crtEnabled {
+		g.setHUDMessage("CRT ON", 70)
+	} else {
+		g.setHUDMessage("CRT OFF", 70)
 	}
 }
 
@@ -14864,21 +14865,8 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	}
 	g.ensureMapFloorLayer()
 	clear(g.mapFloorPix)
-	w := g.viewW
-	h := g.viewH
-	viewWB := g.screenWorldBBox()
 	pix := g.mapFloorPix
-	stats := mapview.RasterizeFloor2D(pix, mapview.FloorRasterInput{
-		ViewW:         w,
-		ViewH:         h,
-		ViewBBox:      mapview.WorldBBox{MinX: viewWB.minX, MinY: viewWB.minY, MaxX: viewWB.maxX, MaxY: viewWB.maxY},
-		LoopSets:      g.mapFloorBoundarySetsForView(),
-		ShadeMuls:     g.mapFloorShadeMuls(),
-		Textures:      g.mapFloorTextures(),
-		FallbackRGB:   [3]byte{wallFloorChange.R, wallFloorChange.G, wallFloorChange.B},
-		ScreenToWorld: g.screenToWorld,
-		WorldToScreen: g.worldToScreen,
-	})
+	stats := mapview.RasterizeFloor2D(pix, g.mapFloorRasterInput())
 	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 	g.mapFloorWorldState = "live-screen"
@@ -21220,12 +21208,12 @@ func (g *game) huTextWidth(text string) int {
 			w += 4
 			continue
 		}
-		_, gw, _, _, _, ok := g.messageFontGlyph(uc)
+		p, ok := g.messageFontTexture(uc)
 		if !ok {
 			w += 4
 			continue
 		}
-		w += gw
+		w += p.Width
 	}
 	return w
 }

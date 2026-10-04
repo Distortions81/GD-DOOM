@@ -11,9 +11,23 @@ const (
 )
 
 type Texture struct {
-	RGBA          []byte
-	Width, Height int
+	RGBA                                    []byte
+	Width, Height                           int
+	Indexed                                 []byte // Optional original WAD indices, preserving duplicate palette colors.
+	FixedRGBA                               []byte // Optional fixed-colormap variant; RGBA remains the stable texture identity.
+	BlendRGBA, BlendIndexed, BlendFixedRGBA []byte // Optional second frame with matching dimensions.
+	BlendAlpha                              uint8  // Shared animation/switch weight, 0 disables blending.
+	BlendInstance                           int    // Independent switch timeline; 0 shares the global animation phase.
 }
+
+func (t Texture) HasBlend() bool {
+	return t.BlendAlpha != 0 && t.Width > 0 && t.Height > 0 && len(t.BlendRGBA) == t.Width*t.Height*4
+}
+
+func (t Texture) BlendTexture() Texture {
+	return Texture{RGBA: t.BlendRGBA, Indexed: t.BlendIndexed, FixedRGBA: t.BlendFixedRGBA, Width: t.Width, Height: t.Height}
+}
+
 type Camera struct{ X, Y, Z, Yaw, Focal, FocalY float64 }
 type Rasterizer struct {
 	Pixels        []byte
@@ -127,6 +141,8 @@ func (r *Rasterizer) triangle(v [3]cameraVertex, c Camera, tri Triangle, tex Tex
 	edge0 := math.Hypot(dw0x, dw0y)
 	edge1 := math.Hypot(dw1x, dw1y)
 	edge2 := math.Hypot(dw0x+dw1x, dw0y+dw1y)
+	blend := tex.HasBlend()
+	blendAlpha := uint32(tex.BlendAlpha)
 	validTex := tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4
 	for py := y0; py <= y1; py++ {
 		px0 := float64(x0) + 0.5
@@ -151,6 +167,13 @@ func (r *Rasterizer) triangle(v [3]cameraVertex, c Camera, tri Triangle, tex Tex
 							visible = false
 						}
 						red, green, blue = tex.RGBA[ti], tex.RGBA[ti+1], tex.RGBA[ti+2]
+						if blend {
+							visible = !tri.Masked || tex.RGBA[ti+3] >= 128 || tex.BlendRGBA[ti+3] >= 128
+							a := blendAlpha
+							red = byte((uint32(red)*(255-a) + uint32(tex.BlendRGBA[ti])*a + 127) / 255)
+							green = byte((uint32(green)*(255-a) + uint32(tex.BlendRGBA[ti+1])*a + 127) / 255)
+							blue = byte((uint32(blue)*(255-a) + uint32(tex.BlendRGBA[ti+2])*a + 127) / 255)
+						}
 					} else if (int(math.Floor(uv/16))+int(math.Floor(vv/16)))&1 == 0 {
 						red, green, blue = 45, 10, 45
 					}

@@ -28,6 +28,7 @@ const (
 type Triangle struct {
 	Vertices        [3]Vertex
 	Sector, Sidedef int
+	Instance        int // Optional independent draw ordering, without changing texture identity.
 	Kind            Kind
 	Texture         string
 	Masked, Sky     bool

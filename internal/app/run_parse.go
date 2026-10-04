@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/sha1"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +24,7 @@ import (
 	"gddoom/internal/audiofx"
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
+	"gddoom/internal/launchcatalog"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
@@ -42,7 +42,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"github.com/zeebo/blake3"
 )
 
 func flagProvided(args []string, name string) bool {
@@ -367,10 +366,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultShowAllItems := false
 	defaultMouseLook := true
 	defaultMouseInvert := false
-	defaultSmoothCameraYaw := true
-	defaultMouseLookSpeed := 0.5
-	defaultKeyboardTurnSpeed := 1.0
-	defaultMusicVolume := 1.0
+	defaultSmoothCameraYaw := runtimecfg.DefaultSmoothCameraYaw
+	defaultMouseLookSpeed := runtimecfg.DefaultMouseLookSpeed
+	defaultKeyboardTurnSpeed := runtimecfg.DefaultKeyboardTurnSpeed
+	defaultMusicVolume := runtimecfg.DefaultMusicVolume
 	defaultMUSPanMax := 0.8
 	defaultMUSVolumeCompression := music.DefaultMUSVolumeCompression
 	defaultOPLVolume := 2.5
@@ -381,12 +380,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if isWASMBuild() {
 		defaultSoundFontPath = music.DefaultEmbeddedSoundFontPath()
 	}
-	defaultSFXVolume := 0.5
+	defaultSFXVolume := runtimecfg.DefaultSFXVolume
 	defaultPCSpeakerVolume := 1.0
 	defaultSFXPitchShift := false
 	defaultFastMonsters := false
 	defaultNoMonsters := false
-	defaultAlwaysRun := true
+	defaultAlwaysRun := runtimecfg.DefaultAlwaysRun
 	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
 	defaultInvuln := false
@@ -1757,222 +1756,31 @@ func runGameWithPlatformOptions(game ebiten.Game) error {
 }
 
 func resolveWADOverlayPaths(value string) []string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		path := strings.TrimSpace(part)
-		if path == "" {
-			continue
-		}
-		out = append(out, resolveIWADAliasPath(path))
-	}
-	return out
+	return launchcatalog.ResolveWADOverlayPaths(value)
 }
 
 func openWADStack(basePath string, overlayPaths []string) (*wad.File, []string, error) {
-	paths := make([]string, 0, 1+len(overlayPaths))
-	basePath = strings.TrimSpace(resolveIWADAliasPath(basePath))
-	if basePath == "" {
-		return nil, nil, fmt.Errorf("missing base wad path")
-	}
-	paths = append(paths, basePath)
-	for _, path := range overlayPaths {
-		path = strings.TrimSpace(resolveIWADAliasPath(path))
-		if path == "" {
-			continue
-		}
-		paths = append(paths, path)
-	}
-	wf, err := wad.OpenFiles(paths...)
-	if err != nil {
-		return nil, nil, err
-	}
-	return wf, paths, nil
+	return launchcatalog.OpenWADStack(basePath, overlayPaths)
 }
 
 func defaultStartMap(wf *wad.File, overlayPaths []string) (mapdata.MapName, error) {
-	for i := len(overlayPaths) - 1; i >= 0; i-- {
-		overlay, err := wad.Open(overlayPaths[i])
-		if err != nil {
-			return "", err
-		}
-		if name, err := mapdata.FirstMapName(overlay); err == nil {
-			return name, nil
-		}
-	}
-	return mapdata.FirstMapName(wf)
+	return launchcatalog.DefaultStartMap(wf, overlayPaths)
 }
 
 func hashWADStackSHA1(paths []string) string {
-	if len(paths) == 0 {
-		return ""
-	}
-	h := sha1.New()
-	for _, path := range paths {
-		if data, ok := wad.EmbeddedDataForPath(path); ok {
-			if _, err := h.Write(data); err != nil {
-				return ""
-			}
-			continue
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return ""
-		}
-		_, copyErr := io.Copy(h, f)
-		closeErr := f.Close()
-		if copyErr != nil || closeErr != nil {
-			return ""
-		}
-	}
-	return fmt.Sprintf("%x", h.Sum(nil))
+	return launchcatalog.HashWADStackSHA1(paths)
 }
 
 func buildWADSources(paths []string) []runtimecfg.WADSource {
-	if len(paths) == 0 {
-		return nil
-	}
-	out := make([]runtimecfg.WADSource, 0, len(paths))
-	for _, path := range paths {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			continue
-		}
-		out = append(out, runtimecfg.WADSource{
-			Name: filepath.Base(path),
-			Hash: hashWADPathBlake3(path),
-		})
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return launchcatalog.BuildWADSources(paths)
 }
 
 func hashWADPathBlake3(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if data, ok := wad.EmbeddedDataForPath(path); ok {
-		sum := blake3.Sum256(data)
-		return fmt.Sprintf("%x", sum[:])
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		_ = f.Close()
-		return ""
-	}
-	if err := f.Close(); err != nil {
-		return ""
-	}
-	sum := blake3.Sum256(data)
-	return fmt.Sprintf("%x", sum[:])
+	return launchcatalog.HashWADPathBlake3(path)
 }
 
 func mapMusicLumpName(name mapdata.MapName) (string, bool) {
-	s := strings.ToUpper(strings.TrimSpace(string(name)))
-	switch s {
-	case "E4M1":
-		return "D_E3M4", true
-	case "E4M2":
-		return "D_E3M2", true
-	case "E4M3":
-		return "D_E3M3", true
-	case "E4M4":
-		return "D_E1M5", true
-	case "E4M5":
-		return "D_E2M7", true
-	case "E4M6":
-		return "D_E2M4", true
-	case "E4M7":
-		return "D_E2M6", true
-	case "E4M8":
-		return "D_E2M5", true
-	case "E4M9":
-		return "D_E1M9", true
-	}
-	if len(s) == 4 && s[0] == 'E' && s[2] == 'M' &&
-		s[1] >= '1' && s[1] <= '9' && s[3] >= '1' && s[3] <= '9' {
-		return "D_" + s, true
-	}
-	if strings.HasPrefix(s, "MAP") && len(s) == 5 && s[3] >= '0' && s[3] <= '9' && s[4] >= '0' && s[4] <= '9' {
-		n := int(s[3]-'0')*10 + int(s[4]-'0')
-		switch n {
-		case 1:
-			return "D_RUNNIN", true
-		case 2:
-			return "D_STALKS", true
-		case 3:
-			return "D_COUNTD", true
-		case 4:
-			return "D_BETWEE", true
-		case 5:
-			return "D_DOOM", true
-		case 6:
-			return "D_THE_DA", true
-		case 7:
-			return "D_SHAWN", true
-		case 8:
-			return "D_DDTBLU", true
-		case 9:
-			return "D_IN_CIT", true
-		case 10:
-			return "D_DEAD", true
-		case 11:
-			return "D_STLKS2", true
-		case 12:
-			return "D_THE_DA2", true
-		case 13:
-			return "D_DOOM2", true
-		case 14:
-			return "D_DDTBL2", true
-		case 15:
-			return "D_RUNNI2", true
-		case 16:
-			return "D_DEAD2", true
-		case 17:
-			return "D_STLKS3", true
-		case 18:
-			return "D_ROMERO", true
-		case 19:
-			return "D_SHAWN2", true
-		case 20:
-			return "D_MESSAG", true
-		case 21:
-			return "D_COUNT2", true
-		case 22:
-			return "D_DDTBL3", true
-		case 23:
-			return "D_AMPIE", true
-		case 24:
-			return "D_THEDA3", true
-		case 25:
-			return "D_ADRIAN", true
-		case 26:
-			return "D_MESSG2", true
-		case 27:
-			return "D_ROMER2", true
-		case 28:
-			return "D_TENSE", true
-		case 29:
-			return "D_SHAWN3", true
-		case 30:
-			return "D_OPENIN", true
-		case 31:
-			return "D_EVIL", true
-		case 32:
-			return "D_ULTIMA", true
-		}
-	}
-	return "", false
+	return music.MapLumpName(string(name))
 }
 
 func finaleMusicLumpName(name mapdata.MapName) string {
@@ -1983,354 +1791,9 @@ func finaleMusicLumpName(name mapdata.MapName) string {
 	return ""
 }
 
-func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD, func(string, string) ([]byte, error)) {
-	currentWADPath = strings.TrimSpace(resolveIWADAliasPath(currentWADPath))
-	if currentWADPath == "" {
-		return nil, nil
-	}
-	seen := make(map[string]struct{}, 8)
-	choices := make([]iwadChoice, 0, 8)
-	appendChoice := func(path, label string) {
-		path = strings.TrimSpace(resolveIWADAliasPath(path))
-		if path == "" {
-			return
-		}
-		if _, ok := seen[path]; ok {
-			return
-		}
-		seen[path] = struct{}{}
-		choices = append(choices, iwadChoice{Path: path, Label: label})
-	}
-	appendChoice(currentWADPath, strings.TrimSpace(filepath.Base(currentWADPath)))
-	for _, choice := range detectAvailableIWADChoices(filepath.Dir(currentWADPath)) {
-		appendChoice(choice.Path, choice.Label)
-	}
-	catalog := make([]runtimecfg.MusicPlayerWAD, 0, len(choices))
-	for _, choice := range choices {
-		wf, err := wad.Open(choice.Path)
-		if err != nil {
-			continue
-		}
-		episodes := musicPlayerEpisodesForWAD(wf)
-		if len(episodes) == 0 {
-			continue
-		}
-		label := strings.TrimSpace(choice.Label)
-		if label == "" {
-			label = filepath.Base(choice.Path)
-		}
-		catalog = append(catalog, runtimecfg.MusicPlayerWAD{
-			Key:      choice.Path,
-			Label:    label,
-			Episodes: episodes,
-		})
-	}
-	if len(catalog) == 0 {
-		return nil, nil
-	}
-	loader := func(wadKey string, lumpName string) ([]byte, error) {
-		wadKey = strings.TrimSpace(wadKey)
-		if wadKey == "" {
-			return nil, nil
-		}
-		lump := strings.ToUpper(strings.TrimSpace(lumpName))
-		if lump == "" {
-			return nil, nil
-		}
-		wf, err := wad.Open(wadKey)
-		if err != nil {
-			return nil, err
-		}
-		l, ok := wf.LumpByName(lump)
-		if !ok {
-			return nil, nil
-		}
-		data, err := wf.LumpDataView(l)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := music.ParseMUS(data); err != nil {
-			return nil, err
-		}
-		return data, nil
-	}
-	return catalog, loader
-}
+type iwadChoice = launchcatalog.IWADChoice
 
-func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
-	if wf == nil {
-		return nil
-	}
-	names := mapdata.AvailableMapNames(wf)
-	if len(names) == 0 {
-		return nil
-	}
-	type group struct {
-		label  string
-		tracks []runtimecfg.MusicPlayerTrack
-	}
-	order := make([]string, 0, 8)
-	groups := make(map[string]*group, 8)
-	seenLumps := make(map[string]struct{}, 64)
-	groupFor := func(label string) *group {
-		if g, ok := groups[label]; ok {
-			return g
-		}
-		g := &group{label: label}
-		groups[label] = g
-		order = append(order, label)
-		return g
-	}
-	for _, name := range names {
-		lump, ok := mapMusicLumpName(name)
-		if !ok {
-			continue
-		}
-		if _, ok := wf.LumpByName(lump); !ok {
-			continue
-		}
-		mapLabel := strings.ToUpper(strings.TrimSpace(string(name)))
-		episodeLabel := "MAPS"
-		if len(mapLabel) == 4 && mapLabel[0] == 'E' && mapLabel[2] == 'M' && mapLabel[1] >= '1' && mapLabel[1] <= '9' {
-			episodeLabel = fmt.Sprintf("EPISODE %c", mapLabel[1])
-		}
-		g := groupFor(episodeLabel)
-		g.tracks = append(g.tracks, runtimecfg.MusicPlayerTrack{
-			MapName:   name,
-			Label:     mapDisplayLabel(name),
-			LumpName:  lump,
-			MusicName: musicTitleForLump(lump),
-		})
-		seenLumps[lump] = struct{}{}
-	}
-	const otherMusicLabel = "OTHER MUSIC"
-	other := groupFor(otherMusicLabel)
-	seenOther := make(map[string]struct{}, 32)
-	for _, lump := range wf.Lumps {
-		name := strings.ToUpper(strings.TrimSpace(lump.Name))
-		if !strings.HasPrefix(name, "D_") {
-			continue
-		}
-		if _, ok := seenLumps[name]; ok {
-			continue
-		}
-		if _, ok := seenOther[name]; ok {
-			continue
-		}
-		other.tracks = append(other.tracks, runtimecfg.MusicPlayerTrack{
-			Label:     musicTitleForLump(name),
-			LumpName:  name,
-			MusicName: musicTitleForLump(name),
-		})
-		seenOther[name] = struct{}{}
-	}
-	episodes := make([]runtimecfg.MusicPlayerEpisode, 0, len(order))
-	for _, label := range order {
-		g := groups[label]
-		if g == nil || len(g.tracks) == 0 {
-			continue
-		}
-		episodes = append(episodes, runtimecfg.MusicPlayerEpisode{
-			Label:  g.label,
-			Tracks: g.tracks,
-		})
-	}
-	return episodes
-}
-
-func resolveIWADAliasPath(path string) string {
-	trimmed := strings.TrimSpace(path)
-	if trimmed == "" {
-		return path
-	}
-	if resolved, ok := resolvePathCaseInsensitive(trimmed); ok {
-		return resolved
-	}
-	base := strings.ToUpper(filepath.Base(trimmed))
-	var aliases []string
-	switch base {
-	case "DOOM1.WAD":
-		aliases = []string{"DOOMU.WAD", "DOOM.WAD", "DOOM2.WAD"}
-	case "DOOMU.WAD", "DOOM.WAD":
-		aliases = []string{"DOOMU.WAD", "DOOM.WAD"}
-	default:
-		return path
-	}
-	dir := filepath.Dir(trimmed)
-	for _, candidate := range aliases {
-		if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
-			return alias
-		}
-	}
-	return path
-}
-
-func resolvePathCaseInsensitive(path string) (string, bool) {
-	if _, err := os.Stat(path); err == nil {
-		return path, true
-	}
-	dir := filepath.Dir(path)
-	name := filepath.Base(path)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", false
-	}
-	for _, entry := range entries {
-		if strings.EqualFold(entry.Name(), name) {
-			return filepath.Join(dir, entry.Name()), true
-		}
-	}
-	return "", false
-}
-
-func detectAvailableSoundFonts(dir string) []string {
-	out := append([]string(nil), music.EmbeddedSoundFontChoices()...)
-	out = append(out, music.BrowserSoundFontChoices()...)
-	entries, err := os.ReadDir(dir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := strings.TrimSpace(entry.Name())
-			if !strings.HasSuffix(strings.ToLower(name), ".sf2") {
-				continue
-			}
-			out = append(out, filepath.Join(dir, name))
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		pi := soundFontDefaultRank(out[i])
-		pj := soundFontDefaultRank(out[j])
-		if pi != pj {
-			return pi < pj
-		}
-		return strings.ToUpper(out[i]) < strings.ToUpper(out[j])
-	})
-	if len(out) == 0 {
-		return nil
-	}
-	dedup := out[:0]
-	var prev string
-	for _, path := range out {
-		if prev != "" && strings.EqualFold(prev, path) {
-			continue
-		}
-		dedup = append(dedup, path)
-		prev = path
-	}
-	return dedup
-}
-
-func soundFontDefaultRank(path string) int {
-	base := strings.ToLower(strings.TrimSpace(filepath.Base(path)))
-	switch base {
-	case "sc55.sf2":
-		return 0
-	case "sgm-hq.sf2":
-		return 1
-	case "general-midi.sf2":
-		return 2
-	default:
-		return 3
-	}
-}
-
-type iwadChoice struct {
-	Path  string
-	Label string
-}
-
-type knownIWADChoice struct {
-	Label string
-	Paths []string
-}
-
-func detectAvailableIWADChoices(dir string) []iwadChoice {
-	known := knownIWADChoices()
-	browserPaths := wad.BrowserLocalWADPaths()
-	out := make([]iwadChoice, 0, len(known)+len(browserPaths))
-	usedBrowser := make(map[string]struct{}, len(browserPaths))
-	for _, k := range known {
-		for _, candidate := range k.Paths {
-			if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
-				out = append(out, iwadChoice{
-					Path:  p,
-					Label: k.Label,
-				})
-				goto nextKnownIWAD
-			}
-		}
-		for _, path := range browserPaths {
-			if !browserWADMatchesKnownChoice(path, k) {
-				continue
-			}
-			out = append(out, iwadChoice{
-				Path:  path,
-				Label: k.Label,
-			})
-			usedBrowser[strings.ToUpper(strings.TrimSpace(path))] = struct{}{}
-			goto nextKnownIWAD
-		}
-		for _, candidate := range k.Paths {
-			if _, ok := wad.EmbeddedDataForPath(candidate); ok {
-				out = append(out, iwadChoice{
-					Path:  candidate,
-					Label: k.Label,
-				})
-				goto nextKnownIWAD
-			}
-		}
-	nextKnownIWAD:
-	}
-	for _, path := range browserPaths {
-		key := strings.ToUpper(strings.TrimSpace(path))
-		if _, ok := usedBrowser[key]; ok {
-			continue
-		}
-		label := "LOCAL WAD"
-		if wf, err := wad.Open(path); err == nil && strings.EqualFold(wf.Header.Identification, "PWAD") {
-			label = "LOCAL PWAD"
-		}
-		out = append(out, iwadChoice{
-			Path:  path,
-			Label: label,
-		})
-	}
-	return out
-}
-
-func browserWADMatchesKnownChoice(path string, choice knownIWADChoice) bool {
-	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
-	for _, candidate := range choice.Paths {
-		if strings.EqualFold(candidate, base) {
-			return true
-		}
-	}
-	return false
-}
-
-func knownIWADChoices() []knownIWADChoice {
-	return []knownIWADChoice{
-		{Label: "The Ultimate DOOM", Paths: []string{"DOOMU.WAD", "DOOM.WAD"}},
-		{Label: "DOOM II: Hell on Earth", Paths: []string{"DOOM2.WAD"}},
-		{Label: "Final DOOM: TNT", Paths: []string{"TNT.WAD"}},
-		{Label: "Final DOOM: Plutonia", Paths: []string{"PLUTONIA.WAD"}},
-		{Label: "DOOM Shareware", Paths: []string{"DOOM1.WAD"}},
-	}
-}
-
-func knownIWADChoiceForPath(path string) (iwadChoice, bool) {
-	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
-	for _, choice := range knownIWADChoices() {
-		for _, candidate := range choice.Paths {
-			if strings.EqualFold(candidate, base) {
-				return iwadChoice{Path: candidate, Label: choice.Label}, true
-			}
-		}
-	}
-	return iwadChoice{}, false
-}
+type knownIWADChoice = launchcatalog.KnownIWADChoice
 
 type renderBuildConfig struct {
 	selectedMap                string
@@ -2542,23 +2005,7 @@ func resolveMusicSoundFont(backend music.Backend, path string, stderr io.Writer)
 }
 
 func broadcastSessionConfig(mapName mapdata.MapName, opts doomsession.Options) netplay.SessionConfig {
-	return netplay.SessionConfig{
-		WADHash:          opts.WADHash,
-		MapName:          string(mapName),
-		MaxPlayers:       0,
-		PlayerSlot:       opts.PlayerSlot,
-		SkillLevel:       opts.SkillLevel,
-		GameMode:         opts.GameMode,
-		ShowNoSkillItems: opts.ShowNoSkillItems,
-		ShowAllItems:     opts.ShowAllItems,
-		FastMonsters:     opts.FastMonsters,
-		RespawnMonsters:  opts.RespawnMonsters,
-		NoMonsters:       opts.NoMonsters,
-		AutoWeaponSwitch: opts.AutoWeaponSwitch,
-		CheatLevel:       opts.CheatLevel,
-		Invulnerable:     opts.Invulnerable,
-		SourcePortMode:   opts.SourcePortMode,
-	}
+	return launchcatalog.BroadcastSessionConfig(mapName, opts)
 }
 
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
@@ -4055,7 +3502,17 @@ func spriteSeriesFromSeed(seed string, bank map[string]media.WallTexture) []stri
 	return series
 }
 
+// BuildRuntimeSoundAliases exposes the main host's imported sample selection
+// without padding or generating PCM for an alternate host's audio backend.
+func BuildRuntimeSoundAliases(r sound.DigitalImportReport) media.SoundBank {
+	return buildRuntimeSoundBank(r, true, false)
+}
+
 func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) media.SoundBank {
+	return buildRuntimeSoundBank(r, sourcePortMode, true)
+}
+
+func buildRuntimeSoundBank(r sound.DigitalImportReport, sourcePortMode, prepare bool) media.SoundBank {
 	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
 	for _, s := range r.Sounds {
 		byName[s.Name] = s
@@ -4190,6 +3647,9 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
+	if !prepare {
+		return bank
+	}
 	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
 	if shouldPrepareSourcePortSoundBank(sourcePortMode) {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
@@ -4200,16 +3660,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 // buildPCSpeakerBank converts DP* lumps into the compact tone-sequence map
 // used by the streaming PCSpeakerPlayer.  Keys are DS* names (DP→DS prefix).
 func buildPCSpeakerBank(dpr sound.PCSpeakerImportReport) map[string][]sound.PCSpeakerTone {
-	bank := make(map[string][]sound.PCSpeakerTone, len(dpr.Sounds))
-	for _, s := range dpr.Sounds {
-		seq := sound.BuildToneSequence(s)
-		if len(seq) == 0 {
-			continue
-		}
-		dsName := "DS" + s.Name[2:] // DPPISTOL → DSPISTOL
-		bank[dsName] = seq
-	}
-	return bank
+	return sound.BuildPCSpeakerBank(dpr)
 }
 
 func buildSharedPCSpeakerPlayer(backend music.Backend, pcSpeakerBank map[string][]sound.PCSpeakerTone, variant audiofx.PCSpeakerVariant, output audiofx.PCSpeakerOutput, volume float64, stderr io.Writer) audiofx.PCSpeaker {
@@ -4704,49 +4155,11 @@ func availableEpisodes(wf *wad.File) []int {
 }
 
 func resolveDemoStartMap(wf *wad.File, script *demo.Script, fallback mapdata.MapName) (mapdata.MapName, error) {
-	if wf == nil || script == nil {
-		return "", fmt.Errorf("missing demo")
-	}
-	candidates := make([]mapdata.MapName, 0, 2)
-	if script.Header.Map > 0 {
-		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("MAP%02d", script.Header.Map)))
-	}
-	if script.Header.Episode > 0 && script.Header.Map > 0 && script.Header.Map <= 9 {
-		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("E%dM%d", script.Header.Episode, script.Header.Map)))
-	}
-	for _, candidate := range candidates {
-		if _, err := mapdata.LoadMap(wf, candidate); err == nil {
-			return candidate, nil
-		}
-	}
-	if fallback != "" {
-		return "", fmt.Errorf("demo map episode=%d map=%d not present in wad (requested map %s ignored)", script.Header.Episode, script.Header.Map, fallback)
-	}
-	return "", fmt.Errorf("demo map episode=%d map=%d not present in wad", script.Header.Episode, script.Header.Map)
+	return launchcatalog.ResolveDemoStartMap(wf, script, fallback)
 }
 
 func loadBuiltInDemos(wf *wad.File) []*demo.Script {
-	if wf == nil {
-		return nil
-	}
-	out := make([]*demo.Script, 0, 4)
-	for _, name := range []string{"DEMO1", "DEMO2", "DEMO3", "DEMO4"} {
-		lump, ok := wf.LumpByName(name)
-		if !ok {
-			continue
-		}
-		data, err := wf.LumpDataView(lump)
-		if err != nil {
-			continue
-		}
-		demo, err := demo.Parse(data)
-		if err != nil {
-			continue
-		}
-		demo.Path = name
-		out = append(out, demo)
-	}
-	return out
+	return launchcatalog.LoadBuiltInDemos(wf)
 }
 
 func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
@@ -4754,4 +4167,44 @@ func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
 		return
 	}
 	*opts = runtimecfg.PrepareDemoPlaybackOptions(*opts, script)
+}
+
+func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD, func(string, string) ([]byte, error)) {
+	return launchcatalog.BuildMusicPlayerCatalog(currentWADPath)
+}
+
+func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
+	return launchcatalog.MusicPlayerEpisodesForWAD(wf)
+}
+
+func resolveIWADAliasPath(path string) string {
+	return launchcatalog.ResolveIWADAliasPath(path)
+}
+
+func resolvePathCaseInsensitive(path string) (string, bool) {
+	return launchcatalog.ResolvePathCaseInsensitive(path)
+}
+
+func detectAvailableSoundFonts(dir string) []string {
+	return launchcatalog.DetectAvailableSoundFonts(dir)
+}
+
+func soundFontDefaultRank(path string) int {
+	return launchcatalog.SoundFontDefaultRank(path)
+}
+
+func detectAvailableIWADChoices(dir string) []iwadChoice {
+	return launchcatalog.DetectAvailableIWADChoices(dir)
+}
+
+func browserWADMatchesKnownChoice(path string, choice knownIWADChoice) bool {
+	return launchcatalog.BrowserWADMatchesKnownChoice(path, choice)
+}
+
+func knownIWADChoices() []knownIWADChoice {
+	return launchcatalog.KnownIWADChoices()
+}
+
+func knownIWADChoiceForPath(path string) (iwadChoice, bool) {
+	return launchcatalog.KnownIWADChoiceForPath(path)
 }

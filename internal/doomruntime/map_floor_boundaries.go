@@ -52,3 +52,13 @@ func (g *game) ensureMapFloorBoundarySetsBuilt() {
 		}
 	}
 }
+
+// mapFloorRasterInput is shared by both native and Ebiten map presentation.
+// It uses original directed sector sides, including open or overlapping lines.
+func (g *game) mapFloorRasterInput() mapview.FloorRasterInput {
+	g.ensureSectorPlaneLevelCacheFresh()
+	g.refreshSectorPlaneCacheTextureRefs()
+	g.ensureMapFloorBoundarySetsBuilt()
+	b := g.screenWorldBBox()
+	return mapview.FloorRasterInput{ViewW: g.viewW, ViewH: g.viewH, ViewBBox: mapview.WorldBBox{MinX: b.minX, MinY: b.minY, MaxX: b.maxX, MaxY: b.maxY}, LoopSets: g.mapFloorBoundarySetsForView(), ShadeMuls: g.mapFloorShadeMuls(), Textures: g.mapFloorTextures(), FallbackRGB: [3]byte{wallFloorChange.R, wallFloorChange.G, wallFloorChange.B}, ScreenToWorld: g.screenToWorld, WorldToScreen: g.worldToScreen}
+}

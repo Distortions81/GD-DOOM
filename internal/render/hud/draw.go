@@ -161,10 +161,20 @@ type DeathOverlayInputs struct {
 }
 
 func DrawDeathOverlay(screen *ebiten.Image, in DeathOverlayInputs, textWidth TextWidthFunc, drawText TextDrawer) {
+	DrawDeathOverlayWithRect(screen, in, textWidth, drawText, func(screen *ebiten.Image, clr color.RGBA) {
+		ebitenutil.DrawRect(screen, 0, 0, float64(in.ViewW), float64(in.ViewH), clr)
+	})
+}
+
+// DrawDeathOverlayWithRect lets another window backend reuse the same tint,
+// prompts and text layout without allocating an Ebiten render target.
+func DrawDeathOverlayWithRect(screen *ebiten.Image, in DeathOverlayInputs, textWidth TextWidthFunc, drawText TextDrawer, drawRect func(*ebiten.Image, color.RGBA)) {
 	if textWidth == nil || drawText == nil {
 		return
 	}
-	ebitenutil.DrawRect(screen, 0, 0, float64(in.ViewW), float64(in.ViewH), color.RGBA{R: 25, G: 0, B: 0, A: 130})
+	if drawRect != nil {
+		drawRect(screen, color.RGBA{R: 25, G: 0, B: 0, A: 130})
+	}
 	msg1 := "YOU DIED"
 	msg2 := "PRESS ENTER TO RESTART"
 	if in.TouchControls {
@@ -182,20 +192,19 @@ func DrawDeathOverlay(screen *ebiten.Image, in DeathOverlayInputs, textWidth Tex
 }
 
 func DrawFlashOverlay(screen *ebiten.Image, viewW, viewH, damageCount, bonusCount, strengthCount, radSuitTics int) {
+	clr := FlashOverlayColor(damageCount, bonusCount, strengthCount, radSuitTics)
+	if clr.A == 0 {
+		return
+	}
+	ebitenutil.DrawRect(screen, 0, 0, float64(viewW), float64(viewH), clr)
+}
+
+// FlashOverlayColor is shared by the software and native GPU hosts. Damage
+// and berserk take precedence over pickups, then radiation-suit blinking.
+func FlashOverlayColor(damageCount, bonusCount, strengthCount, radSuitTics int) color.RGBA {
 	stage, clr := flashOverlayState(damageCount, bonusCount, strengthCount, radSuitTics)
-	if stage <= 0 {
-		return
-	}
-	a := flashOverlayAlpha(stage, clr)
-	if a == 0 {
-		return
-	}
-	ebitenutil.DrawRect(screen, 0, 0, float64(viewW), float64(viewH), color.RGBA{
-		R: clr.R,
-		G: clr.G,
-		B: clr.B,
-		A: a,
-	})
+	clr.A = flashOverlayAlpha(stage, clr)
+	return clr
 }
 
 func flashOverlayState(damageCount, bonusCount, strengthCount, radSuitTics int) (int, color.RGBA) {
@@ -519,6 +528,14 @@ func max(a, b int) int {
 // DrawRecordingIndicator draws a red circle + "REC" label in the top-right
 // corner of the screen to indicate that a demo is being recorded.
 func DrawRecordingIndicator(screen *ebiten.Image, viewW, viewH int, textWidth TextWidthFunc, drawText TextDrawer) {
+	DrawRecordingIndicatorWithCircle(screen, viewW, viewH, textWidth, drawText, func(screen *ebiten.Image, x, y, radius float32, clr color.RGBA) {
+		vector.DrawFilledCircle(screen, x, y, radius, clr, true)
+	})
+}
+
+// DrawRecordingIndicatorWithCircle shares the recording marker's placement and
+// label while letting the host supply its own antialiased circle primitive.
+func DrawRecordingIndicatorWithCircle(screen *ebiten.Image, viewW, viewH int, textWidth TextWidthFunc, drawText TextDrawer, drawCircle func(*ebiten.Image, float32, float32, float32, color.RGBA)) {
 	const (
 		margin   = 6.0
 		radius   = 5.0
@@ -527,7 +544,9 @@ func DrawRecordingIndicator(screen *ebiten.Image, viewW, viewH int, textWidth Te
 	)
 	cx := float32(viewW) - margin - radius
 	cy := float32(margin) + radius
-	vector.DrawFilledCircle(screen, cx, cy, radius, color.RGBA{R: 220, G: 30, B: 30, A: 255}, true)
+	if drawCircle != nil {
+		drawCircle(screen, cx, cy, radius, color.RGBA{R: 220, G: 30, B: 30, A: 255})
+	}
 	if drawText != nil && textWidth != nil {
 		tw := float64(textWidth(label)) * fontSize
 		tx := float64(cx) - radius - 2 - tw

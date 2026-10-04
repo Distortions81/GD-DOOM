@@ -15,6 +15,9 @@ func newUnmanagedImage(w, h int) *ebiten.Image {
 
 const MeltVirtualH = 200
 
+// SourcePortMeltColumns matches Doom column pairs over its 320-wide layout.
+const SourcePortMeltColumns = 160
+
 type Kind int
 
 const (
@@ -302,3 +305,5 @@ func max(a, b int) int {
 	}
 	return b
 }
+
+func SourcePortMeltRNGScale(height int) int { return sourcePortMeltRNGScale(height) }

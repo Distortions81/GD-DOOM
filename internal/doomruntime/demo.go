@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"gddoom/internal/demo"
 	"gddoom/internal/mapdata"
+	"strings"
 )
 
 const (
@@ -71,4 +72,32 @@ func BuildRecordedDemo(mapName mapdata.MapName, opts Options, tics []DemoTic) (*
 		RespawnMonsters: opts.RespawnMonsters,
 		NoMonsters:      opts.NoMonsters,
 	}, tics)
+}
+
+// runLocalGameplayTic performs G_WriteDemoTiccmd -> G_ReadDemoTiccmd before
+// P_PlayerThink. Include keyboard acceleration in the encoded angle before
+// quantization, so live recordings and network commands replay exactly.
+func (g *game) runLocalGameplayTic(cmd moveCmd, use, fire bool) {
+	if strings.TrimSpace(g.opts.RecordDemoPath) == "" && g.opts.LiveTicSink == nil {
+		g.runGameplayTic(cmd, use, fire)
+		g.recordDemoTic(cmd, use, fire)
+		return
+	}
+	tc := g.buildOutgoingDemoTic(cmd, use, fire)
+	tc.AngleTurn = int16(((int32(tc.AngleTurn) + 128) >> 8) << 8)
+	recorded, use, fire := demoTicCommand(tc)
+	held := 0
+	if cmd.turn != 0 && !g.isDead && g.p.reactionTime <= 0 {
+		held = g.turnHeld + 1
+	}
+	g.runGameplayTic(recorded, use, fire)
+	g.turnHeld = held
+	g.recordOutgoingDemoTic(tc)
+}
+
+func (g *game) selectLocalWeaponSlot(slot int) {
+	g.demoWeaponSlot = slot
+	if strings.TrimSpace(g.opts.RecordDemoPath) == "" && g.opts.LiveTicSink == nil {
+		g.selectWeaponSlot(slot)
+	}
 }

@@ -302,12 +302,20 @@ func (g *game) drawStatusPercent(screen *ebiten.Image, value int, x, y, sx, sy f
 	g.drawStatusPercentAlpha(screen, value, x, y, sx, sy, 1)
 }
 
-func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, bool) {
+func (g *game) messageFontTexture(ch rune) (WallTexture, bool) {
 	if ch >= 'a' && ch <= 'z' {
 		ch -= 'a' - 'A'
 	}
 	p, ok := g.opts.MessageFontBank[ch]
-	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+	return p, ok && p.Width > 0 && p.Height > 0 && len(p.RGBA) == p.Width*p.Height*4
+}
+
+func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, bool) {
+	if ch >= 'a' && ch <= 'z' {
+		ch -= 'a' - 'A'
+	}
+	p, ok := g.messageFontTexture(ch)
+	if !ok {
 		return nil, 0, 0, 0, 0, false
 	}
 	if g.messageFontImg == nil {

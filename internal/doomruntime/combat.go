@@ -2298,6 +2298,14 @@ func (g *game) cycleWeapon(step int) {
 		if next == cur {
 			continue
 		}
+		if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
+			slot := demoTraceWeaponID(next) + 1
+			if next == weaponSuperShotgun {
+				slot = 3
+			}
+			g.demoWeaponSlot = slot
+			return
+		}
 		g.queueWeaponSwitch(next)
 		if g.weaponState == weaponStateNone {
 			g.applyPendingWeapon()

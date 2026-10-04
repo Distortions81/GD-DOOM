@@ -130,8 +130,12 @@ func clampKeybindRow(row int) int {
 }
 
 func keybindMenuStartRow(selected int) int {
-	selected = clampKeybindRow(selected)
-	maxStart := int(bindingActionCount) - keybindMenuVisibleRows
+	return keybindMenuStartRowCount(selected, int(bindingActionCount))
+}
+
+func keybindMenuStartRowCount(selected, count int) int {
+	selected = max(0, min(selected, count-1))
+	maxStart := count - keybindMenuVisibleRows
 	if maxStart < 0 {
 		maxStart = 0
 	}
