@@ -38,9 +38,17 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 	if !g.statusBarVisible() {
 		return
 	}
+	state := g.statusBarState()
+	g.ensureStatusBarCache(state)
+	if g.statusBarCacheImg != nil {
+		g.drawStatusBarCacheImage(screen, state)
+	}
+}
+
+func (g *game) statusBarState() statusBarCacheState {
 	maxBullets, maxShells, maxRockets, maxCells := ammoCaps(g.inventory.Backpack)
 	readyAmmo, hasReadyAmmo := g.statusReadyAmmo()
-	state := statusBarCacheState{
+	return statusBarCacheState{
 		mode:         g.statusBarDisplayMode(),
 		hudScale:     g.hudScaleValue(),
 		health:       g.stats.Health,
@@ -59,10 +67,6 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 		ammoCur:   [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Cells, g.stats.Rockets},
 		ammoMax:   [4]int{maxBullets, maxShells, maxCells, maxRockets},
 		facePatch: g.statusFacePatchName(),
-	}
-	g.ensureStatusBarCache(state)
-	if g.statusBarCacheImg != nil {
-		g.drawStatusBarCacheImage(screen, state)
 	}
 }
 
@@ -127,20 +131,34 @@ func (g *game) drawStatusBarCached(screen *ebiten.Image, state statusBarCacheSta
 }
 
 func (g *game) drawStatusBarLogicalBar(screen *ebiten.Image, state statusBarCacheState) {
-	x0 := 0.0
-	y0 := 0.0
+	for _, draw := range g.statusBarPatchDraws(state) {
+		g.drawStatusPatch(screen, draw.name, draw.x, draw.y, 1, 1)
+	}
+}
+
+type statusPatchDraw struct {
+	name string
+	x, y float64
+}
+
+// Shared logical layout for both the original and native presentation hosts.
+func (g *game) statusBarPatchDraws(state statusBarCacheState) []statusPatchDraw {
+	out := make([]statusPatchDraw, 0, 48)
 	drawPatch := func(name string, x, y float64) {
-		g.drawStatusPatch(screen, name, x0+x, y0+(y-statusBarLogicalY), 1, 1)
+		out = append(out, statusPatchDraw{name, x, y - statusBarLogicalY})
 	}
-	drawTallNum := func(value, digits int, rightX, y float64) {
-		g.drawStatusTallNum(screen, value, digits, x0+rightX, y0+(y-statusBarLogicalY), 1, 1)
+	drawNum := func(prefix string, value, digits int, rightX, y float64) {
+		for _, draw := range g.statusDigitDraws(prefix, value, digits, rightX, 1) {
+			drawPatch(draw.name, draw.x, y)
+		}
 	}
-	drawShortNum := func(value, digits int, rightX, y float64) {
-		g.drawStatusShortNum(screen, value, digits, x0+rightX, y0+(y-statusBarLogicalY), 1, 1)
-	}
+	drawTallNum := func(value, digits int, rightX, y float64) { drawNum("STTNUM", value, digits, rightX, y) }
+	drawShortNum := func(value, digits int, rightX, y float64) { drawNum("STYSNUM", value, digits, rightX, y) }
 	drawPercent := func(value int, x, y float64) {
-		g.drawStatusPercent(screen, value, x0+x, y0+(y-statusBarLogicalY), 1, 1)
+		drawPatch("STTPRCNT", x, y)
+		drawTallNum(value, 3, x, y)
 	}
+
 	drawPatch("STBAR", 0, 168)
 	drawPatch("STARMS", 104, 168)
 	if state.hasReadyAmmo {
@@ -172,6 +190,7 @@ func (g *game) drawStatusBarLogicalBar(screen *ebiten.Image, state statusBarCach
 		drawShortNum(state.ammoMax[i], 3, maxPos[i][0], maxPos[i][1])
 	}
 	drawPatch(state.facePatch, 143, 168)
+	return out
 }
 
 func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
@@ -216,8 +235,9 @@ type statusDigitDraw struct {
 }
 
 func (g *game) statusDigitWidth(prefix string) (int, bool) {
-	_, w, _, _, _, ok := g.statusPatch(prefix + "0")
-	if !ok || w <= 0 {
+	p, ok := g.opts.StatusPatchBank[prefix+"0"]
+	w := p.Width
+	if !ok || w <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return 0, false
 	}
 	return w, true
@@ -239,7 +259,7 @@ func (g *game) statusDigitDraws(prefix string, value, digits int, rightX, sx flo
 	draws := make([]statusDigitDraw, 0, len(s))
 	for i := len(s) - 1; i >= 0; i-- {
 		name := prefix + string(s[i])
-		if _, _, _, _, _, ok := g.statusPatch(name); !ok {
+		if p, ok := g.opts.StatusPatchBank[name]; !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 			continue
 		}
 		x -= float64(cellW) * sx

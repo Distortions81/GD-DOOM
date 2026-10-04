@@ -33,6 +33,15 @@ func linearLightRamp() (ramp [32]float32) {
 // use 4, walls use their Doom axis bias (-1, 0, +1). Raw sector light travels
 // in vertex-color alpha, independently of RGB used by the diagnostic views.
 func surfaceLightTag(tri levelmesh.Triangle) float32 {
+	if tri.Kind == levelmesh.Billboard {
+		return 0
+	}
+	if tri.Kind == levelmesh.EmissiveBillboard {
+		return 6
+	}
+	if tri.Kind == levelmesh.ShadowBillboard {
+		return 7
+	}
 	if tri.Kind == levelmesh.Floor || tri.Kind == levelmesh.Ceiling {
 		return 4
 	}

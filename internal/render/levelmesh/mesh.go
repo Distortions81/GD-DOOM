@@ -20,6 +20,9 @@ const (
 	Middle
 	Upper
 	Lower
+	Billboard
+	EmissiveBillboard
+	ShadowBillboard
 )
 
 type Triangle struct {

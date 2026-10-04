@@ -10,10 +10,15 @@ import (
 
 // NativeMeshGame lets an alternate window/render backend drive the existing
 // Doom simulation without calling Ebiten's input, drawing or window loop.
-// It is a single-level geometry experiment, not a second gameplay engine.
+// Gameplay remains shared; this adapter exposes a single level to the host.
 type NativeMeshGame struct {
 	g         *game
 	lightRamp [32]float32
+	sprites   []levelmesh.Sprite
+	hud       []levelmesh.Patch
+	weapon    []levelmesh.Patch
+	hudState  statusBarCacheState
+	haveHUD   bool
 }
 
 type NativeMeshInput struct {
@@ -24,20 +29,25 @@ type NativeMeshInput struct {
 }
 
 type NativeMeshFrame struct {
-	Triangles     []levelmesh.Triangle // Valid until the next Frame call.
-	Camera        levelmesh.Camera
-	WorldTic      int
-	Health, Armor int
-	Ammo          int
-	Weapon        string
-	Exited, Dead  bool
-	Fullbright    bool // Active light-amplification powerup, including its blink.
+	Triangles               []levelmesh.Triangle // Valid until the next Frame call.
+	Camera                  levelmesh.Camera
+	WorldTic                int
+	Health, Armor           int
+	Ammo                    int
+	Weapon                  string
+	Exited, Dead            bool
+	Fullbright              bool // Active light-amplification powerup, including its blink.
+	Sprites                 []levelmesh.Sprite
+	HUD, WeaponPatches      []levelmesh.Patch
+	Sky                     levelmesh.Texture
+	Message                 string
+	DamageFlash, BonusFlash int
 }
 
 func NewNativeMeshGame(m *mapdata.Map, opts Options) *NativeMeshGame {
 	opts.MeshRenderer = "textured"
 	opts.SourcePortMode = true
-	opts.SFXVolume = 0 // This geometry host does not initialize an audio backend.
+	opts.SFXVolume = 0 // The host attaches native audio without initializing Ebiten audio.
 	g := newGame(m, opts)
 	g.syncRenderState()
 	n := &NativeMeshGame{g: g}
@@ -71,6 +81,17 @@ func (n *NativeMeshGame) Tick(in NativeMeshInput) {
 	}
 	g.runGameplayTic(cmd, in.Use, in.Fire)
 	g.tickStatusWidgets()
+	g.discoverLinesAroundPlayer()
+	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+	if g.useFlash > 0 {
+		g.useFlash--
+	}
+	if g.damageFlashTic > 0 {
+		g.damageFlashTic--
+	}
+	if g.bonusFlashTic > 0 {
+		g.bonusFlashTic--
+	}
 	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
@@ -86,6 +107,15 @@ func (n *NativeMeshGame) Frame(alpha float64) NativeMeshFrame {
 	r := g.ensureMeshExperiment()
 	g.buildMeshExperimentGeometry(r)
 	def := weaponInfo(g.inventory.ReadyWeapon)
+	n.buildPresentation()
+	var sky levelmesh.Texture
+	if _, tex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name); ok {
+		sky = nativeTexture(tex)
+	}
+	message := ""
+	if g.useFlash > 0 {
+		message = g.useText
+	}
 	return NativeMeshFrame{
 		Triangles: r.triangles,
 		Camera:    levelmesh.Camera{X: g.renderPX, Y: g.renderPY, Z: g.playerEyeZ(), Yaw: angleToRadians(g.renderAngle)},
@@ -93,6 +123,8 @@ func (n *NativeMeshGame) Frame(alpha float64) NativeMeshFrame {
 		Ammo: weaponAmmoCount(g.stats, def.ammo), Weapon: def.name,
 		Exited: g.levelExitRequested, Dead: g.isDead,
 		Fullbright: g.playerInfraredBright(),
+		Sprites:    n.sprites, HUD: n.hud, WeaponPatches: n.weapon, Sky: sky,
+		Message: message, DamageFlash: g.damageFlashTic, BonusFlash: g.bonusFlashTic,
 	}
 }
 

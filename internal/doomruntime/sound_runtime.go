@@ -121,6 +121,8 @@ type soundSystem struct {
 	rand          uint32
 	vanillaVolume int
 	pitchShift    bool
+	// Optional native backend; event selection, budgets and pitch stay shared.
+	nativePlay func(soundEvent, queuedSoundOrigin, int64, int64, uint32, bool, int)
 }
 
 type MenuSoundPlayer = audiofx.MenuPlayer
@@ -213,6 +215,10 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 		return
 	}
 	pitch := vanillaPitchForEvent(ev, s.pitchShift)
+	if s.nativePlay != nil {
+		s.nativePlay(ev, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, pitch)
+		return
+	}
 	if s.player == nil {
 		return
 	}

@@ -164,7 +164,7 @@ func TestRaylibFilteredTextureMinification(t *testing.T) {
 			checker.RGBA[i], checker.RGBA[i+1], checker.RGBA[i+2], checker.RGBA[i+3] = c, c, c, 255
 		}
 	}
-	v := [4]levelmesh.Vertex{{X: 64, Y: -128, Z: -128, U: 0, V: 1024}, {X: 64, Y: -128, Z: 128, U: 0, V: 0}, {X: 64, Y: 128, Z: 128, U: 1024, V: 0}, {X: 64, Y: 128, Z: -128, U: 1024, V: 1024}}
+	v := [4]levelmesh.Vertex{{X: 64, Y: -128, Z: -128, U: 0, V: 2048}, {X: 64, Y: -128, Z: 128, U: 0, V: 0}, {X: 64, Y: 128, Z: 128, U: 2048, V: 0}, {X: 64, Y: 128, Z: -128, U: 2048, V: 2048}}
 	tris := []levelmesh.Triangle{{Vertices: [3]levelmesh.Vertex{v[0], v[1], v[2]}}, {Vertices: [3]levelmesh.Vertex{v[0], v[2], v[3]}}}
 	r.Sync(tris, func(levelmesh.Triangle) levelmesh.Texture { return checker }, func(int) float64 { return 1 }, levelmesh.Textured)
 	draw := func() []rl.Color {
@@ -179,8 +179,9 @@ func TestRaylibFilteredTextureMinification(t *testing.T) {
 		rl.UnloadImage(img)
 		return pixels
 	}
-	// The projected checker cells are smaller than a screen pixel. A real
-	// mipmapped sample must average black/white rather than alias between them.
+	// Keep checker cells well below one pixel on both axes, including the
+	// pixel-aspect projection and anisotropic sampling of its smaller footprint.
+	// A real mipmapped sample must average black/white rather than alias.
 	for _, filter := range []TextureFilter{Trilinear, Anisotropic} {
 		if err := r.SetTextureFilter(filter); err != nil {
 			t.Fatal(err)

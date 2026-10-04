@@ -46,8 +46,8 @@ func TestRaylibMultisampledSeams(t *testing.T) {
 	// and the card silhouette project between pixel centers. Blue background
 	// makes even a partial uncovered sample at the shared edge detectable.
 	v := [4]levelmesh.Vertex{
-		{X: 64, Y: -43, Z: -39}, {X: 64, Y: -43, Z: 45},
-		{X: 64, Y: 49, Z: 45}, {X: 64, Y: 49, Z: -39},
+		{X: 64, Y: -43.3, Z: -39.1}, {X: 64, Y: -43.3, Z: 44.7},
+		{X: 64, Y: 48.7, Z: 44.7}, {X: 64, Y: 48.7, Z: -39.1},
 	}
 	tris := []levelmesh.Triangle{
 		{Sector: 1, Vertices: [3]levelmesh.Vertex{v[0], v[1], v[2]}},
@@ -73,7 +73,7 @@ func TestRaylibMultisampledSeams(t *testing.T) {
 	first := draw()
 	seam, pureRed, pureGreen, silhouette := 0, 0, 0, 0
 	for y := 24; y < 100; y++ {
-		for x := 24; x < 110; x++ {
+		for x := 24; x < 100; x++ {
 			c := first[y*128+x]
 			if c.B != 0 || int(c.R)+int(c.G) < 254 {
 				t.Fatalf("uncovered sample at shared seam %d,%d: %v", x, y, c)

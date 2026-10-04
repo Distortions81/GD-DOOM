@@ -40,10 +40,12 @@ uniform float lightingMode;
 uniform float shadeRamp[32];
 out vec4 finalColor;
 float doomShade() {
+	if (fragLightTag == 6.0) return 1.0;
+	if (fragLightTag == 7.0) return 0.3;
     // Reciprocal clip W is view-forward depth in the resident mesh's
     // 1/64 world units. This is independent of viewport size and FOV.
     float depth = max(2.0, 64.0 / gl_FragCoord.w);
-    bool plane = fragLightTag > 2.0;
+    bool plane = fragLightTag == 4.0;
     float bias = plane ? 0.0 : fragLightTag;
     float lightNum = clamp(fragColor.a * 255.0 / 16.0 + bias, 0.0, 15.0);
     float startMap = (15.0 - lightNum) * 4.0;
@@ -253,7 +255,14 @@ func Camera(c levelmesh.Camera, width, height int) rl.Camera3D {
 }
 
 func (r *Renderer) Draw(c levelmesh.Camera, width, height int, mode levelmesh.Mode) {
-	rl.BeginMode3D(Camera(c, width, height))
+	camera := Camera(c, width, height)
+	rl.BeginMode3D(camera)
+	// The world viewport can exclude the status bar. Raylib's default
+	// projection uses the whole window, so set the view's aspect explicitly.
+	// Doom uses a 90-degree horizontal FOV and a 1.2 vertical pixel aspect.
+	// Fovy carries the vertical correction; the extra aspect factor keeps
+	// horizontal focal length at width/2 instead of narrowing it to width*.6.
+	rl.SetMatrixProjection(rl.MatrixPerspective(camera.Fovy*math.Pi/180, float32(width)*1.2/float32(height), 2*WorldScale, 2048))
 	defer rl.EndMode3D()
 	viewMode := float32(0)
 	if mode != levelmesh.Textured {

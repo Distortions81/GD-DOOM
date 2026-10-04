@@ -30,18 +30,63 @@ The ordinary application and WASM entry points continue to use Ebiten.
 - F7 cycles textured, sector colors and wireframe views.
 - F8 cycles nearest, trilinear and 8x anisotropic texture filtering.
 - F9 cycles Doom lighting, sector-only lighting and fullbright.
+- F10 toggles renderer diagnostics; they are hidden during normal play.
+- P pauses/resumes and releases/recaptures the mouse. Losing window focus also
+  stops simulation input and playing sound effects.
 - R reloads the level at its normal player start. Escape exits.
 
-This is a single-level geometry experiment with monsters disabled and an
-invulnerable player. Movement, collision, sector thinkers, doors, lifts, pickups
-and weapon state use the existing simulation. Actors, items, weapon sprites,
-panoramic sky, audio, menus, automap, saves and campaign transitions have not
-been ported to this host. A simple numerical HUD shows health, armor and ammo.
-Sky surfaces reveal the background. Doom-style sector and distance lighting
-use RGB shading; faithful palette remapping remains future work.
+The first parity stage makes this a playable single-level host. Monsters and
+player damage are enabled by default. `-skill` selects 1–5 (default 3), while
+`-nomonsters -god` restores the geometry inspection setup. Movement, collision,
+AI, hitscan combat, projectiles, doors/lifts, pickups and sector thinkers use
+the original engine. The native backend exposes their existing render state
+rather than implementing separate gameplay rules.
+
+Monsters (including corpses and paired rotation flips), pickups, decorations,
+barrels, missiles, impacts, blood/puffs, teleport fog and boss-spawn effects use
+camera-facing textured cards in the level's hardware depth buffer. Alpha holes
+reveal the geometry behind them. Positions interpolate through the existing
+render helpers; pickups disappear when collected. Animated and self-lit sprite
+frames use the same selection helpers as the main renderer. Spectres currently
+use a dark visible card; faithful background fuzz remains pending.
+
+The classic HUD shares the main renderer's logical patch layout, numbers,
+weapon ownership, keys, ammo capacities and animated face widget. Weapon raising,
+lowering, bobbing, attack animations and muzzle-flash composites use existing
+psprite state and CPU patch composition. HUD/weapon textures use nearest
+sampling, while world sprite textures use the selected world filter. GPU images
+remain cached; unchanged HUD patch lists and sprite buffers are reused.
+
+The sky uses the WAD's map-specific SKY texture with a yaw-driven panoramic
+shader. Damage/pickup flashes and expiring pickup messages are exposed to the
+host. Doom-style lighting remains RGB shading; faithful palette remapping and
+invulnerability's palette treatment remain pending.
+
+Native Raylib sound effects use the original event queue, priorities/budgets,
+event selection and optional pitch math. DMX samples are loaded once at the
+main game's 11025-Hz base rate, and independent sound aliases permit overlapping
+effects. Listener movement updates attenuation/pan; pause/restart releases
+voices. `-sound=false` disables audio; `-sfx-volume` accepts 0–1 (default 0.7).
+Capture runs remain silent, and an unavailable device produces a warning while
+gameplay continues. Music is a later stage.
+
+## Parity stages
+
+| Stage | Work | Status |
+| --- | --- | --- |
+| 1 | Visible combat, world objects/effects, weapons, classic HUD, sky, SFX, pause | Implemented and tested |
+| 2 | Automap/minimap, menus/settings, keybindings, save/load, campaign progression and intermissions | Pending |
+| 3 | Music/synth choices, demo playback/recording, network sessions and remaining presentation effects | Pending |
+
+Main and browser entry points retain their existing backend. The native host
+currently stops at level completion, supports R for death/restart, and has no
+menu or save/session manager yet. Full parity is a staged goal, not a claim for
+the current build.
 
 Use `-width`, `-height`, `-fps` (0 means uncapped) and `-mode` to adjust the view.
-The camera retains the CPU experiment's horizontal FOV and pixel aspect.
+The camera uses the main renderer's 90-degree horizontal FOV and 1.2 pixel
+aspect. The projection uses the world viewport after reserving space for the
+HUD, so a status bar or window resize does not narrow the horizontal view.
 
 ## Seam antialiasing
 
@@ -178,6 +223,14 @@ GD_RAYLIB_INTEGRATION=1 go test -tags raylib,x11,integration \
 GD_RAYLIB_INTEGRATION=1 go test -tags raylib,x11,integration \
   ./internal/render/raymesh -run '^TestRaylibMultisampledSeams$' -v
 
+# World depth and transparent holes for sprite cards in a separate draw pass.
+GD_RAYLIB_INTEGRATION=1 go test -tags raylib,x11,integration \
+  ./internal/render/raymesh -run '^TestRaylibSpritesShareWorldDepth$' -v
+
+# Requires an audio device (an ALSA null PCM also works for headless validation).
+GD_RAYLIB_AUDIO_INTEGRATION=1 go test -tags raylib,x11,integration \
+  ./cmd/raydoom -run '^TestNativeAudioLoadsDMXAndPlaysAliases$' -v
+
 # Reproduce the formerly missing E1M3 exit-room floor and ceiling.
 ./build/raydoom -wad DOOM1.WAD -map E1M3 \
   -camera=-600,-1600,89,0 -frames 3 \
@@ -212,3 +265,14 @@ The MSAA framebuffer check draws two coplanar materials sharing a diagonal
 edge. It verifies intermediate coverage at the seam and silhouette, no
 background samples leaking through the shared edge, unchanged colors inside
 both materials, and identical output after reversing submission order.
+
+Native combat tests use real IWAD patches and cover monster/item extraction,
+render-only checksum stability, collected-object removal, weapon visibility,
+ammunition use and firing events, overlay timer decay, stereo orientation and
+sound clipping. A movement-and-firing sequence produces the same simulation
+checksum as the main engine's recorded-tic path. Sprite GPU tests check the
+projected horizontal size as well as world depth across separate draw passes,
+cutout holes, UV flips without mesh uploads and self-lit frames in dark sectors.
+The audio check loads actual DMX samples into Raylib, starts overlapping aliases
+and releases them on pause/restart; it validates the mixer path, not subjective
+sound quality.
