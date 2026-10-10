@@ -282,6 +282,11 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	if sg == nil || sg.g == nil {
 		return
 	}
+	if sg.opts.AuthorityClient != nil {
+		sg.g.setHUDMessage("SERVER CONTROLS THE MATCH", doomTicsPerSecond*3)
+		sg.frontend.Active = false
+		return
+	}
 	sg.capturePersistentSettings()
 	sg.captureFrontendFrameForTransition()
 	startMap := sessionflow.NewGameStartMap(
@@ -673,6 +678,9 @@ func (sg *sessionGame) tickFrontend() error {
 		sg.frontend.MenuActive = true
 		sg.frontendMenuPending = false
 	}
+	if sg.frontend.Mode == frontendModeMultiplayer {
+		return sg.tickFrontendMultiplayer()
+	}
 	if handled, err := sg.tickPendingFrontendMusicConfig(); handled {
 		if err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
@@ -725,6 +733,11 @@ func (sg *sessionGame) tickFrontend() error {
 		Select: selectPressed,
 		Skip:   escape || up || down || left || right || selectPressed || sg.anyIntermissionSkipInput(),
 	}
+	if sg.frontend.Mode == frontendModeTitle && sg.frontend.MenuActive && sg.frontend.ItemOn == len(frontendMainMenuNames) && input.Select && sg.multiplayerMenuAvailable() {
+		sg.openFrontendMultiplayer()
+		sg.playMenuConfirmSound()
+		return nil
+	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),
 		input,
@@ -734,7 +747,7 @@ func (sg *sessionGame) tickFrontend() error {
 			OptionRows:        frontendOptionsSelectableRows[:],
 			VoiceMenuCount:    frontendVoiceMenuRowCount,
 			SoundMenuCount:    frontendSoundMenuRowCount,
-			MainMenuCount:     len(frontendMainMenuNames),
+			MainMenuCount:     sg.frontendMainMenuCount(),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
 			SkillMenuCount:    len(frontendSkillMenuNames),
 			SaveLoadCount:     len(saveSlots),
@@ -944,6 +957,12 @@ func (sg *sessionGame) drawFrontendContents(screen *ebiten.Image, sw, sh int) {
 	oy := (float64(sh) - 200.0*scale) * 0.5
 
 	switch sg.frontend.Mode {
+	case frontendModeMultiplayer:
+		sg.drawFrontendBackdrop(screen, true)
+		if !sg.quitPrompt.Active {
+			sg.drawFrontendMultiplayer(screen, scale, ox, oy)
+		}
+		return
 	case frontendModeReadThis:
 		sg.drawFrontendAttractBackground(screen)
 		name := sg.readThisPageName(sg.frontend.ReadThisPage)
@@ -1117,6 +1136,9 @@ func (sg *sessionGame) drawFrontendContents(screen *ebiten.Image, sw, sh int) {
 				for i, name := range frontendMainMenuNames {
 					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
 				}
+			}
+			if sg.multiplayerMenuAvailable() {
+				sg.drawFrontendTextAt(screen, "MULTIPLAYER", ox+97*scale, oy+float64(64+len(frontendMainMenuNames)*16)*scale, scale, scale)
 			}
 			sg.drawMenuSkull(screen, 65, 64+sg.frontend.ItemOn*16, scale, ox, oy)
 		}
@@ -1749,6 +1771,9 @@ func (sg *sessionGame) frontendWatchMode() bool {
 }
 
 func (sg *sessionGame) frontendMainMenuSelectableRows() []int {
+	if sg != nil && sg.opts.AuthorityClient != nil {
+		return []int{1, 4, 5, 6}
+	}
 	if sg != nil && sg.frontend.InGame && sg.frontendWatchMode() {
 		return frontendWatchMenuSelectableRows
 	}
@@ -1756,7 +1781,7 @@ func (sg *sessionGame) frontendMainMenuSelectableRows() []int {
 }
 
 func (sg *sessionGame) frontendMenuItemDisabled(item int) bool {
-	if sg == nil || !sg.frontend.InGame || !sg.frontendWatchMode() {
+	if sg == nil || (!sg.frontend.InGame && sg.opts.AuthorityClient == nil) || (!sg.frontendWatchMode() && sg.opts.AuthorityClient == nil) {
 		return false
 	}
 	switch item {

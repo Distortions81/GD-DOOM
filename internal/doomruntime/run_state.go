@@ -59,6 +59,7 @@ const (
 	frontendModeSaveLoad                 = sessionflow.FrontendModeSaveLoad
 	frontendModeMusicPlayer frontendMode = 100
 	frontendModeKeybinds    frontendMode = 101
+	frontendModeMultiplayer frontendMode = 102
 )
 
 type frontendState = sessionflow.Frontend
@@ -123,6 +124,7 @@ type sessionGame struct {
 	frontendKeybindRow       int
 	frontendKeybindSlot      int
 	frontendKeybindCapture   bool
+	multiplayer              authorityMenuState
 	startupMusicLocked       bool
 	startupMusicVisualReady  bool
 	startupMusicPending      musicPlaybackSource
@@ -146,6 +148,8 @@ type frontendMusicConfigPending struct {
 }
 
 type sessionInputSnapshot struct {
+	inputChars              []rune
+	controlHeld             bool
 	justPressedKeys         map[ebiten.Key]int
 	justPressedMouseButtons map[ebiten.MouseButton]int
 }

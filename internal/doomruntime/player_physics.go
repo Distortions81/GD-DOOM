@@ -148,6 +148,10 @@ type worldThinkerRef struct {
 }
 
 func (g *game) runOrderedWorldThinkers() {
+	g.runOrderedWorldThinkersForPlayers(nil)
+}
+
+func (g *game) runOrderedWorldThinkersForPlayers(players []*authoritativePlayerState) {
 	if g == nil {
 		return
 	}
@@ -158,16 +162,24 @@ func (g *game) runOrderedWorldThinkers() {
 		g.ensureMonsterAIState()
 	}
 	for lastOrder := int64(0); ; {
-		next, ok := g.nextWorldThinkerAfter(lastOrder)
+		next, ok := g.nextWorldThinkerAfterForPlayers(lastOrder, players)
 		if !ok {
 			return
 		}
-		g.tickWorldThinker(next)
+		if next.kind == worldThinkerPlayer && players != nil {
+			g.withAuthoritativePlayer(players[next.key], g.tickPlayerBody)
+		} else {
+			g.tickWorldThinker(next)
+		}
 		lastOrder = next.order
 	}
 }
 
 func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
+	return g.nextWorldThinkerAfterForPlayers(lastOrder, nil)
+}
+
+func (g *game) nextWorldThinkerAfterForPlayers(lastOrder int64, players []*authoritativePlayerState) (worldThinkerRef, bool) {
 	best := worldThinkerRef{}
 	found := false
 	consider := func(kind worldThinkerKind, key int, order int64) {
@@ -183,7 +195,13 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 	if g != nil && g.m != nil {
 		// P_PlayerThink applies input before the thinker list, but the player's
 		// mobj moves at its map-spawn position within that list.
-		consider(worldThinkerPlayer, 0, g.playerThinkerOrder())
+		if players == nil {
+			consider(worldThinkerPlayer, 0, g.playerThinkerOrder())
+		} else {
+			for i, p := range players {
+				consider(worldThinkerPlayer, i, p.thinkerOrder(g.m))
+			}
+		}
 		for i, th := range g.m.Things {
 			if !g.thingHasWorldThinker(i, th) {
 				continue
@@ -316,15 +334,22 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
+	// Input/player logic runs before the thinker list. The world advances once
+	// regardless of how many players supplied commands for this tic.
+	g.platTickedThisTic = false
+	g.runPlayerTic(cmd, usePressed, fireHeld)
+	g.tickGameplayWorld()
+}
+
+// runPlayerTic performs P_PlayerThink without advancing the shared world. Body
+// movement remains in the ordered thinker phase, as in single-player Doom.
+func (g *game) runPlayerTic(cmd moveCmd, usePressed, fireHeld bool) {
 	// P_PlayerThink consumes A_Saw's MF_JUSTATTACKED before checking death
 	// or teleport reactiontime. The forced command also reaches friction.
 	if g.p.justAttacked {
 		cmd.forward, cmd.side, cmd.turn, cmd.turnRaw = 0xc800/512, 0, 0, 0
 		g.p.justAttacked = false
 	}
-	// Plat same-tic activation only applies once the current world's plat phase
-	// has actually run; clear any stale latch from the previous tic first.
-	g.platTickedThisTic = false
 	g.currentMoveCmd = cmd
 	g.setAttackHeld(fireHeld)
 	g.updatePlayer(cmd)
@@ -343,7 +368,6 @@ func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 	}
 	g.tickWeaponFire()
 	g.tickPlayerCounters()
-	g.tickGameplayWorld()
 }
 
 func (g *game) tickPlayerSpecialSector() {
@@ -755,6 +779,7 @@ func (g *game) tryMove(x, y int64) bool {
 }
 
 func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
+	probePickup = probePickup && !g.predictionMovement
 	prevX := g.p.x
 	prevY := g.p.y
 	if g != nil && g.noClip {
@@ -770,7 +795,9 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			g.p.ceilz = g.sectorCeil[sec]
 		}
-		g.checkWalkSpecialLines(prevX, prevY, x, y)
+		if !g.predictionMovement {
+			g.checkWalkSpecialLines(prevX, prevY, x, y)
+		}
 		return true
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionForWithPickupTouch(x, y, false, probePickup)
@@ -795,7 +822,9 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 	g.p.floorz = tmfloor
 	g.p.ceilz = tmceil
 	g.setPlayerPosFixed(x, y)
-	g.checkWalkSpecialLinesWithCandidates(prevX, prevY, x, y, g.probeSpecialLinesForPlayer())
+	if !g.predictionMovement {
+		g.checkWalkSpecialLinesWithCandidates(prevX, prevY, x, y, g.probeSpecialLinesForPlayer())
+	}
 	return true
 }
 
@@ -818,7 +847,9 @@ func (g *game) zMovement() {
 		if g.p.momz < 0 {
 			if g.p.momz < -playerGravity*8 {
 				g.p.deltaViewHeight = g.p.momz >> 3
-				g.emitSoundEvent(soundEventOof)
+				if !g.predictionMovement {
+					g.emitSoundEvent(soundEventOof)
+				}
 			}
 			g.p.momz = 0
 		}
@@ -1105,7 +1136,17 @@ func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThin
 	}
 	const maxThingBlockRadius = 32 * fracUnit
 	probeEnabled := g.debugPlayerProbeActive()
-	if moverIsMonster && !g.isDead && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+	if g.authorityPlayers != nil {
+		for _, state := range g.authorityPlayers {
+			if moverThingIdx < 0 && !moverIsMonster && state.localSlot == g.localSlot {
+				continue
+			}
+			p, dead, _ := g.authoritativePlayerBody(state)
+			if !dead && actorsOverlapXY(x, y, radius, p.x, p.y, playerRadius) {
+				return true
+			}
+		}
+	} else if moverIsMonster && !g.isDead && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
 		if probeEnabled {
 			g.debugPlayerProbe(fmt.Sprintf("block thing=player type=player pos=(%d,%d) radius=%d", g.p.x, g.p.y, playerRadius), x, y)
 		}

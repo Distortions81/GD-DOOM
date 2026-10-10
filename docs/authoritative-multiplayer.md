@@ -1,0 +1,395 @@
+# Authoritative multiplayer
+
+Status: implementation integrated and locally verified; extended release playtesting remains. This is the current multiplayer design,
+superseding the peer-symmetric lockstep target in `netplay-protocol.md`.
+Existing broadcast/watch sessions remain a separate supported protocol.
+
+## Goal and release scope
+
+Deliver 2–4 player co-op and casual deathmatch with desktop/browser cross-play.
+A dedicated Go server owns the Doom simulation. Clients predict their own
+movement and reconcile to server snapshots. Losing a player's packets must not
+stop the other players, grant extra simulation time, duplicate an action, or
+corrupt the shared world.
+
+The release includes create/join, exact engine/content/rules compatibility,
+late join, reconnect, individual death/respawn, co-op map progression, deathmatch
+spawns/scoring/limits/rotation, and spectator viewing. Keep existing chat usable.
+Voice transport redesign and competitive hitscan lag compensation are later
+enhancements, not requirements for this release.
+
+## Authority and simulation
+
+* One owner advances a match in fixed 35 Hz tics. Rendering and network delivery
+  have independent clocks. Never advance the world once per player.
+* All players use the same player simulation, in ascending stable player ID
+  order. Inventory, health, weapon timing, use/attack latches, movement and
+  statistics belong to each player. Monsters, projectiles, sectors and RNG
+  belong to the world. Target identity and projectile ownership are explicit.
+* Clients send intent only. The server determines movement, collisions, damage,
+  ammo, pickups, deaths, respawns, score and map transitions.
+* Network readers enqueue bounded, validated messages. No socket operation may
+  block the simulation owner. Slow receivers have bounded queues and are dropped
+  or resynchronized instead of accumulating unlimited stale state.
+* Commands cannot grant additional elapsed time. Consume at most one command
+  for a player per server tic; reject duplicates, expired inputs and inputs
+  beyond a bounded future window. Use session/map epochs to reject old traffic.
+* Missing inputs briefly preserve forward/side movement, with turn and buttons
+  cleared. Then neutralize movement. Do not repeat fire, use or weapon changes.
+  Finalized tics never accept late commands. Timeout/removal does not stall peers.
+* If the server is overloaded, bound catch-up work and expose overload. Do not
+  skip physics tics. If a client is behind, replace its obsolete state with a
+  fresh authoritative snapshot rather than replaying an unbounded backlog.
+
+## Headless boundary
+
+The server must start and simulate without a display, window, GPU or audio
+device. Reuse existing Doom physics; do not introduce a second simplified game.
+Expose map initialization, player lifecycle, fixed-tic stepping, snapshots and
+restore independently of input polling, drawing and sound playback. Keep the
+single-player/demo ordering intact and retain its parity regression tests.
+Package-global gameplay RNG must not be shared unsafely between concurrent
+matches; initially one match per server process is acceptable and explicit.
+
+## Inputs, snapshots and prediction
+
+Every command carries a sequence number and intended server tic. A connection
+is bound to its server-assigned player ID; never trust a payload to choose the
+player it controls. Bounded clock/lead negotiation maps client sampling to the
+server's timeline. Reconnect establishes a fresh connection binding and input history. Map changes
+establish a new match epoch; packets from either superseded identity are rejected.
+
+Snapshots contain a monotonically ordered server tic, snapshot ID, baseline ID,
+per-client finalized input acknowledgment, authoritative local player state,
+entity states and lifecycle changes, relevant dynamic collision state, and
+match/score state. Entity IDs include a generation. Delta snapshots reference
+only a client-acknowledged baseline. Missing baselines trigger a reliable full
+snapshot. Compressed snapshots are reconstructed and verified before the game
+loop applies them; measured payload sizes are recorded below.
+
+The client keeps a bounded command history, predicts local movement using the
+shared movement code, restores the server player state, discards finalized
+commands (including expired ones), and replays only valid pending commands.
+Smooth small visual corrections and snap large corrections, teleports and
+respawns. Bound extrapolation during prolonged silence, then show disconnection.
+Interpolate remote entities from snapshots. Dynamic doors, lifts and player
+collisions require replicated collision state and can still cause corrections.
+
+Predict local weapon presentation where practical, but server results confirm
+hits and pickups. Stable event IDs deduplicate sounds/effects during replay.
+Cosmetic effects must not consume authoritative gameplay RNG.
+
+## Transport and protocol
+
+Define a new versioned game protocol; do not reinterpret GDSF v2 stream records
+as datagrams. Separate codec, session rules, simulation, and transport adapters.
+
+| Traffic | Delivery |
+| --- | --- |
+| Player input | Datagram with recent redundant commands and bounded history |
+| World snapshots | Sequenced datagram; newer usable state supersedes older state |
+| Setup, rules, map changes, required events | Reliable bounded control channel |
+| Join/resync baseline | Reliable bounded bulk transfer, isolated from live input |
+
+Use authenticated QUIC over UDP for native gameplay, with WebTransport over
+HTTP/3 providing the same datagrams and reliable streams to browsers. Reuse
+quic-go/webtransport-go for TLS, congestion control, replay protection and
+connection establishment. TCP/TLS remains a native stream option. WSS is the compatibility
+path for both gameplay and control and also supports initial bring-up. Browser
+WebTransport capability and deployment must be verified, with WSS fallback.
+WebRTC/mesh peer connections are not part of this architecture.
+
+Datagram sessions need authenticated connection binding, replay protection,
+size bounds, rate/congestion limits and no unauthenticated amplification.
+Use established security mechanisms rather than inventing cryptography.
+All decoders reject unsupported versions, invalid lengths and invalid values.
+WSS uses binary messages and bounded queues. Multiple logical channels on one
+WebSocket do not remove TCP head-of-line blocking; bulk transfer needs a separate
+connection or scheduling that prevents unbounded gameplay delay.
+
+Current wire limits: GDMP version 2; 8 inputs per batch; 8 MiB maximum decoded
+snapshot; 1,100 bytes maximum game datagram. Input packets and small compressed
+updates use datagrams on WebTransport. Independent baselines, larger updates,
+discovery, map changes, chat and follow controls use reliable streams. The
+datagram receive queue holds at most 32 messages. This is authenticated QUIC,
+not a separate raw-UDP socket protocol.
+
+Discovery uses a short-lived Query/ServerInfo exchange without reserving a slot.
+Its manifest is bounded to 8 KiB and 64 ordered WAD hashes. The client compares
+its own content and engine hashes before joining; discovery never supplies local
+filesystem paths. Map transitions validate the next map's compatibility key.
+
+## Sessions, spectators and chat
+
+The dedicated server grants players a 30-second reconnect grace period. Their
+bodies remain in the world, receive neutral controls and can still take damage.
+A valid 256-bit resume token preserves the body, inventory and score while
+replacing the connection identity, input history and snapshot acknowledgments.
+Tokens rotate; the previous token remains valid only until the new connection
+confirms activity, allowing recovery when a Welcome is lost. Grace expires even
+when every player disconnects. Explicit Leave releases the body without grace;
+the client gives that reliable message up to 500 ms before closing. A server
+process restart does not preserve these in-memory sessions.
+Five seconds without any server record triggers reconnect, even if client writes
+continue to succeed on a blackholed connection. Pongs count as server activity,
+so an observer waiting in an empty lobby remains connected.
+
+Up to 16 spectators join separately from the four gameplay slots. Spectators
+send acknowledgments and follow controls, never movement or weapon commands.
+They initially follow the lowest present player; F12 cycles the camera. If the
+selected player leaves, the camera follows another present player. An empty
+server keeps spectators waiting without advancing an empty world. Spectators
+currently rejoin as new observers after loss; they receive no player resume token.
+
+The existing T chat binding works for players and spectators. The server derives
+the sender name and slot from the admitted connection. Text is limited to 160
+UTF-8 runes, with a four-message burst and a two-message-per-second refill. Chat
+has monotonically increasing event IDs across maps, bounded reliable queues and
+client deduplication. Menus keep receiving chat and snapshots while gameplay
+controls are neutral; opening chat never pauses the match.
+Hold F6 to view the current roster, frags and deaths.
+
+The desktop and WASM title/pause menus include **Multiplayer**. Its server list
+includes the configured default and saved custom addresses. Select a server to
+see its map, mode, player capacity, spectators and loaded-WAD/engine compatibility;
+the list also shows response time. **Refresh** queries these addresses in the
+background without reserving gameplay slots. Older servers can still supply
+map and compatibility information when player counts are unavailable. This is
+a bounded saved list of up to 32 addresses, with no public master registry or
+automatic network scanning.
+
+Use **Add** or **Edit** for an HTTPS/WebTransport or WS/WSS URL,
+or a native `host:port` TCP address. Server entries persist in the native
+configuration's `multiplayer_servers` field, or in the current browser origin's
+local storage. Choose a player name, optionally select spectator mode, then **Join**.
+Joining runs in the background; Escape cancels and errors stay in the menu for
+retry. The loaded WAD stack is retained and checked against the server. While
+connected, **Leave Match** releases the player and returns to the title menu
+without exiting the program or reloading the browser. Local rules are restored,
+while audio, rendering and input preferences remain current.
+The `-multiplayer-server` option selects the default list entry; `-connect` still
+joins immediately. `MULTIPLAYER_SERVER` supplies the default browser address
+when running `scripts/build_wasm.sh`.
+
+Mouse look turns the player left and right with the same sensitivity and
+inversion settings as local play; vertical pitch is not implemented. In source
+port mode, Backslash toggles mouse look. Browser players click the game to
+capture the pointer. Relative motion accumulates between the 35 Hz commands,
+is predicted locally once, and is reconciled to the authoritative result.
+Menus, chat and reconnecting clear pending motion and send neutral controls or
+no gameplay input as appropriate. Regression tests cover startup suppression,
+repeated host samples, catch-up commands, sensitivity, inversion and correction
+without duplicate turning.
+
+Menu verification: real browser joining, movement, leaving to title, and
+rejoining as a spectator passed without a page reload. The public WASM build
+also passed the WAD-picker-to-Multiplayer-menu check. All 36 repository test
+packages passed, including new join/leave/cancel/retry tests; focused app and
+menu race checks passed. See [deployment status](wasm-deployment.md) for the
+hosted server's remaining firewall requirement.
+
+## Rules
+
+Co-op: independent health/ammo/weapons, cooperative map completion, per-player
+respawn, explicit shared-key and pickup rules, configurable friendly fire.
+Collected keys are shared and survive individual respawn. Living players carry
+health, armor, ammunition and weapons to the next map; keys and temporary powers
+reset for that map. A dead player starts the next map with a fresh loadout.
+Deathmatch: map deathmatch starts, player-to-player hitscan/projectile damage,
+suicide/frag scoring, respawn, frag/time limits and rotation. Original map pickups
+return after 30 seconds, including weapons; there is no weapons-stay mode.
+Invulnerability, invisibility, dropped items and runtime-spawned items do not
+respawn. Co-op retains consumed world pickups. With co-op friendly fire disabled,
+a teleporter occupied by a living teammate blocks the teleport. Deathmatch
+telefrags bypass invulnerability and credit the teleporting player.
+The server announces these rules in the compatibility handshake. Late joins and
+disconnects are committed at server tic boundaries. A client menu never pauses
+the match. A lost server ends the session cleanly; player host migration is not
+required because the dedicated server is the authority.
+
+## Implementation checklist
+
+- [x] Record design and release acceptance criteria.
+- [x] Separate player stepping from world stepping; baseline runtime regression suite passed.
+- [x] Implement canonical per-player state, targeting, collision and damage ownership.
+- [x] Establish a display/audio-free simulation and server executable.
+- [x] Implement bounded input scheduling, missing-input policy and acknowledgments.
+- [x] Implement versioned messages and strict codec bounds.
+- [x] Implement validated client baselines, player incarnations and acknowledged snapshot compression.
+- [x] Add the desktop connection path and verify TCP clients against a real map.
+- [x] Implement and unit-test prediction, reconciliation, interpolation and event deduplication.
+- [x] Implement co-op/deathmatch rules and epoch transitions; full play-through acceptance remains below.
+- [x] Implement WS/WSS cross-play; TCP/WS integration and actual browser WS movement/firing verified.
+- [x] Implement authenticated QUIC/WebTransport and HTTPS-to-WSS fallback; real browser QUIC and native fallback verified.
+- [x] Implement late join, reconnect grace, explicit leave, timeout, spectator cameras and status UI.
+- [x] Connect the existing chat UI to bounded server-owned identity, rate limits and reliable delivery.
+- [x] Run fault-injection, integration, race, regression and the local browser checks recorded below.
+- [x] Document supported launch/build commands and measured transport limits.
+
+## Acceptance evidence
+
+Completion requires all of the following, not merely package-level codec tests:
+
+1. A server starts with DISPLAY unset and no audio device and loads a real WAD.
+2. Two independently controlled clients complete a co-op map and a deathmatch.
+   Health, ammo, monsters, damage, pickups, respawns and scores remain correct.
+3. Desktop/browser clients share a session with content mismatch rejection.
+4. One client loses traffic briefly while other players and the world continue.
+   Recovery yields correct server state without duplicated shots or extra motion.
+5. Tests exercise loss, jitter, reorder, duplication, stale epochs, future-input
+   flooding, disconnect, late join, missing delta baseline and slow receivers.
+6. Prediction converges after collision/correction; teleports/respawns clear old
+   history; replay does not duplicate effects or mutate world RNG.
+7. Native UDP and browser datagrams are verified against the same authority;
+   WSS fallback works when datagrams are unavailable.
+8. Server simulation never waits on network writes, memory is bounded, and
+   concurrency checks pass. Existing single-player/demo and broadcast checks pass.
+
+## Progress and known gaps
+
+2026-10-09 implementation evidence:
+
+* A real E1M1 test runs two TCP clients while one stops sending input, then resumes.
+  The world continues; acknowledgments finalize missing tics without inventing
+  received sequence numbers.
+* The server command test runs a TCP player and WebSocket player on E1M1, ends a
+  timed deathmatch, and retains both connections on E1M2 with a new epoch.
+* Two actual browser/WASM co-op clients moved and fired independently on E1M1,
+  rendered remote player sprites, and retained 100 health with friendly fire
+  disabled. Chat reached a spectator, F12 changed its camera, and automap
+  exploration updated. Two deathmatch players remained connected during live
+  E1M1/E1M2 rotation. Explicit quit displayed the session-ended page.
+  Transport-level WASM tests also execute the browser WebSocket API bridge.
+* Two production clients, framed messages, the real input scheduler and canonical
+  snapshots complete E1M2 co-op through its real exit switch. Scheduled movement
+  collects actual ammo, health and the shared red key. Both clients retain health
+  and ammunition on real E1M3; map-specific keys reset. A separate E1M1 test fires
+  the actual pistol, confirms the first frag on both clients, independently
+  respawns the victim using its own input, fires the second kill to reach the
+  frag limit, then rotates to real E1M2 with fresh scores/loadouts. These focused
+  fixtures place players beside pickups/switches or in a clear firing lane and
+  set low target health; they do not stand in for walking a full campaign.
+* Thirty-six two-player E1M1 snapshots measured about 129,291 bytes raw each,
+  9,743 bytes for the first compressed full state and 613 bytes on average for
+  subsequent updates. At 17.5 snapshots/second that is roughly 10.5 KiB/s per
+  viewer for steady-state payload, excluding transport overhead. This is one
+  measured scenario, not a bound for all WADs or combat loads.
+* Compression uses zstd with an acknowledged reconstructed snapshot as a raw
+  dictionary. Each peer retains at most eight baselines/16 MiB. Exact decoded
+  length, BLAKE3 digest, zstd checksum and allocation/window bounds are checked.
+  Independent compressed full states repair missing or evicted baselines.
+* Input timing incorporates a measured, bounded RTT. Client simulation work is
+  capped at four tics per update and a 35-tic prediction horizon. A prolonged
+  gap stops further prediction instead of granting extra elapsed time.
+* Race checks pass for the network package; a snapshot codec fuzz run processed
+  329,061 inputs. Display-free runtime tests cover correction, menus, teleports,
+  damage attribution, respawn, map changes, sounds and prediction RNG isolation.
+* Native WebTransport tests run real QUIC with certificate verification, origin
+  rejection, discovery close/drain, input consumption, compressed snapshots,
+  final-state delivery and cancellation. These tests pass with the race detector.
+  Transport fault tests cover lost baselines, reordering, stale epochs, exact
+  reconstruction and bounded datagram queues. A real-browser WebTransport
+  fixture also passes HTTP/3 with a TLS certificate pin, discovery, reliable
+  initial baseline, input datagram and compressed correction. The browser API
+  bridge has separate Node mock coverage.
+* Native HTTPS-to-WSS fallback passes against an actual UDP blackhole and a
+  fixture certificate trusted through the platform CA path. Discovery falls
+  back successfully; joining reuses WSS without another QUIC attempt. A separate
+  untrusted-certificate case confirms certificate verification remains enabled.
+* Real TCP/WebSocket spectator tests cover an empty lobby, later player joins,
+  camera cycling, immediate explicit player leave, camera fallback and map
+  transitions. Both transport permutations pass with the race detector.
+* Reconnect tests cover preserved bodies, stale connection/input rejection,
+  lost-Welcome retry, token retirement, grace expiry with no connected players
+  and map changes. Blackholed-connection tests prove five-second silent-read
+  detection initiates resume within the grace period; Pong-only liveness passes.
+  Chat tests cover identity assignment, UTF-8 bounds, rate
+  limits, reliable echo to both clients, deduplication and background UI polling.
+* The E1M1 datagram fault test connects the real client, codec, match and prediction
+  through a deterministic transport emulator for 160 server tics. It injects 65
+  drops, 40 duplicates and 17 reorders, including burst outages. Pending history
+  peaks at 23 commands; one attack consumes exactly one bullet; final pose and
+  ammunition reconcile exactly. Socket/QUIC authentication is tested separately.
+* The final `go test ./... -count=1` run passes, including existing single-player,
+  demo, broadcast and voice packages. The network, app and server suites and
+  authoritative runtime/prediction tests pass with `-race`. Native display-free
+  server and JS/WASM builds pass. Scoped vet
+  passes for the network, app and server; runtime-wide vet reports three existing
+  unkeyed `WorldBBox` literals in `map_floor_boundaries_test.go`.
+
+Still required before release: long co-op campaigns and deathmatch playtests,
+WAN/mobile-network testing, and the full supported browser/native platform matrix. The local checks above
+cover specific deterministic and interactive scenarios, not every WAD or network
+condition. Deathmatch items currently reappear without a dedicated
+respawn fog/sound effect. A client baseline is not a server rollback/save
+checkpoint; server-only item timers are intentionally absent. One authority
+process hosts one match because the gameplay RNG remains process-global.
+
+## Current launch paths
+
+Experimental local co-op (matching WADs in the same order on every machine):
+
+```bash
+go run ./cmd/gdserver -wad DOOM1.WAD -listen 127.0.0.1:6671
+go run . -wad DOOM1.WAD -connect 127.0.0.1:6671 -player-name Player
+```
+
+The client queries the server's map/rules and checks its own engine/WAD hashes
+before joining. Use `-mode deathmatch -frag-limit 20 -rotation E1M1,E1M2` on the
+server for rotating deathmatch. `-time-limit` is in seconds; zero disables it.
+The server's `-no-monsters`, `-skill`, and `-friendly-fire` settings are authoritative.
+
+WebSocket testing adds `-web-listen 127.0.0.1:6672` and, when the browser page is
+served from another origin, an explicit allowlist such as
+`-web-origins http://localhost:8000`. Join with
+`-connect ws://127.0.0.1:6672/netplay`. The browser launcher accepts a `connect`
+query parameter and optional `player-name`, `wad`, and `file` parameters.
+
+Add `-spectate` to a native client command, or `spectate=true` in the browser
+launcher query, to join as an observer. Use F12 to switch followed player and T
+to chat; hold F6 for the roster and score. The browser launch panel also exposes
+the server/name/spectator fields.
+
+For TLS TCP and WSS listeners supply `-tls-cert` and `-tls-key`; native clients
+use `tls://host:port`, while browser clients use `wss://host:port/netplay`.
+Certificate verification uses the platform trust store. Plain TCP/WS examples
+are local testing paths. WSS still has TCP head-of-line blocking: compression
+and bounded queues limit backlog but cannot remove that transport behavior.
+
+To serve authenticated datagrams and WSS fallback at the same host/port:
+
+```bash
+go run ./cmd/gdserver -wad DOOM1.WAD \
+  -listen 0.0.0.0:6671 \
+  -udp-listen 0.0.0.0:6672 -web-listen 0.0.0.0:6672 \
+  -tls-cert server.crt -tls-key server.key \
+  -web-origins https://play.example.com
+go run . -wad DOOM1.WAD -connect https://game.example.com:6672/netplay
+```
+
+The certificate must be trusted and valid for the server hostname. An `https://`
+game URL tries WebTransport first, then the same URL over WSS; a successful
+fallback is reused for discovery, joining and reconnect. `wt://` explicitly
+selects WebTransport without fallback. Both native and browser adapters share
+the same authority, and protocol controls remain reliable on either path.
+
+Build the dedicated server without display/audio dependencies and build the
+browser launcher from the repository root:
+
+```bash
+CGO_ENABLED=0 go build -o gdserver ./cmd/gdserver
+./scripts/build_wasm.sh
+go run ./cmd/wasmserve
+```
+
+For local browser testing, point the served launcher's `connect` setting at the
+WS endpoint above and allow that page's exact origin with `-web-origins`.
+
+## References
+
+* [Valve: latency compensation and shared prediction code](https://developer.valvesoftware.com/w/index.php?title=Latency_Compensating_Methods_in_Client%2FServer_In-game_Protocol_Design_and_Optimization)
+* [WebTransport streams and datagrams](https://developer.chrome.com/docs/capabilities/web-apis/webtransport)
+* [WebSocket protocol](https://www.rfc-editor.org/info/rfc6455/)
+
+* [quic-go WebTransport server and origin validation](https://quic-go.net/docs/webtransport/server/)
+* [WebTransport Go releases and supported protocol revisions](https://github.com/quic-go/webtransport-go/releases)

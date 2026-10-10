@@ -373,7 +373,12 @@ func (g *game) heightClipAroundSectorWithCrush(sec int, oldPlayerFloor int64, cr
 		playerTouches = g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius)
 	}
 	clipPlayer := func() {
-		if !g.heightClipPlayer(oldPlayerFloor) && g.stats.Health > 0 {
+		floor := oldPlayerFloor
+		if g.authorityPlayers != nil {
+			// Each player's cached floor belongs to its own pre-move body.
+			floor = g.p.floorz
+		}
+		if !g.heightClipPlayer(floor) && g.stats.Health > 0 {
 			nofit = true
 			if damagePulse {
 				g.damagePlayer(10, "Crushed")
@@ -386,11 +391,27 @@ func (g *game) heightClipAroundSectorWithCrush(sec int, oldPlayerFloor int64, cr
 	if ok && g.bmapWidth > 0 && g.bmapHeight > 0 && len(g.thingBlockCells) == g.bmapWidth*g.bmapHeight {
 		for bx := left; bx <= right; bx++ {
 			for by := bottom; by <= top; by++ {
-				g.walkActorBlockCell(by*g.bmapWidth+bx, clipThing, clipPlayer)
+				if g.authorityPlayers != nil {
+					g.walkAuthoritativeActorBlockCell(by*g.bmapWidth+bx, clipThing, clipPlayer)
+				} else {
+					g.walkActorBlockCell(by*g.bmapWidth+bx, clipThing, clipPlayer)
+				}
 			}
 		}
 	} else {
-		if playerTouches {
+		if g.authorityPlayers != nil {
+			for _, state := range g.authorityPlayers {
+				g.withAuthoritativePlayer(state, func() {
+					touches := g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius)
+					if ok {
+						touches = g.playerBlockCellInBox(left, right, bottom, top)
+					}
+					if touches {
+						clipPlayer()
+					}
+				})
+			}
+		} else if playerTouches {
 			clipPlayer()
 		}
 		for i, th := range g.m.Things {
@@ -1326,6 +1347,9 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 				g.p.momy = 0
 				g.p.reactionTime = 18
 				g.p.teleportedThisTic = true
+				if g.authorityRules != nil && g.localSlot >= 1 && g.localSlot <= 4 {
+					g.authorityRules.Scores[g.localSlot].MovementEpoch++
+				}
 				g.p.angle = destAngle
 			} else {
 				g.setThingPosFixed(actorIdx, tx, ty)
@@ -1402,9 +1426,29 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		return false
 	}
 	allowStomp := isPlayer || g.currentMapName() == "MAP30"
+	sourceSlot := 0
+	if isPlayer && len(g.authorityPlayers) != 0 {
+		sourceSlot = g.localSlot
+	}
+	// In co-op, a protected teammate blocks a destination. Check all player
+	// bodies before doing any damage so rejection cannot partially telefrag a
+	// different actor. Start markers alone never count as occupants.
+	for _, state := range g.authorityPlayers {
+		p, dead, _ := g.authoritativePlayerBody(state)
+		if state.localSlot == sourceSlot || dead || !actorsOverlapXY(x, y, radius, p.x, p.y, playerRadius) {
+			continue
+		}
+		if !allowStomp || !g.authorityPlayerDamageAllowed(sourceSlot, state.localSlot) {
+			return false
+		}
+	}
 	blocked := false
 	visitPlayer := func() {
-		if blocked || isPlayer || g.stats.Health <= 0 || g.isDead ||
+		self := isPlayer
+		if len(g.authorityPlayers) != 0 {
+			self = sourceSlot != 0 && g.localSlot == sourceSlot
+		}
+		if blocked || self || g.stats.Health <= 0 || g.isDead ||
 			!actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
 			return
 		}
@@ -1412,7 +1456,13 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 			blocked = true
 			return
 		}
-		g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
+		g.applyPlayerDamageTarget(g.localSlot, sourceSlot, func() {
+			g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
+		})
+		if len(g.authorityPlayers) != 0 && !g.isDead {
+			// A surviving protected actor must never overlap the teleporter.
+			blocked = true
+		}
 	}
 	visitThing := func(i int) {
 		if blocked {
@@ -1464,14 +1514,24 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		// That order assigns each victim its randomized first death frame.
 		for bx := max(left, 0); bx <= min(right, g.bmapWidth-1); bx++ {
 			for by := max(bottom, 0); by <= min(top, g.bmapHeight-1); by++ {
-				g.walkActorBlockCell(by*g.bmapWidth+bx, visitThing, visitPlayer)
+				if len(g.authorityPlayers) != 0 {
+					g.walkAuthoritativeActorBlockCell(by*g.bmapWidth+bx, visitThing, visitPlayer)
+				} else {
+					g.walkActorBlockCell(by*g.bmapWidth+bx, visitThing, visitPlayer)
+				}
 				if blocked {
 					return false
 				}
 			}
 		}
 	} else {
-		visitPlayer()
+		if len(g.authorityPlayers) != 0 {
+			for _, state := range g.authorityPlayers {
+				g.withAuthoritativePlayer(state, visitPlayer)
+			}
+		} else {
+			visitPlayer()
+		}
 		for i := range g.m.Things {
 			visitThing(i)
 		}

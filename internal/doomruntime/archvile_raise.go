@@ -105,9 +105,16 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 	}
 	cx, cy := g.thingPosFixed(corpseIdx, g.m.Things[corpseIdx])
 	oldPlayer, oldTarget := g.thingTargetPlayer[vileIdx], g.thingTargetIdx[vileIdx]
+	oldSlot := 0
+	if vileIdx < len(g.thingTargetPlayerSlot) {
+		oldSlot = g.thingTargetPlayerSlot[vileIdx]
+	}
 	g.setMonsterTargetThing(vileIdx, corpseIdx)
 	g.faceMonsterToward(vileIdx, vx, vy, cx, cy)
 	g.thingTargetPlayer[vileIdx], g.thingTargetIdx[vileIdx] = oldPlayer, oldTarget
+	if vileIdx < len(g.thingTargetPlayerSlot) {
+		g.thingTargetPlayerSlot[vileIdx] = oldSlot
+	}
 	g.thingState[vileIdx], g.thingStatePhase[vileIdx], g.thingStateTics[vileIdx] = monsterStateHeal, 0, 10
 	g.emitSoundEventAt(soundEventMonsterRaise, cx, cy)
 	g.startMonsterRaise(corpseIdx)
@@ -124,6 +131,9 @@ func (g *game) startMonsterRaise(i int) {
 	g.thingAttackFireTics[i] = -1
 	g.thingJustAtk[i], g.thingJustHit[i], g.thingSkullFly[i], g.thingInFloat[i], g.thingAmbush[i] = false, false, false, false, false
 	g.thingAggro[i], g.thingTargetPlayer[i], g.thingTargetIdx[i] = false, false, -1
+	if i < len(g.thingTargetPlayerSlot) {
+		g.thingTargetPlayerSlot[i] = 0
+	}
 	// Original flags and full corpse height are restored without relinking or
 	// resetting reactiontime, threshold, movedir, or movecount. A crushed corpse
 	// keeps its zero height/radius: multiplying its height by four still gives 0.

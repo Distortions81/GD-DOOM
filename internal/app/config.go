@@ -69,6 +69,16 @@ func configuredDetailLevelForMode(cfg *fileConfig, sourcePortMode bool) int {
 	return -1
 }
 
+// A saved AUTO level is the last performance adjustment, not a manual quality
+// preference. Start a new launch at full detail and let AUTO measure it again.
+// Explicit command-line levels remain useful for profiling and comparisons.
+func startupDetailLevel(level int, auto, explicit bool) int {
+	if auto && !explicit {
+		return 0
+	}
+	return level
+}
+
 func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortMode bool) error {
 	if strings.TrimSpace(path) == "" {
 		return nil

@@ -100,6 +100,7 @@
       <div id="loading-copy" class="loading-copy">Preparing browser runtime.</div>
       <div id="loading-status" class="loading-status">Booting</div>
       <div class="spinner" aria-hidden="true"></div>
+      <p id="return-link" hidden><a href="./" target="_top" style="color: #ffd492">Return to launcher</a></p>
     </div>
   </div>
   <script src="./build-id.js"></script>
@@ -115,6 +116,13 @@
       if (loadingCopy && copy) {
         loadingCopy.textContent = copy;
       }
+    }
+
+    function showSessionEnd(status, copy) {
+      if (loading && !loading.isConnected) document.body.appendChild(loading);
+      setLoading(status, copy);
+      loading.querySelector(".spinner").hidden = true;
+      document.getElementById("return-link").hidden = false;
     }
 
     function getBuildID() {
@@ -265,7 +273,20 @@
       .then(() => {
         setLoading("Starting", "Creating Go runtime.");
         const go = new Go();
+        go.exit = (code) => {
+          if (code !== 0) showSessionEnd("Unable to continue", "Check the server address and that your WADs match the server. The browser console has the error details.");
+          else showSessionEnd("Session ended", "You can return to the launcher to play again.");
+        };
         go.argv = ["gddoom", "-music-backend=impsynth"];
+        const launchParams = new URLSearchParams(window.location.search);
+        if (!launchParams.has("multiplayer-server") && typeof window.__gddoomMultiplayerServer === "string" && window.__gddoomMultiplayerServer) {
+          go.argv.push(`-multiplayer-server=${window.__gddoomMultiplayerServer}`);
+        }
+        // Accept named launch options, never an arbitrary shell/argument string.
+        // Go validates addresses, rule bounds, local content, and compatibility.
+        for (const name of ["connect", "multiplayer-server", "player-name", "spectate", "map", "skill", "no-monsters", "wad", "file"]) {
+          if (launchParams.has(name)) go.argv.push(`-${name}=${launchParams.get(name)}`);
+        }
         return instantiateGame(go).then((result) => {
           setLoading("Launching", "Handing control to GD-DOOM.");
           if (loading) {
@@ -282,7 +303,7 @@
       })
       .catch((err) => {
         console.error(err);
-        setLoading("Launch Failed", String(err));
+        showSessionEnd("Launch Failed", String(err));
       });
   </script>
 </body>

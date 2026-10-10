@@ -23,60 +23,68 @@ const (
 )
 
 type projectile struct {
-	x                 int64
-	y                 int64
-	z                 int64
-	prevX             int64
-	prevY             int64
-	prevZ             int64
-	vx                int64
-	vy                int64
-	vz                int64
-	floorz            int64
-	ceilz             int64
-	subsector         int // One-based linked subsector; zero means not cached.
-	radius            int64
-	height            int64
-	ttl               int // Legacy snapshot field; missiles do not expire in flight.
-	sourceX           int64
-	sourceY           int64
-	sourceThing       int
-	sourceType        int16
-	sourcePlayer      bool
-	tracerPlayer      bool
-	tracerThingTarget int // One-based thing index; zero means no thing tracer.
-	lastLook          int
-	frame             int
-	frameTics         int
-	angle             uint32
-	kind              projectileKind
-	order             int64
-	deferredTick      bool
-	spawnPrev         bool
+	x                      int64
+	y                      int64
+	z                      int64
+	prevX                  int64
+	prevY                  int64
+	prevZ                  int64
+	vx                     int64
+	vy                     int64
+	vz                     int64
+	floorz                 int64
+	ceilz                  int64
+	subsector              int // One-based linked subsector; zero means not cached.
+	radius                 int64
+	height                 int64
+	ttl                    int // Legacy snapshot field; missiles do not expire in flight.
+	sourceX                int64
+	sourceY                int64
+	sourceThing            int
+	sourceType             int16
+	sourcePlayer           bool
+	sourcePlayerSlot       int
+	sourcePlayerGeneration uint32
+	tracerPlayer           bool
+	tracerPlayerSlot       int
+	tracerPlayerGeneration uint32
+	tracerThingTarget      int // One-based thing index; zero means no thing tracer.
+	lastLook               int
+	frame                  int
+	frameTics              int
+	angle                  uint32
+	kind                   projectileKind
+	order                  int64
+	deferredTick           bool
+	spawnPrev              bool
 }
 
 type projectileImpact struct {
-	x                int64
-	y                int64
-	z                int64
-	floorz           int64
-	ceilz            int64
-	subsector        int // Retained when a spawn-check move fails.
-	kind             projectileKind
-	order            int64
-	sourceThing      int
-	sourceType       int16
-	sourcePlayer     bool
-	fireTargetThing  int // One-based thing index; zero means no thing target.
-	fireTargetPlayer bool
-	lastLook         int
-	tics             int
-	totalTics        int
-	phase            int
-	phaseTics        int
-	angle            uint32
-	skipBatchTic     int
-	sprayDone        bool
+	x                          int64
+	y                          int64
+	z                          int64
+	floorz                     int64
+	ceilz                      int64
+	subsector                  int // Retained when a spawn-check move fails.
+	kind                       projectileKind
+	order                      int64
+	sourceThing                int
+	sourceType                 int16
+	sourcePlayer               bool
+	sourcePlayerSlot           int
+	sourcePlayerGeneration     uint32
+	fireTargetThing            int // One-based thing index; zero means no thing target.
+	fireTargetPlayer           bool
+	fireTargetPlayerSlot       int
+	fireTargetPlayerGeneration uint32
+	lastLook                   int
+	tics                       int
+	totalTics                  int
+	phase                      int
+	phaseTics                  int
+	angle                      uint32
+	skipBatchTic               int
+	sprayDone                  bool
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -270,6 +278,10 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		p.tracerPlayer = false
 		p.tracerThingTarget = g.thingTargetIdx[thingIdx] + 1
 	}
+	if p.tracerPlayer && len(g.authorityPlayers) != 0 {
+		p.tracerPlayerSlot = g.monsterTargetPlayerSlot(thingIdx)
+		p.tracerPlayerGeneration = g.authorityPlayerGeneration(p.tracerPlayerSlot)
+	}
 	p.floorz, p.ceilz = g.projectileSpawnSupportStateAt(p.x, p.y)
 	if !g.finishProjectileSpawn(&p, true) {
 		return false
@@ -405,11 +417,15 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		if hitThing {
 			if thingHit.isPlayer {
 				if dmg := projectileDamage(p); dmg > 0 {
-					g.damagePlayerFromWithInflictorZ(dmg, projectileHitMessage(p.kind), p.x, p.y, true, p.sourceThing, p.z)
+					g.applyPlayerDamageTargetFrom(thingHit.playerSlot, authorityPlayerIdentity{Slot: p.sourcePlayerSlot, Generation: p.sourcePlayerGeneration}, func() {
+						g.damagePlayerFromWithInflictorZ(dmg, projectileHitMessage(p.kind), p.x, p.y, true, p.sourceThing, p.z)
+					})
 				}
 			} else if thingHit.damage {
 				if dmg := projectileDamage(p); dmg > 0 {
-					g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, p.x, p.y, true, p.z, true)
+					g.withProjectileSource(p.sourcePlayerSlot, p.sourcePlayerGeneration, func(validSource bool) {
+						g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer && validSource, p.sourceThing, p.x, p.y, true, p.z, true)
+					})
 				}
 			}
 			g.explodeProjectileDuringXY(p, xmove, ymove)
@@ -539,7 +555,9 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 	if damage <= 0 {
 		return
 	}
-	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind), p.sourcePlayer, p.sourceThing)
+	g.withProjectileSource(p.sourcePlayerSlot, p.sourcePlayerGeneration, func(validSource bool) {
+		g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind), p.sourcePlayer && validSource, p.sourceThing)
+	})
 }
 
 // A missile that explodes during P_MobjThinker reaches its state decrement
@@ -623,28 +641,30 @@ func (g *game) spawnPlayerRocket() bool {
 	sz := g.p.z + 32*fracUnit
 	lastLook := doomrand.PRandom() & 3
 	p := projectile{
-		x:            sx,
-		y:            sy,
-		z:            sz,
-		prevX:        sx,
-		prevY:        sy,
-		prevZ:        sz,
-		vx:           vx,
-		vy:           vy,
-		vz:           vz,
-		radius:       rocketRadius,
-		height:       rocketHeight,
-		ttl:          rocketTTL,
-		sourceX:      g.p.x,
-		sourceY:      g.p.y,
-		sourceThing:  -1,
-		sourceType:   16,
-		sourcePlayer: true,
-		lastLook:     lastLook,
-		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(projectileRocket)),
-		kind:         projectileRocket,
-		angle:        angle,
-		order:        g.allocThinkerOrder(),
+		x:                      sx,
+		y:                      sy,
+		z:                      sz,
+		prevX:                  sx,
+		prevY:                  sy,
+		prevZ:                  sz,
+		vx:                     vx,
+		vy:                     vy,
+		vz:                     vz,
+		radius:                 rocketRadius,
+		height:                 rocketHeight,
+		ttl:                    rocketTTL,
+		sourceX:                g.p.x,
+		sourceY:                g.p.y,
+		sourceThing:            -1,
+		sourceType:             16,
+		sourcePlayer:           true,
+		sourcePlayerSlot:       g.authoritativeSourceSlot(),
+		sourcePlayerGeneration: g.authorityPlayerGeneration(g.localSlot),
+		lastLook:               lastLook,
+		frameTics:              randomizedMissileSpawnTics(projectileSpawnStateTics(projectileRocket)),
+		kind:                   projectileRocket,
+		angle:                  angle,
+		order:                  g.allocThinkerOrder(),
 	}
 	p.floorz, p.ceilz = g.projectileSpawnSupportStateAt(p.x, p.y)
 	if !g.finishProjectileSpawn(&p, true) {
@@ -699,28 +719,30 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	sz := g.p.z + 32*fracUnit
 	lastLook := doomrand.PRandom() & 3
 	p := projectile{
-		x:            sx,
-		y:            sy,
-		z:            sz,
-		prevX:        sx,
-		prevY:        sy,
-		prevZ:        sz,
-		vx:           vx,
-		vy:           vy,
-		vz:           vz,
-		radius:       radius,
-		height:       height,
-		ttl:          ttl,
-		sourceX:      g.p.x,
-		sourceY:      g.p.y,
-		sourceThing:  -1,
-		sourceType:   0,
-		sourcePlayer: true,
-		lastLook:     lastLook,
-		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
-		kind:         kind,
-		angle:        angle,
-		order:        g.allocThinkerOrder(),
+		x:                      sx,
+		y:                      sy,
+		z:                      sz,
+		prevX:                  sx,
+		prevY:                  sy,
+		prevZ:                  sz,
+		vx:                     vx,
+		vy:                     vy,
+		vz:                     vz,
+		radius:                 radius,
+		height:                 height,
+		ttl:                    ttl,
+		sourceX:                g.p.x,
+		sourceY:                g.p.y,
+		sourceThing:            -1,
+		sourceType:             0,
+		sourcePlayer:           true,
+		sourcePlayerSlot:       g.authoritativeSourceSlot(),
+		sourcePlayerGeneration: g.authorityPlayerGeneration(g.localSlot),
+		lastLook:               lastLook,
+		frameTics:              randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
+		kind:                   kind,
+		angle:                  angle,
+		order:                  g.allocThinkerOrder(),
 	}
 	p.floorz, p.ceilz = g.projectileSpawnSupportStateAt(p.x, p.y)
 	if !g.finishProjectileSpawn(&p, true) {
@@ -780,11 +802,15 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	if hitThing {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damagePlayerFromWithInflictorZ(dmg, projectileHitMessage(p.kind), nx, ny, true, p.sourceThing, nz)
+				g.applyPlayerDamageTargetFrom(thingHit.playerSlot, authorityPlayerIdentity{Slot: p.sourcePlayerSlot, Generation: p.sourcePlayerGeneration}, func() {
+					g.damagePlayerFromWithInflictorZ(dmg, projectileHitMessage(p.kind), nx, ny, true, p.sourceThing, nz)
+				})
 			}
 		} else if thingHit.damage {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, nx, ny, true, nz, true)
+				g.withProjectileSource(p.sourcePlayerSlot, p.sourcePlayerGeneration, func(validSource bool) {
+					g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer && validSource, p.sourceThing, nx, ny, true, nz, true)
+				})
 			}
 		}
 		g.explodeProjectileAt(*p, nx, ny, nz)
@@ -824,7 +850,7 @@ func (g *game) applyBFGSpray(center uint32) {
 		if !ok {
 			continue
 		}
-		if target.kind != lineAttackTargetThing {
+		if target.kind != lineAttackTargetThing && target.kind != lineAttackTargetPlayer {
 			continue
 		}
 		tx, ty, tz, height, _, _, _, targetOK := g.lineAttackTargetState(target)
@@ -838,7 +864,12 @@ func (g *game) applyBFGSpray(center uint32) {
 		for j := 0; j < 15; j++ {
 			damage += (doomrand.PRandom() & 7) + 1
 		}
-		g.damageShootableThingFrom(target.idx, damage, true, -1, g.p.x, g.p.y, true)
+		if target.kind == lineAttackTargetPlayer {
+			sx, sy := g.p.x, g.p.y
+			g.applyPlayerDamageTarget(target.playerSlot, g.localSlot, func() { g.damagePlayerFrom(damage, "BFG blast", sx, sy, true, -1) })
+		} else {
+			g.damageShootableThingFrom(target.idx, damage, true, -1, g.p.x, g.p.y, true)
+		}
 	}
 }
 
@@ -978,6 +1009,8 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
+	fx.sourcePlayerSlot = p.sourcePlayerSlot
+	fx.sourcePlayerGeneration = p.sourcePlayerGeneration
 	fx.lastLook = p.lastLook
 	if p.kind == projectilePlasmaBall && p.sourceType == 68 {
 		// MT_ARACHPLAZ uses S_ARACH_PLEX through S_ARACH_PLEX5: five
@@ -1006,6 +1039,8 @@ func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
+	fx.sourcePlayerSlot = p.sourcePlayerSlot
+	fx.sourcePlayerGeneration = p.sourcePlayerGeneration
 	fx.lastLook = p.lastLook
 	return idx
 }
@@ -1075,7 +1110,11 @@ func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {
 		}
 		if fx.kind == projectileBFGBall && !fx.sprayDone && fx.phase == 2 {
 			fx.sprayDone = true
-			g.applyBFGSpray(fx.angle)
+			g.withProjectileSource(fx.sourcePlayerSlot, fx.sourcePlayerGeneration, func(validSource bool) {
+				if validSource {
+					g.applyBFGSpray(fx.angle)
+				}
+			})
 		}
 	}
 	return fx.tics > 0
@@ -1356,13 +1395,14 @@ func (g *game) debugProjectileBlock(p projectile, ox, oy, oz, nx, ny, nz int64, 
 }
 
 type projectileThingHit struct {
-	idx      int
-	isPlayer bool
-	frac     float64
-	x        int64
-	y        int64
-	z        int64
-	damage   bool
+	idx        int
+	isPlayer   bool
+	playerSlot int
+	frac       float64
+	x          int64
+	y          int64
+	z          int64
+	damage     bool
 }
 
 const doomMaxMove = 30 * fracUnit
@@ -1391,9 +1431,15 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 	}
 	var result projectileThingHit
 	visitPlayer := func() bool {
-		if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && overlapsSquare(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) &&
+		owner := p.sourcePlayer
+		slot := 0
+		if len(g.authorityPlayers) != 0 {
+			slot = g.localSlot
+			owner = p.sourcePlayer && p.sourcePlayerSlot == slot && p.sourcePlayerGeneration == g.authorityPlayerGeneration(slot)
+		}
+		if !owner && !g.isDead && g.stats.Health > 0 && overlapsSquare(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) &&
 			z <= g.p.z+playerHeight && z+p.height >= g.p.z {
-			result = projectileThingHit{idx: -1, isPlayer: true, frac: 1, x: nx, y: ny, z: z, damage: true}
+			result = projectileThingHit{idx: -1, isPlayer: true, playerSlot: slot, frac: 1, x: nx, y: ny, z: z, damage: true}
 			return true
 		}
 		return false
@@ -1450,6 +1496,25 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 			playerCell := g.thingBlockmapCellFor(g.p.x, g.p.y)
 			for bx := left; bx <= right; bx++ {
 				for by := bottom; by <= top; by++ {
+					if len(g.authorityPlayers) != 0 {
+						if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
+							continue
+						}
+						found := false
+						g.walkAuthoritativeActorBlockCell(by*g.bmapWidth+bx, func(i int) {
+							if !found {
+								found = visit(i)
+							}
+						}, func() {
+							if !found {
+								found = visitPlayer()
+							}
+						})
+						if found {
+							return result, true
+						}
+						continue
+					}
 					playerPending := playerCell >= 0 && bx == playerCell%g.bmapWidth && by == playerCell/g.bmapWidth
 					if !g.blockThingsIterator(bx, by, func(i int) bool {
 						// The player shares Doom's newest-first blocklinks with
@@ -1477,6 +1542,16 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 				}
 			}
 		}
+	}
+	if len(g.authorityPlayers) != 0 {
+		for _, state := range g.authorityPlayers {
+			found := false
+			g.withAuthoritativePlayer(state, func() { found = visitPlayer() })
+			if found {
+				return result, true
+			}
+		}
+		return projectileThingHit{}, false
 	}
 	if visitPlayer() {
 		return result, true
@@ -1571,6 +1646,16 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 		th := g.m.Things[idx]
 		tx, ty = g.thingPosFixed(idx, th)
 		tz, _, _ = g.thingSupportState(idx, th)
+	} else if p.tracerPlayerSlot != 0 {
+		state := g.authoritativePlayerForSlot(p.tracerPlayerSlot)
+		if state == nil || p.tracerPlayerGeneration != g.authorityPlayerGeneration(p.tracerPlayerSlot) {
+			return
+		}
+		body, dead, _ := g.authoritativePlayerBody(state)
+		if dead {
+			return
+		}
+		tx, ty, tz = body.x, body.y, body.z
 	} else if !p.tracerPlayer || g.isDead {
 		return
 	}

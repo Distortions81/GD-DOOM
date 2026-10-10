@@ -18,6 +18,7 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/netgame"
 	"gddoom/internal/render/hud"
 	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/linepolicy"
@@ -446,51 +447,64 @@ type game struct {
 	hudLogicalLayout  bool
 	State             mapview.ViewState
 
-	mode                      viewMode
-	rotateView                bool
-	parity                    automapParityState
-	showGrid                  bool
-	showLegend                bool
-	bigMap                    mapview.BigMapState
-	paused                    bool
-	pauseMenuActive           bool
-	pauseMenuMode             int
-	pauseMenuItemOn           int
-	pauseMenuOptionsOn        int
-	pauseMenuSoundOn          int
-	pauseMenuVoiceOn          int
-	pauseMenuEpisodeOn        int
-	pauseMenuSelectedEpisode  int
-	pauseMenuSkillOn          int
-	pauseMenuKeybindRow       int
-	pauseMenuKeybindSlot      int
-	pauseMenuKeybindCapture   bool
-	pauseMenuSkullAnimCounter int
-	pauseMenuWhichSkull       int
-	pauseMenuStatus           string
-	pauseMenuStatusTics       int
-	musicPlayerRequested      bool
-	frontendMenuRequested     bool
-	soundMenuRequested        bool
-	frontendActive            bool
-	saveGameRequested         bool
-	loadGameRequested         bool
-	quickSaveRequested        bool
-	quickLoadRequested        bool
-	quitPromptRequested       bool
-	readThisRequested         bool
-	quitPromptActive          bool
-	newGameRequestedMap       *mapdata.Map
-	newGameRequestedSkill     int
-	marks                     mapview.MarksState
-	p                         player
-	currentMoveCmd            moveCmd
-	lastAttackRange           int64 // Original p_map.c attackrange, also read by tracer puffs.
-	localSlot                 int
-	localPlayerThingIndex     int
-	playerBlockOrder          int64
-	peerStarts                []playerStart
-	remotePlayers             map[int]*remotePlayer // slot → state
+	mode                        viewMode
+	rotateView                  bool
+	parity                      automapParityState
+	showGrid                    bool
+	showLegend                  bool
+	bigMap                      mapview.BigMapState
+	paused                      bool
+	pauseMenuActive             bool
+	pauseMenuMode               int
+	pauseMenuItemOn             int
+	pauseMenuOptionsOn          int
+	pauseMenuSoundOn            int
+	pauseMenuVoiceOn            int
+	pauseMenuEpisodeOn          int
+	pauseMenuSelectedEpisode    int
+	pauseMenuSkillOn            int
+	pauseMenuKeybindRow         int
+	pauseMenuKeybindSlot        int
+	pauseMenuKeybindCapture     bool
+	pauseMenuSkullAnimCounter   int
+	pauseMenuWhichSkull         int
+	pauseMenuStatus             string
+	pauseMenuStatusTics         int
+	musicPlayerRequested        bool
+	frontendMenuRequested       bool
+	soundMenuRequested          bool
+	frontendActive              bool
+	saveGameRequested           bool
+	loadGameRequested           bool
+	quickSaveRequested          bool
+	quickLoadRequested          bool
+	quitPromptRequested         bool
+	readThisRequested           bool
+	quitPromptActive            bool
+	newGameRequestedMap         *mapdata.Map
+	newGameRequestedSkill       int
+	marks                       mapview.MarksState
+	p                           player
+	currentMoveCmd              moveCmd
+	predictionMovement          bool // movement-only replay suppresses authoritative side effects
+	clientPrediction            *ClientPrediction
+	authorityRender             *authorityRenderState
+	authorityEvents             *authorityEventLog
+	authorityFailure            *netgame.ConnectionStatus
+	clientUpdate                authorityClientUpdateState
+	lastAttackRange             int64 // Original p_map.c attackrange, also read by tracer puffs.
+	localSlot                   int
+	localPlayerThingIndex       int
+	playerBlockOrder            int64
+	peerStarts                  []playerStart
+	remotePlayers               map[int]*remotePlayer       // slot → state
+	authorityPlayers            []*authoritativePlayerState // nil selects legacy player paths
+	authorityRules              *authorityRulesState
+	authorityBarrelSources      map[int]authorityBarrelSource
+	authorityItemRespawns       map[int]uint64 // server-only level-tic deadlines
+	authorityDamageOwner        authorityPlayerIdentity
+	authorityPlayerThinkerOrder int64
+	authorityDamageSource       int // Scoped source player; zero is world/monster.
 
 	lines                   []physLine
 	mapVisibleLines         []mapview.Line
@@ -629,6 +643,7 @@ type game struct {
 	thingAggro                 []bool
 	thingAmbush                []bool
 	thingTargetPlayer          []bool
+	thingTargetPlayerSlot      []int
 	thingTargetIdx             []int
 	thingTargetDirectReacquire []bool
 	thingThreshold             []int
@@ -709,6 +724,7 @@ type game struct {
 	secretsFound               int
 	secretsTotal               int
 	sectorSoundTarget          []bool
+	sectorSoundPlayerSlot      []int
 	isDead                     bool
 	playerReborn               bool
 	playerMobjHealth           int
@@ -1489,7 +1505,11 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SharedPCSpeaker, opts.SFXVolume, opts.PCSpeakerVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
+	if opts.Headless {
+		g.snd = newHeadlessSoundSystem(opts)
+	} else {
+		g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SharedPCSpeaker, opts.SFXVolume, opts.PCSpeakerVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
+	}
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -1563,9 +1583,11 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	if opts.StartZoom > 0 {
 		g.State.SetZoom(opts.StartZoom)
 	}
-	g.reserveRenderScratch()
-	if !(opts.DemoScript != nil && opts.DemoQuitOnComplete) {
-		g.precacheRenderAssets()
+	if !opts.Headless {
+		g.reserveRenderScratch()
+		if !(opts.DemoScript != nil && opts.DemoQuitOnComplete) {
+			g.precacheRenderAssets()
+		}
 	}
 	g.syncRenderState()
 	if g.mode == viewWalk {
@@ -2202,15 +2224,8 @@ func (g *game) initSkyLayerShader() {
 }
 
 func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
-	if sourcePort {
-		if isWASMBuild() && len(sourcePortDetailDivisors) > 2 {
-			return 1
-		}
-		if len(sourcePortDetailDivisors) > 1 {
-			return 1
-		}
-		return 0
-	}
+	// Begin at full quality and let AUTO reduce it if measured work requires
+	// that. Explicit manual or carried adaptive levels override this default.
 	return 0
 }
 
@@ -2495,6 +2510,7 @@ func (g *game) cycleSourcePortDetailLevel() {
 	next := g.detailLevel + 1
 	if next >= len(sourcePortDetailDivisors) {
 		g.autoDetailEnabled = true
+		_ = g.setDetailLevel(0)
 		g.setHUDMessage("Detail: AUTO", 70)
 		return
 	}
@@ -2636,6 +2652,9 @@ func (g *game) shouldCaptureCursor() bool {
 func (g *game) Update() error {
 	defer g.clearSampledInput()
 	g.updateMeshExperiment()
+	if g.opts.AuthorityClient != nil {
+		return g.updateAuthoritativeClient()
+	}
 	if g.levelExitRequested && !g.demoIntermissionActive && !g.demoFinaleActive {
 		return ebiten.Termination
 	}
@@ -3108,13 +3127,19 @@ func (g *game) SampleInput() {
 		}
 	}
 	g.input.inputChars = ebiten.AppendInputChars(g.input.inputChars[:0])
-	if len(g.input.inputChars) > 0 && !g.chatComposeOpen {
+	if len(g.input.inputChars) > 0 && !g.chatComposeOpen && g.opts.AuthorityClient == nil {
 		g.consumeTypedCheatInput()
 	}
 
 	_, wheelY := ebiten.Wheel()
 	g.input.wheelY += wheelY
 	mx, _ := ebiten.CursorPosition()
+	g.sampleMouseLookPosition(mx)
+}
+
+// Keep the cursor sampler independent of the host API so all gameplay paths
+// share the same relative-motion baseline, sensitivity and inversion.
+func (g *game) sampleMouseLookPosition(mx int) {
 	g.input.cursorX = mx
 
 	if !g.opts.MouseLook {
@@ -4465,6 +4490,7 @@ func (g *game) profileLabel() string {
 }
 
 func (g *game) emitSoundEvent(ev soundEvent) {
+	g.recordAuthoritySound(ev, 0, 0, false)
 	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -4485,6 +4511,7 @@ func (g *game) emitSoundEvent(ev soundEvent) {
 }
 
 func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
+	g.recordAuthoritySound(ev, x, y, true)
 	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -4505,6 +4532,10 @@ func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
 }
 
 func (g *game) emitSoundEventDelayed(ev soundEvent, tics int) {
+	if g.authorityEvents != nil {
+		g.emitSoundEventDelayedAt(ev, tics, g.p.x, g.p.y, true)
+		return
+	}
 	g.emitSoundEventDelayedAt(ev, tics, 0, 0, false)
 }
 
@@ -19544,6 +19575,9 @@ func (g *game) prepareRenderState() {
 }
 
 func (g *game) prepareRenderStateAt(now time.Time) {
+	if g.authorityRender != nil {
+		g.authorityRender.prepare(now)
+	}
 	alpha := g.interpAlphaAt(now)
 	if !g.opts.SourcePortMode {
 		alpha = 1
@@ -19645,6 +19679,10 @@ func lerpFixed(a, b int64, t float64) int64 {
 }
 
 func (g *game) projectileRenderPosFixed(p projectile, alpha float64) (int64, int64, int64) {
+	if g != nil && g.authorityRender != nil {
+		pose := g.authorityProjectileRenderPose(p)
+		return pose.x, pose.y, pose.z
+	}
 	if g == nil || alpha >= 1 {
 		return p.x, p.y, p.z
 	}
@@ -20133,6 +20171,10 @@ func (g *game) thingSectorCached(i int, th mapdata.Thing) int {
 func (g *game) thingRenderPosFixed(i int, th mapdata.Thing, alpha float64) (int64, int64, int64) {
 	x, y := g.thingPosFixed(i, th)
 	z, _, _ := g.thingSupportState(i, th)
+	if g.authorityRender != nil {
+		pose := g.authorityThingRenderPose(i, th.Type, authorityRenderPose{x: x, y: y, z: z})
+		return pose.x, pose.y, pose.z
+	}
 	if g == nil || alpha >= 1 || i < 0 {
 		return x, y, z
 	}
@@ -20362,7 +20404,9 @@ func (g *game) setPlayerPosFixed(x, y int64) {
 	}
 	g.p.x = x
 	g.p.y = y
-	g.playerBlockOrder = g.allocBlockmapOrder()
+	if !g.predictionMovement {
+		g.playerBlockOrder = g.allocBlockmapOrder()
+	}
 	g.refreshPlayerSubsectorCache(x, y)
 }
 

@@ -14,7 +14,41 @@ This protocol currently covers relay-backed:
 - audio broadcast
 - audio watch/view
 
-The currently implemented wire format is still the relay stream format used for broadcast/watch and voice. The multiplayer gameplay design below is the planning target for the next major protocol stage.
+This remains the relay stream format for broadcast/watch and voice. The peer
+multiplayer planning sections below are historical; the current gameplay design
+is [authoritative multiplayer](docs/authoritative-multiplayer.md), implemented
+separately in `internal/netgame` with GDMP framing.
+
+## GDMP server-browser discovery
+
+Authoritative discovery uses a short-lived connection to the same server
+endpoint as gameplay. It never joins or reserves a player slot. Each GDMP v2
+record contains `magic[4]="GDMP"`, `version[1]=2`, `kind[1]`, little-endian
+`body_length[4]`, then the body. Discovery controls use reliable delivery on
+TCP/TLS, WebSocket, and WebTransport.
+
+| Kind | Message | Body |
+| --- | --- | --- |
+| 7 | `Query` | Empty |
+| 8 | `ServerInfo` | JSON containing `Manifest` |
+| 14 | `StatusQuery` | Empty |
+| 15 | `ServerStatus` | JSON containing `Manifest`, `Players`, `PlayerLimit`, `Spectators`, `SpectatorLimit`, `ReservedPlayers` |
+
+The status extension leaves the original Query/ServerInfo bytes unchanged, so
+existing v2 clients continue to work. A browser first requests status; if an
+older server does not support that kind, it opens a fresh connection for the
+original Query. Legacy results have unknown occupancy, rather than an assumed
+zero players. Both response bodies are bounded to 8 KiB, use strict JSON
+decoding, and validate the compatibility manifest and count ranges.
+
+`Players` counts occupied gameplay slots, including `ReservedPlayers` retained
+during reconnect grace. Spectators have separate capacity. These counts are
+captured by the match owner and contain no names, session tokens, or local file
+paths. They are advisory: joining still verifies the current engine, ordered
+WAD hashes and rules, and may fail if capacity changes after discovery. Counts
+do not change the compatibility key.
+
+The remaining sections describe the separate legacy GDSF relay protocol.
 
 ## Transport
 

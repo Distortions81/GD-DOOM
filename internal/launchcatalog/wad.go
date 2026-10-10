@@ -2,6 +2,7 @@ package launchcatalog
 
 import (
 	"crypto/sha1"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -80,6 +81,24 @@ func HashWADStackSHA1(paths []string) string {
 		}
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// HashWADStackSHA256 returns separate content identities in overlay order.
+// Embedded/browser-uploaded WADs use the same bytes as the map loader.
+func HashWADStackSHA256(paths []string) ([]string, error) {
+	hashes := make([]string, 0, len(paths))
+	for _, path := range paths {
+		data, ok := wad.EmbeddedDataForPath(path)
+		if !ok {
+			var err error
+			data, err = os.ReadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("hash WAD %s: %w", path, err)
+			}
+		}
+		hashes = append(hashes, fmt.Sprintf("%x", sha256.Sum256(data)))
+	}
+	return hashes, nil
 }
 
 func HashWADPathBlake3(path string) string {

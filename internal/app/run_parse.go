@@ -634,6 +634,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	broadcastAddr := fs.String("broadcast", "", "publish to GDSF relay at addr (default 127.0.0.1:6670; bare -broadcast uses localhost)")
 	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
+	connectAddr := fs.String("connect", "", "join an authoritative server: host:port, HTTPS/WebTransport, or WebSocket URL")
+	multiplayerServer := fs.String("multiplayer-server", "", "prefill the in-game Multiplayer server address without joining")
+	netName := fs.String("player-name", "Player", "multiplayer display name")
+	netSpectator := fs.Bool("spectate", false, "join authoritative multiplayer as a spectator (F12 changes view)")
 	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
 	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
@@ -662,6 +666,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wadFlagSet := flagProvided(normalizedArgs, "wad")
 	broadcastFlagSet := flagProvided(normalizedArgs, "broadcast")
 	watchFlagSet := flagProvided(normalizedArgs, "watch")
+	connectActive := strings.TrimSpace(*connectAddr) != ""
+	joinDefaults := runtimecfg.AuthorityJoinRequest{Address: strings.TrimSpace(*multiplayerServer), Name: *netName, Spectator: *netSpectator}
+	if connectActive {
+		joinDefaults.Address = strings.TrimSpace(*connectAddr)
+	}
+	if *netSpectator && !connectActive {
+		fmt.Fprintln(stderr, "-spectate requires -connect")
+		return 2
+	}
 	_ = configFlag
 	platformcfg.SetForcedWASMMode(*forceWASMMode)
 	allCheatsSet := false
@@ -754,7 +767,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if watchFlagSet {
 		resolvedWatchAddr = normalizeWatchAddr(*watchAddr)
 	}
-	networkActive := broadcastFlagSet || watchFlagSet
+	networkActive := broadcastFlagSet || watchFlagSet || connectActive
+	if connectActive && (broadcastFlagSet || watchFlagSet) {
+		fmt.Fprintln(stderr, "-connect cannot be combined with -broadcast or -watch")
+		return 2
+	}
+	if connectActive && (resolvedCheatLevel != 0 || resolvedInvuln || *showAllItems || *showNoSkillItems) {
+		fmt.Fprintln(stderr, "authoritative multiplayer requires cheats and item visibility overrides to be disabled")
+		return 2
+	}
 	resolvedFilePaths := resolveWADOverlayPaths(*filePaths)
 	resolvedWADPath := resolveIWADAliasPath(*wadPath)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
@@ -770,11 +791,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	if networkActive && !*render {
-		fmt.Fprintln(stderr, "-broadcast and -watch require render=true")
+		fmt.Fprintln(stderr, "network sessions require render=true")
 		return 2
 	}
 	if networkActive && (resolvedDemoPath != "" || resolvedRecordDemoPath != "" || resolvedDemoTracePath != "") {
-		fmt.Fprintln(stderr, "-broadcast and -watch do not support demo playback, demo recording, or demo tracing")
+		fmt.Fprintln(stderr, "network sessions do not support demo playback, demo recording, or demo tracing")
 		return 2
 	}
 	if resolvedDemoTracePath != "" && resolvedDemoPath == "" {
@@ -872,6 +893,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if !networkActive && shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
 		buildCfg := renderBuildConfig{
+			authorityJoinDefaults:      joinDefaults,
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
 			mapExplicit:                mapExplicit,
 			width:                      *width,
@@ -1220,7 +1242,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Width:                      *width,
 			Height:                     *height,
 			StartZoom:                  defaultZoom,
-			InitialDetailLevel:         *detailLevel,
+			InitialDetailLevel:         startupDetailLevel(*detailLevel, *autoDetail, detailLevelSet),
 			AutoDetail:                 *autoDetail,
 			InitialGammaLevel:          *gammaLevel,
 			WADHash:                    wadHash,
@@ -1426,6 +1448,21 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if lerr != nil {
 			fmt.Fprintf(stderr, "load map %s: %v\n", selected, lerr)
 			return 1
+		}
+		if !broadcastFlagSet && !watchFlagSet && resolvedDemoPath == "" && resolvedRecordDemoPath == "" && resolvedDemoTracePath == "" {
+			opts.AuthorityJoin = authorityJoiner(wadPaths, wf)
+			opts.AuthorityJoinDefaults = joinDefaults
+			configureAuthorityBrowser(&opts, wadPaths, configPath)
+		}
+		if connectActive {
+			client, joinedMap, cerr := connectAuthority(context.Background(), authorityLaunch{Address: *connectAddr, Name: *netName, Spectator: *netSpectator}, wadPaths, wf, &opts)
+			if cerr != nil {
+				fmt.Fprintf(stderr, "multiplayer: %v\n", cerr)
+				return 1
+			}
+			defer client.Leave()
+			m, selected = joinedMap, joinedMap.Name
+			fmt.Fprintf(stderr, "multiplayer: connected to %s, map=%s player=%d mode=%s\n", *connectAddr, selected, opts.PlayerSlot, opts.GameMode)
 		}
 		if resolvedBroadcastAddr != "" {
 			sessionCfg := broadcastSessionConfig(selected, opts)
@@ -1796,6 +1833,7 @@ type iwadChoice = launchcatalog.IWADChoice
 type knownIWADChoice = launchcatalog.KnownIWADChoice
 
 type renderBuildConfig struct {
+	authorityJoinDefaults      runtimecfg.AuthorityJoinRequest
 	selectedMap                string
 	mapExplicit                bool
 	width                      int
@@ -2129,7 +2167,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		Width:                      cfg.width,
 		Height:                     cfg.height,
 		StartZoom:                  cfg.zoom,
-		InitialDetailLevel:         cfg.detailLevel,
+		InitialDetailLevel:         startupDetailLevel(cfg.detailLevel, cfg.autoDetail, cfg.detailLevelExplicit),
 		AutoDetail:                 cfg.autoDetail,
 		InitialGammaLevel:          cfg.gammaLevel,
 		WADHash:                    wadHash,
@@ -2276,6 +2314,11 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 			return nil, "", fmt.Errorf("load map %s: %w", next, lerr)
 		}
 		return nm, next, nil
+	}
+	if cfg.demoPath == "" && cfg.recordDemoPath == "" && cfg.demoTracePath == "" {
+		opts.AuthorityJoin = authorityJoiner(wadPaths, wf)
+		opts.AuthorityJoinDefaults = cfg.authorityJoinDefaults
+		configureAuthorityBrowser(&opts, wadPaths, cfg.configPath)
 	}
 	return &renderBundle{m: m, opts: opts, nextMap: nextMap}, nil
 }

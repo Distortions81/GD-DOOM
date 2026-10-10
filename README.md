@@ -204,6 +204,21 @@ another instance with `-watch -watch-session=N`, using the session ID printed
 by the broadcaster. Native Linux microphone capture is available with `-mic`.
 See the [relay, voice, controls, and cheats reference](docs/usage.md).
 
+Authoritative co-op/deathmatch is available through `cmd/gdserver` and the
+`-connect` client option, with prediction, reconnects, chat and spectators.
+In desktop and browser games, open **Esc → Multiplayer** to browse the default
+and saved servers. The list shows map, mode, player counts, response time and
+whether your loaded WADs match. **Add** and **Edit** manage custom
+addresses, saved in native config or browser local storage; this is a saved list,
+not a public master registry. Choose a name or spectator role, then **Join**.
+**Leave Match** returns to the title menu without restarting the game.
+Mouse look turns left/right in multiplayer with your usual sensitivity and
+inversion settings; click the browser game to capture the pointer. Hold **F6**
+for scores, press **T** for chat, or **F12** to change the spectator view.
+The [multiplayer design and verification status](docs/authoritative-multiplayer.md)
+records launch commands, transport choices, measured bandwidth, and remaining
+release requirements.
+
 ## Browser and development
 
 Build and serve the browser version from the repository root:
@@ -217,7 +232,12 @@ The build uses `DOOM1.WAD` and your Go toolchain's `wasm_exec.js`; optional
 `wasm-opt` optimizes the output. The browser supports local WAD loading,
 SoundFont caching, touch controls, and persistent saves. Click or tap once to
 start audio where browser autoplay policies require it.
+Set `MULTIPLAYER_SERVER=https://your-host:6672/netplay` when building to prefill
+the browser's join form and in-game menu. This does not join automatically.
 Browser rendering uses VSync by default, with no separate WASM frame throttle.
+Automatic detail starts at full resolution and reduces quality if performance
+requires it. Re-enabling AUTO also starts at full resolution; explicit
+`-detail-level` overrides and manual detail settings remain available.
 
 ```bash
 go test ./...

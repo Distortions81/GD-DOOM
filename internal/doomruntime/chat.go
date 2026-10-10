@@ -33,6 +33,9 @@ func (g *game) chatSource() runtimecfg.LiveChatSource {
 	if g == nil {
 		return nil
 	}
+	if client, ok := g.opts.AuthorityClient.(runtimecfg.AuthorityChatClient); ok {
+		return authorityChatEndpoint{client}
+	}
 	if src, ok := g.opts.LiveTicSource.(runtimecfg.LiveChatSource); ok && src != nil {
 		return src
 	}
@@ -45,6 +48,9 @@ func (g *game) chatSource() runtimecfg.LiveChatSource {
 func (g *game) chatSink() runtimecfg.LiveChatSink {
 	if g == nil {
 		return nil
+	}
+	if client, ok := g.opts.AuthorityClient.(runtimecfg.AuthorityChatClient); ok {
+		return authorityChatEndpoint{client}
 	}
 	if sink, ok := g.opts.LiveTicSink.(runtimecfg.LiveChatSink); ok && sink != nil {
 		return sink

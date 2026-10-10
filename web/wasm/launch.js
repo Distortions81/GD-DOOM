@@ -6,6 +6,13 @@ const localWADButton = document.getElementById("local-wad-button");
 const localWADInput = document.getElementById("local-wad-input");
 const buildPill = document.getElementById("build-pill");
 const statusAnnouncer = document.getElementById("status-announcer");
+const multiplayerForm = document.getElementById("multiplayer-form");
+const multiplayerServer = document.getElementById("multiplayer-server");
+const multiplayerName = document.getElementById("multiplayer-name");
+const multiplayerWAD = document.getElementById("multiplayer-wad");
+const multiplayerRole = document.getElementById("multiplayer-role");
+const joinStatus = document.getElementById("join-status");
+let multiplayerLaunch = null;
 
 let splashDismissed = false;
 let pendingReload = false;
@@ -31,6 +38,16 @@ function isMobileLike() {
 
 function getPlayerURL() {
   const url = new URL("./player.html", window.location.href);
+  const launchParams = new URLSearchParams(window.location.search);
+  for (const name of ["connect", "multiplayer-server", "player-name", "spectate", "map", "skill", "no-monsters", "wad", "file"]) {
+    if (launchParams.has(name)) url.searchParams.set(name, launchParams.get(name));
+  }
+  if (multiplayerLaunch) {
+    url.searchParams.set("connect", multiplayerLaunch.address);
+    url.searchParams.set("player-name", multiplayerLaunch.name);
+    url.searchParams.set("wad", multiplayerLaunch.wad);
+    url.searchParams.set("spectate", String(multiplayerLaunch.spectator));
+  }
   const buildID = getBuildID();
   if (buildID) {
     url.searchParams.set("v", buildID);
@@ -133,6 +150,13 @@ async function loadLocalWADFiles(fileList) {
   }
 
   const noun = loadedNames.length === 1 ? "IWAD file" : "IWAD files";
+  if (multiplayerWAD) {
+    for (const entry of store) {
+      if (!Array.from(multiplayerWAD.options).some((option) => option.value === entry.path)) {
+        multiplayerWAD.add(new Option(entry.name, entry.path));
+      }
+    }
+  }
   setStatus(`Loaded ${noun}. Reloading picker.`);
   reloadPlayer();
 }
@@ -171,7 +195,33 @@ function updateBuildPill() {
 }
 
 updateBuildPill();
+if (multiplayerServer) {
+  const defaults = new URLSearchParams(window.location.search);
+  multiplayerServer.value = defaults.get("connect") || defaults.get("multiplayer-server") || window.__gddoomMultiplayerServer || "";
+}
 initializePlayerFrame();
+
+if (multiplayerForm) {
+  multiplayerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const address = multiplayerServer.value.trim();
+    const name = multiplayerName.value.trim();
+    if (!/^(https|wss|ws|wt):\/\//i.test(address)) {
+      joinStatus.textContent = "Enter the server's HTTPS or WebSocket URL.";
+      return;
+    }
+    if (!name || new TextEncoder().encode(name).length > 64) {
+      joinStatus.textContent = "Choose a shorter player name.";
+      return;
+    }
+    multiplayerLaunch = {address, name, wad: multiplayerWAD.value, spectator: multiplayerRole.value === "spectator"};
+    joinStatus.textContent = "Connecting…";
+    // A deliberate join replaces the idle single-player frame.
+    pendingReload = false;
+    reloadPlayer();
+    hideSplash();
+  });
+}
 
 if (isMobileLike()) {
   hideLocalWADControls();

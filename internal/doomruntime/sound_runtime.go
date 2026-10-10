@@ -196,6 +196,11 @@ func (s *soundSystem) playEvent(ev soundEvent) {
 }
 
 func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) {
+	s.playEventSpatialPitch(ev, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, -1)
+}
+
+// A nonnegative pitch is preselected presentation data and consumes no Doom RNG.
+func (s *soundSystem) playEventSpatialPitch(ev soundEvent, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool, pitch int) {
 	if !vanillaSoundWouldStart(s, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
 		return
 	}
@@ -214,7 +219,9 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 		}
 		return
 	}
-	pitch := vanillaPitchForEvent(ev, s.pitchShift)
+	if pitch < 0 {
+		pitch = vanillaPitchForEvent(ev, s.pitchShift)
+	}
 	if s.nativePlay != nil {
 		s.nativePlay(ev, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, pitch)
 		return

@@ -113,8 +113,17 @@
 
     .hero {
       padding: 28px 28px 26px;
-      overflow: hidden;
+      max-height: calc(100dvh - 44px);
+      overflow-y: auto;
     }
+
+    .multiplayer { position: relative; margin-top: 20px; color: var(--muted); font-size: 14px; }
+    .multiplayer summary { cursor: pointer; color: var(--accent); font-weight: 800; }
+    .multiplayer form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .multiplayer label { display: grid; gap: 4px; min-width: 0; }
+    .multiplayer .wide { grid-column: 1 / -1; }
+    .multiplayer input, .multiplayer select { width: 100%; padding: 9px; color: var(--text); background: #140d0b; border: 1px solid var(--line); font: inherit; }
+    #join-status { margin: 0; color: #ffb49b; min-height: 1.4em; }
 
     .hero::before {
       content: "";
@@ -380,6 +389,17 @@
           <button id="start-button" class="cta" type="button">GO TO HELL</button>
           <a class="secondary" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View Repository</a>
         </div>
+        <details class="multiplayer">
+          <summary>Join multiplayer</summary>
+          <form id="multiplayer-form">
+            <label class="wide">Server URL<input id="multiplayer-server" type="url" placeholder="https://server.example/netplay" required></label>
+            <label>Player name<input id="multiplayer-name" value="Player" maxlength="32" required></label>
+            <label>Game WAD<select id="multiplayer-wad"><option value="DOOM1.WAD">Doom shareware</option></select></label>
+            <label class="wide">Join as<select id="multiplayer-role"><option value="player">Player</option><option value="spectator">Spectator (F12 changes view)</option></select></label>
+            <button class="secondary wide" type="submit">Join server</button>
+            <p id="join-status" class="wide" aria-live="polite"></p>
+          </form>
+        </details>
       </section>
 
       <aside class="sidebar" aria-labelledby="controls-title">
@@ -410,8 +430,8 @@
             <span class="kbd-row"><kbd>Tab</kbd><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd><kbd>6</kbd><kbd>7</kbd><kbd>PgUp</kbd><kbd>PgDn</kbd></span>
           </li>
           <li>
-            <strong>Menu</strong>
-            <span class="kbd-row"><kbd>Esc</kbd></span>
+            <strong>Menu / Chat / Scores (hold)</strong>
+            <span class="kbd-row"><kbd>Esc</kbd><kbd>T</kbd><kbd>F6</kbd></span>
           </li>
         </ul>
       </aside>

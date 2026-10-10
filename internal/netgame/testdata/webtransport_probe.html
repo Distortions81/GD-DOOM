@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>GD-DOOM WebTransport probe</title>
+<style>body{font:16px system-ui;background:#111;color:#eee;max-width:900px;margin:40px auto;padding:24px}button{font:inherit;padding:12px 18px}pre{white-space:pre-wrap;color:#a8e4ac}#status{font-weight:bold}</style>
+<h1>GD-DOOM WebTransport probe</h1>
+<p>This local fixture tests the browser HTTP/3 API against its own temporary server. The server certificate is authenticated using its exact SHA-256 hash. It does not change browser trust settings.</p>
+<p id="support"></p><button id="run">Run WebTransport tests</button><p id="status">Ready</p><pre id="output"></pre>
+<script src="wasm_exec.js"></script>
+<script>
+const status = document.querySelector('#status');
+const output = document.querySelector('#output');
+document.querySelector('#support').textContent = `Secure context: ${isSecureContext}. WebTransport available: ${typeof WebTransport === 'function'}.`;
+document.querySelector('#run').addEventListener('click', async () => {
+ document.querySelector('#run').disabled = true;
+ status.textContent = 'Running browser WebTransport tests…';
+ const originalLog = console.log;
+ console.log = (...args) => { output.textContent += args.join(' ') + '\n'; originalLog(...args); };
+ try {
+  const config = await (await fetch('config.json')).json();
+  const go = new Go();
+  go.argv = ['netgame.test', '-test.run=^TestWebTransportWASMLiveBridge$', '-test.v'];
+  go.env = {GD_TEST_WEBTRANSPORT_URL:config.url, GD_TEST_WEBTRANSPORT_HASH:config.hash};
+  go.exit = code => { status.textContent = code === 0 ? 'PASS — browser WebTransport verified' : 'FAIL — see test output'; fetch('result', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({Code:code})}); };
+  const module = await WebAssembly.instantiateStreaming(fetch('netgame.test.wasm'),go.importObject);
+  await go.run(module.instance);
+ } catch (error) {
+  status.textContent = 'FAIL — ' + error.message;
+  output.textContent += String(error);
+  fetch('result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({Code:1})});
+ }
+});
+</script></html>

@@ -74,6 +74,7 @@ fi
 
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"
 printf 'window.__gddoomBuildID = %s;\n' "$(js_string_literal "${BUILD_ID}")" > "${OUT_DIR}/build-id.js"
+printf 'window.__gddoomMultiplayerServer = %s;\n' "$(js_string_literal "${MULTIPLAYER_SERVER:-}")" >> "${OUT_DIR}/build-id.js"
 cp "${ROOT_DIR}/web/wasm/index.html" "${OUT_DIR}/index.html"
 cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"

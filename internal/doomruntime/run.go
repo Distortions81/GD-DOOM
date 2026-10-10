@@ -110,6 +110,7 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 	})
 	return runtimehost.NewGame(sg, runtimehost.Accessors{
 		Close: func() {
+			sg.closeAuthorityMultiplayer()
 			if sg.menuSfx != nil {
 				sg.menuSfx.Close()
 			}
@@ -162,6 +163,15 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 }
 
 func (sg *sessionGame) Update() error {
+	sg.pollAuthorityJoin()
+	if err := sg.updateAuthoritySession(); err != nil {
+		sg.err = err
+		if sg.g != nil && sg.opts.AuthorityClient != nil {
+			sg.g.setAuthorityConnectionFailure(err)
+			return nil
+		}
+		return ebiten.Termination
+	}
 	if sg.g != nil && sg.g.demoWorldDone {
 		sg.finishIntermission()
 	}
@@ -235,7 +245,13 @@ func (sg *sessionGame) Update() error {
 			if err := sg.applyMandatoryWatchKeyframes(); err != nil {
 				return err
 			}
-			return sg.rt.Update()
+			err := sg.rt.Update()
+			if err != nil && sg.opts.AuthorityClient != nil {
+				sg.err = err
+				sg.g.setAuthorityConnectionFailure(err)
+				return nil
+			}
+			return err
 		},
 		HandleRuntimeProgress: func() (bool, error) {
 			sig := sg.rt.sessionSignals()
@@ -382,6 +398,11 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		screen.Fill(color.Black)
 		return
 	}
+	defer sg.drawAuthorityConnectionOverlay(screen)
+	// Gameplay can occupy a narrower aspect-correct viewport than menus.
+	// Clear the whole target so closing a menu cannot leave its text in the
+	// letterbox margins outside the next gameplay presentation.
+	screen.Fill(color.Black)
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	tw, th := sg.transitionSurfaceSize(sw, sh)
@@ -462,6 +483,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 }
 
 func (sg *sessionGame) handleGameplayTermination() error {
+	if sg.opts.AuthorityClient != nil {
+		return runtimehost.ErrTerminate
+	}
 	sig := sg.rt.sessionSignals()
 	if !sig.LevelExit {
 		return runtimehost.ErrTerminate
@@ -501,6 +525,10 @@ func (sg *sessionGame) SampleInput() {
 		return
 	}
 	sg.input.justPressedKeys = addPressCounts(sg.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
+	if sg.frontend.Mode == frontendModeMultiplayer && sg.multiplayer.editing {
+		sg.input.inputChars = ebiten.AppendInputChars(sg.input.inputChars)
+		sg.input.controlHeld = ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsKeyPressed(ebiten.KeyMetaLeft) || ebiten.IsKeyPressed(ebiten.KeyMetaRight)
+	}
 	sg.input.justPressedMouseButtons = addPressCounts(
 		sg.input.justPressedMouseButtons,
 		justPressedMouseButtons(),
@@ -546,7 +574,7 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 	}
 	inGame := !sig.DemoActive
 	itemOn := 0
-	if inGame && sg.frontendWatchMode() {
+	if (inGame && sg.frontendWatchMode()) || sg.opts.AuthorityClient != nil {
 		itemOn = frontendWatchMenuSelectableRows[0]
 	}
 	sg.frontend = frontendState{

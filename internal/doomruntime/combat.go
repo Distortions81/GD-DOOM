@@ -38,6 +38,7 @@ const (
 
 type lineAttackActor struct {
 	isPlayer   bool
+	playerSlot int
 	thingIdx   int
 	x          int64
 	y          int64
@@ -46,8 +47,9 @@ type lineAttackActor struct {
 }
 
 type lineAttackTarget struct {
-	kind lineAttackTargetKind
-	idx  int
+	kind       lineAttackTargetKind
+	idx        int
+	playerSlot int
 }
 
 type lineAttackIntercept struct {
@@ -678,13 +680,18 @@ func (g *game) monsterShootZ(i int, typ int16) int64 {
 }
 
 func (g *game) playerLineAttackActor() lineAttackActor {
+	mask := lineAttackMaskShootables
+	if len(g.authorityPlayers) != 0 {
+		mask |= lineAttackMaskPlayer
+	}
 	return lineAttackActor{
 		isPlayer:   true,
+		playerSlot: g.localSlot,
 		thingIdx:   -1,
 		x:          g.p.x,
 		y:          g.p.y,
 		shootZ:     g.playerShootZ(),
-		targetMask: lineAttackMaskShootables,
+		targetMask: mask,
 	}
 }
 
@@ -765,6 +772,14 @@ func (g *game) lineAttackThingTargetable(i int, mask lineAttackTargetMask, exclu
 func (g *game) lineAttackTargetState(target lineAttackTarget) (x, y, z, height, radius int64, noBlood bool, shootable bool, ok bool) {
 	switch target.kind {
 	case lineAttackTargetPlayer:
+		if target.playerSlot != 0 {
+			state := g.authoritativePlayerForSlot(target.playerSlot)
+			if state == nil {
+				return 0, 0, 0, 0, 0, false, false, false
+			}
+			p, dead, _ := g.authoritativePlayerBody(state)
+			return p.x, p.y, p.z, playerHeight, playerRadius, false, !dead, !dead
+		}
 		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, false, !g.isDead, !g.isDead
 	case lineAttackTargetThing:
 		if g == nil || g.m == nil || target.idx < 0 || target.idx >= len(g.m.Things) {
@@ -833,6 +848,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 		thingSeen = make([]bool, len(g.m.Things))
 	}
 	playerSeen := false
+	var authoritySeen [5]bool
 	appendThing := func(i int) {
 		if thingSeen == nil || i < 0 || i >= len(thingSeen) || thingSeen[i] {
 			return
@@ -875,6 +891,19 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 		})
 		order++
 	}
+	appendAuthorityPlayer := func() {
+		slot := g.localSlot
+		if slot < 1 || slot > 4 || authoritySeen[slot] || actor.targetMask&lineAttackMaskPlayer == 0 || g.isDead || (actor.isPlayer && actor.playerSlot == slot) {
+			return
+		}
+		authoritySeen[slot] = true
+		frac, ok := lineAttackThingFrac(trace, g.p.x, g.p.y, playerRadius)
+		if !ok {
+			return
+		}
+		intercepts = append(intercepts, lineAttackIntercept{frac: frac, order: order, target: lineAttackTarget{kind: lineAttackTargetPlayer, idx: -1, playerSlot: slot}})
+		order++
+	}
 	appendThingsInCell := func(mapx, mapy int) {
 		if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
 			g.rebuildThingBlockmap()
@@ -883,6 +912,10 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 			return
 		}
 		cell := mapy*g.bmapWidth + mapx
+		if len(g.authorityPlayers) != 0 {
+			g.walkAuthoritativeActorBlockCell(cell, appendThing, appendAuthorityPlayer)
+			return
+		}
 		playerCell := -2
 		playerOrder := g.playerBlockOrder
 		if playerOrder <= 0 {
@@ -982,7 +1015,13 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 				appendThing(i)
 			}
 		}
-		appendPlayer()
+		if len(g.authorityPlayers) != 0 {
+			for _, p := range g.authorityPlayers {
+				g.withAuthoritativePlayer(p, appendAuthorityPlayer)
+			}
+		} else {
+			appendPlayer()
+		}
 	}
 
 	sort.SliceStable(intercepts, func(i, j int) bool {
@@ -1260,7 +1299,8 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 		return true
 	case lineAttackTargetPlayer:
 		if damage > 0 {
-			g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true, actor.thingIdx)
+			apply := func() { g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true, actor.thingIdx) }
+			g.applyPlayerDamageTarget(outcome.target.playerSlot, actor.playerSlot, apply)
 		}
 		return true
 	default:
@@ -1919,6 +1959,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingHP = append(g.thingHP, 0)
 	g.thingAggro = append(g.thingAggro, false)
 	g.thingTargetPlayer = append(g.thingTargetPlayer, false)
+	g.thingTargetPlayerSlot = append(g.thingTargetPlayerSlot, 0)
 	g.thingTargetIdx = append(g.thingTargetIdx, -1)
 	g.thingThreshold = append(g.thingThreshold, 0)
 	g.thingCooldown = append(g.thingCooldown, 0)

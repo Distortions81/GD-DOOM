@@ -980,6 +980,9 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 	if sg == nil || sg.g == nil {
 		return errSaveGameUnavailable
 	}
+	if sg.opts.AuthorityClient != nil {
+		return errSaveGameUnavailable
+	}
 	if sg.frontend.Active && !sg.frontend.InGame {
 		return errSaveGameUnavailable
 	}
@@ -1000,6 +1003,9 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 func (sg *sessionGame) LoadGameFromSlot(slot int) error {
 	if sg == nil {
 		return errNoSavedGame
+	}
+	if sg.opts.AuthorityClient != nil {
+		return errSaveGameUnavailable
 	}
 	data, err := readSavedSlotData(slot)
 	if err != nil {

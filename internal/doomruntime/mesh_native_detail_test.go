@@ -13,7 +13,7 @@ func TestNativeDetailCycleMatchesMainLayoutAndSurvivesCampaignChanges(t *testing
 		auto  bool
 		label string
 	}{
-		{1, false, "1/2x"}, {2, false, "1/3x"}, {3, false, "1/4x"}, {3, true, "AUTO"}, {0, false, "1x"},
+		{1, false, "1/2x"}, {2, false, "1/3x"}, {3, false, "1/4x"}, {0, true, "AUTO"}, {0, false, "1x"},
 	} {
 		c.CycleDetail()
 		level, auto := c.DetailSettings()
@@ -41,10 +41,19 @@ func TestNativeDetailCycleMatchesMainLayoutAndSurvivesCampaignChanges(t *testing
 	for range 4 {
 		c.CycleDetail()
 	}
+	if level, auto := c.DetailSettings(); level != 0 || !auto {
+		t.Fatalf("enabling AUTO did not start at full detail: %d/%t", level, auto)
+	}
+	// After real performance samples reduce quality, carry that measured level
+	// through loads and map changes rather than restarting AUTO at full again.
+	for range 4 {
+		c.Game.g.applyAutoDetailSample(50, 20)
+	}
+	c.rememberDetailSettings()
 	assertSettings := func() {
 		t.Helper()
 		level, auto := c.DetailSettings()
-		if level != 3 || !auto {
+		if level != 1 || !auto {
 			t.Fatalf("lost detail: %d/%t", level, auto)
 		}
 	}

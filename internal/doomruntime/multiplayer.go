@@ -141,9 +141,14 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
 
-	for _, rp := range g.remotePlayers {
-		txFixed := rp.p.x
-		tyFixed := rp.p.y
+	for slot := 1; slot <= 4; slot++ {
+		rp := g.remotePlayers[slot]
+		if rp == nil {
+			continue
+		}
+		pose := g.authorityRemoteRenderPose(slot, rp.p)
+		txFixed := pose.x
+		tyFixed := pose.y
 		tx := float64(txFixed)/fracUnit - camX
 		ty := float64(tyFixed)/fracUnit - camY
 		f := tx*ca + ty*sa
@@ -152,13 +157,16 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 			continue
 		}
 
-		rot := monsterSpriteRotationIndexAt(rp.p.angle, float64(txFixed)/fracUnit, float64(tyFixed)/fracUnit, camX, camY)
-		name := remotePlayerSpriteName(g.worldTic, rot)
-		ref, ok := g.spriteRenderRef(name)
+		rot := monsterSpriteRotationIndexAt(pose.angle, float64(txFixed)/fracUnit, float64(tyFixed)/fracUnit, camX, camY)
+		frame := byte('A' + (g.worldTic/playerWalkFrameTics)%4)
+		if authoritativeFrame, ok := g.authoritativePlayerFrame(slot); ok {
+			frame = authoritativeFrame
+		}
+		ref, flip, ok := g.monsterFrameRenderRefRot("PLAY", frame, rot)
 		if !ok {
-			// Try no-rotation fallback PLAYA0.
-			name = spriteFrameName("PLAY", byte('A'+(g.worldTic/playerWalkFrameTics)%4), '0')
-			ref, ok = g.spriteRenderRef(name)
+			// Corpses and some custom player sprites have no rotation.
+			ref, ok = g.spriteRenderRef(spriteFrameName("PLAY", frame, '0'))
+			flip = false
 		}
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
@@ -175,7 +183,7 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 		}
 		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scaleY, viewH)
 		sx := float64(viewW)/2 - (s/f)*focal
-		baseZ := float64(rp.p.z) / fracUnit
+		baseZ := float64(pose.z) / fracUnit
 		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
 		w := float64(ref.tex.Width) * scale
 		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
@@ -198,7 +206,7 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 		}
 		depthQ := encodeDepthQ(f)
 		shadeMul := g.cachedThingShadeMul(-1, false, lightMul, f, near)
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 && g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
@@ -215,7 +223,7 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 			y1:              y1,
 			shadeMul:        shadeMul,
 			tex:             ref.tex,
-			flip:            false,
+			flip:            flip,
 			shadow:          false,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,

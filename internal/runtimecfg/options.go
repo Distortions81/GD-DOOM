@@ -1,12 +1,16 @@
 package runtimecfg
 
 import (
+	"context"
+	"time"
+
 	"gddoom/internal/audiofx"
 	"gddoom/internal/demo"
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/netgame"
 	"gddoom/internal/sound"
 )
 
@@ -48,6 +52,65 @@ type WADSource struct {
 
 type LiveTicSource interface {
 	PollTic() (demo.Tic, bool, error)
+}
+
+// AuthorityClient supplies authenticated full baselines and sends intent to the
+// server. Implementations must bound their queues and keep these calls
+// nonblocking so network I/O cannot stall the game/render goroutine.
+type AuthorityClient interface {
+	Welcome() netgame.Welcome
+	PollTransition() (netgame.MapChange, bool, error)
+	PollSnapshot() (netgame.Snapshot, bool, error)
+	SendInputs(netgame.InputBatch) error
+}
+
+type AuthorityChatClient interface {
+	SendChat(text string) error
+	PollChat() (netgame.ChatEvent, bool, error)
+}
+
+// AuthorityJoinRequest joins a match using the WADs already loaded by the game.
+type AuthorityJoinRequest struct {
+	Address, Name string
+	Spectator     bool
+}
+
+type AuthorityServerEntry struct {
+	Label   string `json:"label" toml:"label"`
+	Address string `json:"address" toml:"address"`
+}
+
+// Counts are negative when an older server does not advertise capacity.
+type AuthorityServerInfo struct {
+	Manifest           netgame.CompatibilityManifest
+	Ping               time.Duration
+	Players            int
+	PlayerLimit        int
+	Spectators         int
+	Compatible         bool
+	CompatibilityError string
+}
+
+// AuthorityJoinResult is prepared off the game thread. The caller owns Client
+// and the supplied context for the entire session, including reconnection.
+type AuthorityJoinResult struct {
+	Client    AuthorityClient
+	Map       *mapdata.Map
+	Manifest  netgame.CompatibilityManifest
+	MapLoader func(netgame.MapChange) (*mapdata.Map, error)
+}
+
+// AuthorityLocalRules preserves local game rules across a network session
+// without overwriting rendering, sound, or input preferences changed in menus.
+type AuthorityLocalRules struct {
+	GameMode                                  string
+	SkillLevel, PlayerSlot                    int
+	NoMonsters, FastMonsters, RespawnMonsters bool
+	WADHash                                   string
+	AllCheats                                 bool
+	CheatLevel                                int
+	Invulnerable                              bool
+	ShowAllItems, ShowNoSkillItems            bool
 }
 
 type ChatMessage struct {
@@ -171,6 +234,9 @@ type VoiceSettings struct {
 }
 
 type Options struct {
+	// Headless suppresses device-backed audio and render asset preparation for
+	// callers that drive the simulation directly without an Ebitengine game loop.
+	Headless                     bool
 	Width                        int
 	Height                       int
 	StartZoom                    float64
@@ -274,6 +340,14 @@ type Options struct {
 	DemoMapLoader                func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                     []int
 	LiveTicSource                LiveTicSource
+	AuthorityClient              AuthorityClient
+	AuthorityMapLoader           func(netgame.MapChange) (*mapdata.Map, error)
+	AuthorityJoin                func(context.Context, AuthorityJoinRequest) (AuthorityJoinResult, error)
+	AuthorityJoinDefaults        AuthorityJoinRequest
+	AuthorityServers             []AuthorityServerEntry
+	AuthorityDiscover            func(context.Context, string) (AuthorityServerInfo, error)
+	OnAuthorityServersChanged    func([]AuthorityServerEntry) error
+	AuthorityLocalRules          *AuthorityLocalRules
 	LiveTicSink                  LiveTicSink
 	CoopPeers                    CoopPeerSource
 	CaptureKeyframe              func() ([]byte, error)

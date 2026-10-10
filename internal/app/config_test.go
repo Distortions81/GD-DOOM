@@ -855,6 +855,27 @@ func TestSaveInputBindingsWritesKeybindTable(t *testing.T) {
 	}
 }
 
+func TestStartupDetailLevelRestartsAutoAtFullQuality(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		level          int
+		auto, explicit bool
+		want           int
+	}{
+		{"new auto session", -1, true, false, 0},
+		{"saved auto reduction", 3, true, false, 0},
+		{"saved manual choice", 2, false, false, 2},
+		{"explicit auto starting point", 1, true, true, 1},
+		{"manual mode default", -1, false, false, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := startupDetailLevel(tc.level, tc.auto, tc.explicit); got != tc.want {
+				t.Fatalf("startup detail=%d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestConfiguredDetailLevelForModeUsesModeSpecificOnly(t *testing.T) {
 	cfg := &fileConfig{
 		DetailLevelFaithful:   intPtr(1),
