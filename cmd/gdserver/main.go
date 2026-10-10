@@ -24,7 +24,6 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/netgame"
 	"gddoom/internal/roomhost"
-	"gddoom/internal/sessionflow"
 	"gddoom/internal/wad"
 )
 
@@ -62,7 +61,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fragLimit := fs.Int("frag-limit", 20, "deathmatch frag limit, 0 disables")
 	timeLimit := fs.Uint("time-limit", 0, "deathmatch time limit in seconds, 0 disables")
 	players := fs.Int("players", 4, "maximum active players, 1..4")
-	rotationFlag := fs.String("rotation", "", "comma-separated deathmatch map rotation; defaults to repeating starting map")
+	rotationFlag := fs.String("rotation", "", "explicit comma-separated deathmatch map rotation; otherwise follows normal/secret map progression")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -150,12 +149,11 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	rotation := []mapdata.MapName{m.Name}
+	var rotation []mapdata.MapName
 	if strings.TrimSpace(*rotationFlag) != "" {
 		if *mode != "deathmatch" {
 			return fmt.Errorf("-rotation is for deathmatch; co-op follows map exits")
 		}
-		rotation = nil
 		for _, name := range strings.Split(*rotationFlag, ",") {
 			name = strings.ToUpper(strings.TrimSpace(name))
 			if _, err := mapdata.LoadMap(file, mapdata.MapName(name)); err != nil {
@@ -172,20 +170,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 	}
 	if err := server.SetTransitionHandler(func() (*netgame.MapTransition, error) {
-		var nextName mapdata.MapName
-		if *mode == "deathmatch" {
-			rotationIndex = (rotationIndex + 1) % len(rotation)
-			nextName = rotation[rotationIndex]
-		} else {
-			current := authority.MapName()
-			if _, finale := sessionflow.StartFinale(current, authority.SecretExit()); finale || current == "MAP30" {
-				return nil, nil
-			}
-			var err error
-			nextName, err = mapdata.NextMapName(file, current, authority.SecretExit())
-			if err != nil {
-				return nil, err
-			}
+		nextName, nextRotationIndex, err := nextServerMap(file, authority.MapName(), authority.SecretExit(), *mode == "deathmatch", rotation, rotationIndex)
+		if err != nil || nextName == "" {
+			return nil, err
 		}
 		if epoch == ^uint64(0) {
 			return nil, fmt.Errorf("session epoch exhausted")
@@ -203,6 +190,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if err := authority.AdvanceMap(next); err != nil {
 			return nil, err
 		}
+		rotationIndex = nextRotationIndex
 		epoch++
 		manifest = nextManifest
 		fmt.Fprintf(out, "gdserver: map %s, epoch %d\n", nextName, epoch)

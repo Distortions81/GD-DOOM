@@ -29,6 +29,11 @@ type authorityClientUpdateState struct {
 	chatAccum        time.Duration
 }
 
+// Network delivery already coalesces to the newest verified snapshot. Never
+// chase arrivals by repeatedly restoring/replaying a world in one host update;
+// the next 140 Hz pump can consume another frame without starving audio/draw.
+const authoritySnapshotsPerHostUpdate = 1
+
 func (g *game) updateAuthoritativeClient() error {
 	g.captureAuthorityScoreboardInput()
 	// These controls only change local presentation or request a menu. The
@@ -117,7 +122,7 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 	}
 	p := g.clientPrediction
 	acknowledge := false
-	for range 8 {
+	for range authoritySnapshotsPerHostUpdate {
 		snapshot, ok, err := client.PollSnapshot()
 		if err != nil {
 			g.setAuthorityConnectionFailure(err)

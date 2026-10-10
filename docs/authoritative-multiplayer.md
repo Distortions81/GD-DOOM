@@ -379,6 +379,92 @@ packages passed, including new join/leave/cancel/retry tests; focused app and
 menu race checks passed. See [deployment status](wasm-deployment.md) for the
 hosted server's remaining firewall requirement.
 
+### Browser audio and snapshot work
+
+Each host update reconciles at most one snapshot. Network delivery still
+validates and retains transport baselines before coalescing to the newest one.
+Static map validation reuses the hash of the owned, immutable restart template;
+replacing the template invalidates it, and mutable fallback maps always rehash.
+Replicated browser sound bursts use the local sound coalescing and priority
+budgets while preserving the selected event's pitch and deduplication cursor.
+
+Music refills run before session work and yield between synth chunks after a
+four-millisecond work budget. The prepared reserve grows after late refills and
+recovers gradually. An empty active music reader yields without adding silence:
+it must not wait inside Oto's serial source-refill loop and stall other sounds.
+The shared browser AudioWorklet separately adapts its output reserve from about
+60 ms up to 200 ms. This protects both music and effects at the cost of extra
+sound latency under load. See `third_party/oto/GDDOOM.md` for the pinned patch
+and deterministic worklet tests.
+
+Frequent world snapshots now use a generated, typed binary codec. Integer
+fields use checked zigzag/unsigned varints, repeated texture names share a bounded
+string table, and maps use sorted keys. A binary version plus schema fingerprint
+prevents incompatible layouts from being read.
+The outer BLAKE3 checksum, loaded-map/WAD checks, full world validation and
+acknowledged-baseline recovery remain in place. Decoding bounds lengths and
+allocations before constructing arrays/maps, and rejects malformed fields or
+trailing data. Save files retain their existing format.
+
+A broadcast captures world arrays and the player roster once, then applies each
+viewer's player state and sound audience. Spectators sharing a viewer reuse the
+same encoded state; input acknowledgments and compression remain per connection.
+Applying a correction reuses live world array storage while copying the decoded
+snapshot, so retained baselines and interpolation endpoints remain independent.
+
+Gameplay packet framing now writes and reads fixed layouts directly. Compression
+tries the acknowledged dictionary first and skips a second full compression pass
+when the delta is at most 2 KiB and at most 1/32 of the raw state. In that case
+it can trade at most 2 KiB for avoiding duplicate work. Compression output
+capacity follows recent sizes, cached dictionaries are invalidated on eviction or
+epoch changes, and equal-sized evicted history buffers can be reused. Packet
+ownership, eight-baseline/16-MiB history bounds and recovery semantics are retained.
+
+This changes the simulation compatibility identifier to
+`gd-doom-authority-dev-2`: deploy the server and browser client together. Older
+clients/servers are rejected during the compatibility handshake.
+
+`BenchmarkAuthorityReplicaRenderCaches` separates binary/JSON encoding and
+decoding, validation, application and lazy automap rebuilding. `ValidateRehash`
+compares the former repeated-map-hash cost, while
+`BenchmarkAuthoritySnapshotBroadcast` compares four separate captures with a
+shared capture. The JSON cases remain test-only references for the former format.
+Regenerate the typed codec with:
+
+```sh
+AUTHORITY_BINARY_GENERATE=1 go test ./internal/doomruntime \
+  -run '^TestGenerateAuthorityBinaryCodec$'
+```
+
+Use Xvfb on headless Linux. A schema drift test catches state fields added without
+regeneration. Changes to the schema or binary grammar also require a simulation
+compatibility version bump.
+
+Measured after this pass (Go 1.26.6, Node 22 WASM CPU harness with only Ebitengine
+window initialization skipped; these are CPU measurements, not rendered FPS):
+
+| Snapshot operation | E1M1 | E1M3 |
+| --- | ---: | ---: |
+| Strict JSON decode reference | 7.07 ms | 15.58 ms |
+| Binary decode with checksum | 0.47 ms | 0.99 ms |
+| JSON / binary uncompressed bytes | 126,631 / 19,325 | 285,633 / 48,074 |
+| JSON / binary decode allocations | 586 / 112 KB | 1,667 / 236 KB |
+| Cached validation | 0.005 ms, no allocations | 0.010 ms, no allocations |
+| Apply with reused world buffers | 0.076 ms, 9 KB | 0.156 ms, 18 KB |
+
+The native four-viewer broadcast benchmark reduced allocated bytes from
+582 to 265 KB on E1M1 and 1,267 to 583 KB on E1M3 (about 54%), with 12–14%
+less CPU time compared with four separate captures using the same binary codec.
+Transport stream benchmarks with changing acknowledgments, compression, framing,
+decoding and history commits used 32–35% less WASM CPU and 36–38% less native CPU
+on structured 128/512-KiB fixtures. Results depend on map size and activity.
+
+Verification includes the complete native suite, executed WASM authority/audio
+tests, the actual WASM WebSocket bridge, network race checks, malformed/ownership/
+epoch recovery tests, and a 150,494-case binary decoder fuzz run. The production
+WASM build uses the normal Ebitengine dependency; the CPU benchmark harness is
+not included in the shipped game.
+
 ## Rules
 
 Co-op: independent health/ammo/weapons, cooperative map completion, per-player
@@ -460,10 +546,11 @@ Completion requires all of the following, not merely package-level codec tests:
   frag limit, then rotates to real E1M2 with fresh scores/loadouts. These focused
   fixtures place players beside pickups/switches or in a clear firing lane and
   set low target health; they do not stand in for walking a full campaign.
-* Thirty-six two-player E1M1 snapshots measured about 129,291 bytes raw each,
-  9,743 bytes for the first compressed full state and 613 bytes on average for
-  subsequent updates. At 17.5 snapshots/second that is roughly 10.5 KiB/s per
-  viewer for steady-state payload, excluding transport overhead. This is one
+* Thirty-six moving/firing two-player E1M1 binary snapshots measured about
+  19,896 bytes raw each, 5,278 bytes for the first compressed full state and
+  295 bytes on average for subsequent updates. At 17.5 snapshots/second that
+  is roughly 5.0 KiB/s per viewer, excluding transport overhead. The earlier
+  JSON implementation measured about 10.5 KiB/s in this fixture. This is one
   measured scenario, not a bound for all WADs or combat loads.
 * Compression uses zstd with an acknowledged reconstructed snapshot as a raw
   dictionary. Each peer retains at most eight baselines/16 MiB. Exact decoded
@@ -527,7 +614,12 @@ go run . -wad DOOM1.WAD -connect 127.0.0.1:6671 -player-name Player
 
 The client queries the server's map/rules and checks its own engine/WAD hashes
 before joining. Use `-mode deathmatch -frag-limit 20 -rotation E1M1,E1M2` on the
-server for rotating deathmatch. `-time-limit` is in seconds; zero disables it.
+server for rotating deathmatch. Without `-rotation`, deathmatch follows normal
+and secret map exits, including games created through the lobby. An explicit
+single-map rotation repeats that arena. Reaching the episode finale or exhausting
+a custom map pack ends an unrotated session; multiplayer transitions currently
+load the next map directly without the original deathmatch frag intermission.
+`-time-limit` is in seconds; zero disables it.
 The server's `-no-monsters`, `-skill`, and `-friendly-fire` settings are authoritative.
 
 WebSocket testing adds `-web-listen 127.0.0.1:6672` and, when the browser page is

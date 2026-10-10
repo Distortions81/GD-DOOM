@@ -489,6 +489,7 @@ type game struct {
 	predictionMovement          bool // movement-only replay suppresses authoritative side effects
 	clientPrediction            *ClientPrediction
 	authorityRender             *authorityRenderState
+	authorityMapHashCache       *authorityMapHashCache
 	authorityEvents             *authorityEventLog
 	authorityFailure            *netgame.ConnectionStatus
 	clientUpdate                authorityClientUpdateState
@@ -4704,9 +4705,6 @@ func (g *game) applyThingSpawnFiltering() {
 func (g *game) flushSoundEvents() {
 	queue := g.soundQueue
 	origins := g.soundQueueOrigin
-	if isWASMBuild() {
-		queue, origins = g.collectWASMSoundEvents()
-	}
 	totalBudget := maxSoundEventsPerFlush()
 	monsterVocalBudget := maxMonsterVocalSoundsPerFlush()
 	totalCount := 0
@@ -4732,28 +4730,38 @@ func (g *game) flushSoundEvents() {
 		}
 		totalCount++
 	}
-	for pass := 0; pass < 2; pass++ {
-		for idx, ev := range queue {
-			vocal := isMonsterVocalSound(ev)
-			if pass == 0 && vocal {
-				continue
+	if isWASMBuild() {
+		g.visitWASMSoundBatch(len(queue), func(i int) (soundEvent, queuedSoundOrigin) {
+			origin := queuedSoundOrigin{}
+			if i < len(origins) {
+				origin = origins[i]
 			}
-			if pass == 1 && !vocal {
-				continue
+			return queue[i], origin
+		}, playQueued)
+	} else {
+		for pass := 0; pass < 2; pass++ {
+			for idx, ev := range queue {
+				vocal := isMonsterVocalSound(ev)
+				if pass == 0 && vocal {
+					continue
+				}
+				if pass == 1 && !vocal {
+					continue
+				}
+				if totalBudget > 0 && totalCount >= totalBudget {
+					break
+				}
+				if vocal && monsterVocalBudget > 0 {
+					if monsterVocalCount >= monsterVocalBudget {
+						continue
+					}
+					monsterVocalCount++
+				}
+				playQueued(idx, ev)
 			}
 			if totalBudget > 0 && totalCount >= totalBudget {
 				break
 			}
-			if vocal && monsterVocalBudget > 0 {
-				if monsterVocalCount >= monsterVocalBudget {
-					continue
-				}
-				monsterVocalCount++
-			}
-			playQueued(idx, ev)
-		}
-		if totalBudget > 0 && totalCount >= totalBudget {
-			break
 		}
 	}
 	if g.snd != nil {
@@ -4767,34 +4775,14 @@ func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
 	if g == nil || len(g.soundQueue) == 0 {
 		return g.soundQueue, g.soundQueueOrigin
 	}
-	for i := 0; i < g.wasmSoundOrderCount; i++ {
-		ev := g.wasmSoundOrder[i]
-		g.wasmSoundSeen[ev] = false
-	}
-	g.wasmSoundOrderCount = 0
-	mapUsesFullClip := false
-	if g.m != nil {
-		mapUsesFullClip = soundMapUsesFullClip(g.m.Name)
-	}
-	for idx, ev := range g.soundQueue {
+	g.collectWASMSoundOrder(len(g.soundQueue), func(idx int) (soundEvent, queuedSoundOrigin) {
 		origin := queuedSoundOrigin{}
 		if idx < len(g.soundQueueOrigin) {
 			origin = g.soundQueueOrigin[idx]
 		}
-		strength := vanillaSoundStrength(g.snd, origin, g.p.x, g.p.y, g.p.angle, mapUsesFullClip)
-		if g.wasmSoundSeen[ev] {
-			if strength > g.wasmSoundBestStrength[ev] {
-				g.wasmSoundBestIdx[ev] = idx
-				g.wasmSoundBestStrength[ev] = strength
-			}
-			continue
-		}
-		g.wasmSoundSeen[ev] = true
-		g.wasmSoundBestIdx[ev] = idx
-		g.wasmSoundBestStrength[ev] = strength
-		g.wasmSoundOrder[g.wasmSoundOrderCount] = ev
-		g.wasmSoundOrderCount++
-	}
+		return g.soundQueue[idx], origin
+	})
+	defer g.resetWASMSoundOrder()
 	queue := g.soundQueue[:0]
 	origins := g.soundQueueOrigin[:0]
 	for i := 0; i < g.wasmSoundOrderCount; i++ {
@@ -4806,11 +4794,7 @@ func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
 		} else {
 			origins = append(origins, queuedSoundOrigin{})
 		}
-		g.wasmSoundSeen[ev] = false
-		g.wasmSoundBestIdx[ev] = 0
-		g.wasmSoundBestStrength[ev] = 0
 	}
-	g.wasmSoundOrderCount = 0
 	return queue, origins
 }
 

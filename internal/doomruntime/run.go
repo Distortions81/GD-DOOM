@@ -174,6 +174,11 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 }
 
 func (sg *sessionGame) Update() error {
+	// Refill before snapshot processing or level transitions can occupy the
+	// browser main thread. ChunkPlayer bounds and schedules the refill work.
+	if sg.musicCtl != nil && isWASMBuild() {
+		sg.musicCtl.Tick()
+	}
 	sg.pollAuthorityJoin()
 	if err := sg.updateAuthoritySession(); err != nil {
 		sg.err = err
@@ -188,9 +193,6 @@ func (sg *sessionGame) Update() error {
 	}
 	sg.releaseStartupMusicIfReady()
 	sg.releaseTransitionMusicIfReady()
-	if sg.musicCtl != nil && isWASMBuild() {
-		sg.musicCtl.Tick()
-	}
 	flushTouchLatch := sg.bumpHostFramePhase()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },

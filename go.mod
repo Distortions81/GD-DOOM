@@ -33,6 +33,9 @@ require (
 
 replace github.com/sinshu/go-meltysynth => github.com/Distortions81/go-meltysynth v0.1.2
 
+// Pinned Oto with adaptive browser output buffering; see third_party/oto/GDDOOM.md.
+replace github.com/ebitengine/oto/v3 => ./third_party/oto
+
 require (
 	github.com/Distortions81/GoBeep86 v0.0.1
 	github.com/ebitengine/gomobile v0.0.0-20260820040257-d11f821a26a6 // indirect

@@ -91,16 +91,29 @@ func (p *ClientPrediction) applyAuthoritySounds(r authorityReplica, hadBaseline 
 	if len(pending) > authorityEventPlaybackBudget {
 		pending = pending[len(pending)-authorityEventPlaybackBudget:]
 	}
+	if isWASMBuild() {
+		p.g.visitWASMSoundBatch(len(pending), func(i int) (soundEvent, queuedSoundOrigin) {
+			event := pending[i]
+			return event.Kind, authoritySoundOrigin(event, p.viewer)
+		}, func(i int, _ soundEvent) {
+			p.g.playAuthoritySound(pending[i], p.epoch, p.viewer)
+		})
+		return
+	}
 	for _, event := range pending {
 		p.g.playAuthoritySound(event, p.epoch, p.viewer)
 	}
+}
+
+func authoritySoundOrigin(event authoritySoundEvent, viewer byte) queuedSoundOrigin {
+	return queuedSoundOrigin{x: event.X, y: event.Y, positioned: event.LocalPlayer != viewer}
 }
 
 func (g *game) playAuthoritySound(event authoritySoundEvent, epoch uint64, viewer byte) {
 	if g.snd == nil {
 		return
 	}
-	origin := queuedSoundOrigin{x: event.X, y: event.Y, positioned: event.LocalPlayer != viewer}
+	origin := authoritySoundOrigin(event, viewer)
 	pitch := 128
 	// Cosmetic variation derives from immutable event identity, never either
 	// global Doom RNG stream. Reconciliation must not consume simulation RNG.

@@ -1,0 +1,639 @@
+// Copyright 2021 The Oto Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Package mux offers APIs for a low-level multiplexer of audio players.
+// Usually you don't have to use this package directly.
+package mux
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"runtime"
+	"sync"
+	"time"
+)
+
+// Format must sync with oto's Format.
+type Format int
+
+const (
+	FormatFloat32LE Format = iota
+	FormatUnsignedInt8
+	FormatSignedInt16LE
+)
+
+func (f Format) ByteLength() int {
+	switch f {
+	case FormatFloat32LE:
+		return 4
+	case FormatUnsignedInt8:
+		return 1
+	case FormatSignedInt16LE:
+		return 2
+	}
+	panic(fmt.Sprintf("mux: unexpected format: %d", f))
+}
+
+// Mux is a low-level multiplexer of audio players.
+type Mux struct {
+	sampleRate   int
+	channelCount int
+	format       Format
+
+	// playersMu must not be held while locking a player.
+	playersMu sync.Mutex
+	players   map[*playerImpl]struct{}
+	cond      *sync.Cond
+}
+
+// New creates a new Mux.
+func New(sampleRate int, channelCount int, format Format) *Mux {
+	m := &Mux{
+		sampleRate:   sampleRate,
+		channelCount: channelCount,
+		format:       format,
+		cond:         sync.NewCond(&sync.Mutex{}),
+	}
+	go m.loop()
+	return m
+}
+
+func (m *Mux) shouldWait(players []*playerImpl) bool {
+	for _, p := range players {
+		if p.canReadSourceToBuffer() {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Mux) wait(players []*playerImpl) []*playerImpl {
+	m.cond.L.Lock()
+	defer m.cond.L.Unlock()
+
+	for {
+		clear(players)
+		players = m.appendPlayers(players[:0])
+		if !m.shouldWait(players) {
+			return players
+		}
+		m.cond.Wait()
+	}
+}
+
+func (m *Mux) loop() {
+	var players []*playerImpl
+	for {
+		players = m.wait(players)
+
+		allZero := true
+		for _, p := range players {
+			n := p.readSourceToBuffer()
+			if n != 0 {
+				allZero = false
+			}
+		}
+
+		// Sleeping is necessary especially on browsers.
+		// Sometimes a player continues to read 0 bytes from the source and this loop can be a busy loop in such case.
+		if allZero {
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+func (m *Mux) appendPlayers(players []*playerImpl) []*playerImpl {
+	m.playersMu.Lock()
+	defer m.playersMu.Unlock()
+
+	for p := range m.players {
+		players = append(players, p)
+	}
+	return players
+}
+
+func (m *Mux) addPlayer(player *playerImpl) {
+	m.playersMu.Lock()
+	defer m.playersMu.Unlock()
+
+	if m.players == nil {
+		m.players = map[*playerImpl]struct{}{}
+	}
+	m.players[player] = struct{}{}
+}
+
+func (m *Mux) removePlayer(player *playerImpl) {
+	m.playersMu.Lock()
+	defer m.playersMu.Unlock()
+
+	delete(m.players, player)
+}
+
+func (m *Mux) signal() {
+	// Callers must release player locks before signaling: wait inspects players
+	// under the condition lock. Taking this lock also prevents a missed wakeup.
+	m.cond.L.Lock()
+	defer m.cond.L.Unlock()
+
+	m.cond.Signal()
+}
+
+// ReadFloat32s fills buf with the multiplexed data of the players as float32 values.
+func (m *Mux) ReadFloat32s(buf []float32) {
+	players := m.appendPlayers(nil)
+
+	for i := range buf {
+		buf[i] = 0
+	}
+	for _, p := range players {
+		p.readBufferAndAdd(buf)
+	}
+	m.signal()
+}
+
+type Player struct {
+	p       *playerImpl
+	cleanup runtime.Cleanup
+}
+
+type playerState int
+
+const (
+	// playerPaused is a paused state where the player keeps reading the source to fill its buffer.
+	playerPaused playerState = iota
+
+	// playerPausedAndStopReading is a paused state where the player must not read the source.
+	// This state is entered by PauseAndStopReading, Reset, or Seek, and exited by Play.
+	playerPausedAndStopReading
+
+	// playerPlay is a state where the player is playing.
+	playerPlay
+
+	// playerClosed is a state where the player is closed and no longer usable.
+	playerClosed
+)
+
+type playerImpl struct {
+	mux        *Mux
+	src        io.Reader
+	prevVolume float64
+	volume     float64
+	err        error
+	state      playerState
+	buf        []byte
+	eof        bool
+	bufferSize int
+
+	// reading reports whether a read from the source is in flight.
+	// readCond is signaled when reading becomes false.
+	reading  bool
+	readCond *sync.Cond
+
+	// srcGen is a generation counter of the source position.
+	// The result of a read that started at an older generation is stale and must be discarded.
+	srcGen int
+
+	m sync.Mutex
+}
+
+func (m *Mux) NewPlayer(src io.Reader) *Player {
+	p := &playerImpl{
+		mux:        m,
+		src:        src,
+		prevVolume: 1,
+		volume:     1,
+		bufferSize: m.defaultBufferSize(),
+	}
+	p.readCond = sync.NewCond(&p.m)
+	pl := &Player{
+		p: p,
+	}
+	pl.cleanup = runtime.AddCleanup(pl, func(p *playerImpl) {
+		_ = p.Close()
+	}, pl.p)
+	return pl
+}
+
+func (p *Player) Err() error {
+	return p.p.Err()
+}
+
+func (p *playerImpl) Err() error {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	return p.err
+}
+
+func (p *Player) Play() {
+	p.p.Play()
+}
+
+func (p *playerImpl) Play() {
+	defer p.mux.signal()
+
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.playImpl()
+}
+
+func (p *Player) SetBufferSize(bufferSize int) {
+	p.p.setBufferSize(bufferSize)
+}
+
+func (p *playerImpl) setBufferSize(bufferSize int) {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.bufferSize = bufferSize
+	if bufferSize == 0 {
+		p.bufferSize = p.mux.defaultBufferSize()
+	}
+}
+
+var theBufPool = sync.Pool{
+	New: func() any {
+		var buf []byte
+		return &buf
+	},
+}
+
+func getBufferFromPool(size int) *[]byte {
+	buf := theBufPool.Get().(*[]byte)
+
+	if cap(*buf) < size {
+		*buf = make([]byte, size)
+	}
+
+	*buf = (*buf)[:size]
+
+	return buf
+}
+
+// playImpl starts playing without reading the source.
+// The buffer is filled by the mux loop.
+//
+// When playImpl is called, the mutex m must be locked.
+func (p *playerImpl) playImpl() {
+	if p.err != nil {
+		return
+	}
+	if p.state != playerPaused && p.state != playerPausedAndStopReading {
+		return
+	}
+	if p.eof && len(p.buf) == 0 {
+		return
+	}
+	p.state = playerPlay
+
+	p.mux.addPlayer(p)
+}
+
+func (p *Player) Pause() {
+	p.p.Pause()
+}
+
+func (p *playerImpl) Pause() {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	if p.state != playerPlay {
+		return
+	}
+	p.state = playerPaused
+}
+
+func (p *Player) PauseAndStopReading() {
+	p.p.PauseAndStopReading()
+}
+
+func (p *playerImpl) PauseAndStopReading() {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.pauseAndStopReadingImpl()
+}
+
+// pauseAndStopReadingImpl pauses playing and waits until an ongoing read from the source finishes.
+// The buffer is kept as it is.
+//
+// When pauseAndStopReadingImpl is called, the mutex m must be locked.
+func (p *playerImpl) pauseAndStopReadingImpl() {
+	if p.state == playerClosed {
+		return
+	}
+
+	p.state = playerPausedAndStopReading
+	p.mux.removePlayer(p)
+
+	// Wait until an ongoing read from the source finishes.
+	// The source must not be read after this returns (#288).
+	for p.reading {
+		p.readCond.Wait()
+	}
+}
+
+func (p *Player) Seek(offset int64, whence int) (int64, error) {
+	return p.p.Seek(offset, whence)
+}
+
+func (p *playerImpl) Seek(offset int64, whence int) (int64, error) {
+	defer p.mux.signal()
+
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	// If a player is playing, keep playing even after this seeking.
+	if p.state == playerPlay {
+		defer p.playImpl()
+	}
+
+	// Reset the internal buffer.
+	// The result of an ongoing read, if any, is data at the old position and must be discarded.
+	if p.state != playerClosed {
+		p.buf = p.buf[:0]
+		p.eof = false
+		p.srcGen++
+
+		// Wait until an ongoing read from the source finishes.
+		// Otherwise the source would be sought while it is being read.
+		p.pauseAndStopReadingImpl()
+	}
+
+	// Check if the source implements io.Seeker.
+	s, ok := p.src.(io.Seeker)
+	if !ok {
+		return 0, errors.New("mux: the source must implement io.Seeker")
+	}
+	return s.Seek(offset, whence)
+}
+
+func (p *Player) Reset() {
+	p.p.Reset()
+}
+
+func (p *playerImpl) Reset() {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.pauseAndStopReadingImpl()
+
+	// Clear the buffer states after waiting, as a read that was in flight might have
+	// added data to the buffer or reached the end of the source.
+	p.buf = p.buf[:0]
+	p.eof = false
+}
+
+func (p *Player) IsPlaying() bool {
+	return p.p.IsPlaying()
+}
+
+func (p *playerImpl) IsPlaying() bool {
+	p.m.Lock()
+	defer p.m.Unlock()
+	return p.state == playerPlay
+}
+
+func (p *Player) Volume() float64 {
+	return p.p.Volume()
+}
+
+func (p *playerImpl) Volume() float64 {
+	p.m.Lock()
+	defer p.m.Unlock()
+	return p.volume
+}
+
+func (p *Player) SetVolume(volume float64) {
+	p.p.SetVolume(volume)
+}
+
+func (p *playerImpl) SetVolume(volume float64) {
+	// A volume out of the range of [0, math.MaxFloat32] is treated as 0.
+	// !(volume > 0) is true for NaN as well as for negative values.
+	// A too large volume is rejected as the mixing narrows the volume to float32,
+	// where such a volume becomes +Inf, and +Inf times a 0 sample is NaN.
+	if !(volume > 0) || volume > math.MaxFloat32 {
+		volume = 0
+	}
+
+	p.m.Lock()
+	defer p.m.Unlock()
+	p.volume = volume
+	if p.state != playerPlay {
+		p.prevVolume = volume
+	}
+}
+
+func (p *Player) BufferedSize() int {
+	return p.p.BufferedSize()
+}
+
+func (p *playerImpl) BufferedSize() int {
+	p.m.Lock()
+	defer p.m.Unlock()
+	return len(p.buf)
+}
+
+func (p *Player) Close() error {
+	p.cleanup.Stop()
+	return p.p.Close()
+}
+
+func (p *playerImpl) Close() error {
+	p.m.Lock()
+	defer p.m.Unlock()
+	return p.closeImpl()
+}
+
+func (p *playerImpl) closeImpl() error {
+	p.mux.removePlayer(p)
+
+	if p.state == playerClosed {
+		return p.err
+	}
+	p.state = playerClosed
+	p.returnBufferToPool()
+
+	return p.err
+}
+
+func (p *playerImpl) readBufferAndAdd(buf []float32) int {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	if p.state != playerPlay {
+		return 0
+	}
+
+	format := p.mux.format
+	bitDepthInBytes := format.ByteLength()
+	n := min(len(p.buf)/bitDepthInBytes, len(buf))
+
+	prevVolume := float32(p.prevVolume)
+	volume := float32(p.volume)
+
+	channelCount := p.mux.channelCount
+	rateDenom := float32(n / channelCount)
+
+	src := p.buf[:n*bitDepthInBytes]
+
+	for i := range n {
+		var v float32
+		switch format {
+		case FormatFloat32LE:
+			v = math.Float32frombits(uint32(src[4*i]) | uint32(src[4*i+1])<<8 | uint32(src[4*i+2])<<16 | uint32(src[4*i+3])<<24)
+		case FormatUnsignedInt8:
+			v8 := src[i]
+			v = float32(v8-(1<<7)) / (1 << 7)
+		case FormatSignedInt16LE:
+			v16 := int16(src[2*i]) | (int16(src[2*i+1]) << 8)
+			v = float32(v16) / (1 << 15)
+		default:
+			panic(fmt.Sprintf("mux: unexpected format: %d", format))
+		}
+		var s float32
+		if volume == prevVolume {
+			s = v * volume
+		} else {
+			rate := float32(i/channelCount) / rateDenom
+			if rate > 1 {
+				rate = 1
+			}
+			s = v * (volume*rate + prevVolume*(1-rate))
+		}
+
+		// Add the value only when the mixed value stays finite, and skip this player otherwise.
+		// A float32 source can supply NaN or infinity, and the accumulation can overflow
+		// with a large volume. As all the players are accumulated into one shared buffer,
+		// a non-finite value there would destroy the other players' samples.
+		// The comparisons are false for NaN and infinity.
+		if mixed := buf[i] + s; -math.MaxFloat32 <= mixed && mixed <= math.MaxFloat32 {
+			buf[i] = mixed
+		}
+	}
+
+	p.prevVolume = p.volume
+
+	copy(p.buf, p.buf[n*bitDepthInBytes:])
+	p.buf = p.buf[:len(p.buf)-n*bitDepthInBytes]
+
+	if p.eof && len(p.buf) == 0 {
+		p.returnBufferToPool()
+		p.state = playerPaused
+	}
+
+	return n
+}
+
+func (p *playerImpl) canReadSourceToBuffer() bool {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	if p.state == playerClosed || p.state == playerPausedAndStopReading {
+		return false
+	}
+	if p.eof {
+		return false
+	}
+	return len(p.buf) < p.bufferSize
+}
+
+func (p *playerImpl) readSourceToBuffer() int {
+	buf, gen := p.prepareSourceRead()
+	if buf == nil {
+		return 0
+	}
+	defer theBufPool.Put(buf)
+
+	n, err := p.src.Read(*buf)
+	return p.finishSourceRead(buf, gen, n, err)
+}
+
+func (p *playerImpl) prepareSourceRead() (*[]byte, int) {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	if p.err != nil || p.state == playerClosed || p.state == playerPausedAndStopReading {
+		return nil, 0
+	}
+	if len(p.buf) >= p.bufferSize {
+		return nil, 0
+	}
+
+	buf := getBufferFromPool(p.bufferSize)
+	p.reading = true
+	return buf, p.srcGen
+}
+
+func (p *playerImpl) finishSourceRead(buf *[]byte, gen, n int, err error) int {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.reading = false
+	p.readCond.Broadcast()
+
+	// Close or Seek might be called while reading. In this case, discard the read result.
+	if p.state == playerClosed || p.srcGen != gen {
+		return 0
+	}
+
+	if err != nil && err != io.EOF {
+		p.setErrorImpl(err)
+		return 0
+	}
+
+	if p.buf == nil {
+		p.buf = (*getBufferFromPool(p.bufferSize))[:0]
+	}
+
+	p.buf = append(p.buf, (*buf)[:n]...)
+	if err == io.EOF {
+		p.eof = true
+		if len(p.buf) == 0 {
+			p.returnBufferToPool()
+			if p.state == playerPlay {
+				p.state = playerPaused
+			}
+		}
+	}
+	return n
+}
+
+func (p *playerImpl) setErrorImpl(err error) {
+	p.err = err
+	p.closeImpl()
+}
+
+func (p *playerImpl) returnBufferToPool() {
+	if p.buf != nil {
+		buf := p.buf
+		theBufPool.Put(&buf)
+		p.buf = nil
+	}
+}
+
+// TODO: The term 'buffer' is confusing. Name each buffer with good terms.
+
+// defaultBufferSize returns the default size of the buffer for the audio source.
+// This buffer is used when unreading on pausing the player.
+func (m *Mux) defaultBufferSize() int {
+	bytesPerSample := m.channelCount * m.format.ByteLength()
+	s := m.sampleRate * bytesPerSample / 2 // 0.5[s]
+	// Align s in multiples of bytes per sample, or a buffer could have extra bytes.
+	return s / bytesPerSample * bytesPerSample
+}

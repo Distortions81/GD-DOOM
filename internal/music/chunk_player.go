@@ -41,10 +41,18 @@ type playerCmd struct {
 	targetBytes    int
 }
 
-// ChunkPlayer plays queued output-rate s16 stereo chunks on a dedicated goroutine.
+type musicAudioPlayer interface {
+	Play()
+	Pause()
+	SetVolume(float64)
+	Close() error
+}
+
+// ChunkPlayer plays queued output-rate s16 stereo chunks. Native builds refill on
+// a dedicated goroutine; WASM refills in small slices of the game update.
 type ChunkPlayer struct {
 	ctx    *audio.Context
-	player *audio.Player
+	player musicAudioPlayer
 	src    *pcmChunkBuffer
 	volume float64
 
@@ -56,6 +64,11 @@ type ChunkPlayer struct {
 	inline bool
 	closed bool
 	stream *playerStream
+
+	buffering      adaptiveMusicBuffer
+	nextService    time.Time
+	lastRenderCost time.Duration
+	now            func() time.Time
 }
 
 type playerStream struct {
@@ -68,6 +81,7 @@ type playerStream struct {
 	targetBytes    int
 	started        bool
 	ended          bool
+	loopHasPCM     bool
 }
 
 func NewChunkPlayer() (*ChunkPlayer, error) {
@@ -175,7 +189,7 @@ func (cp *ChunkPlayer) Tick() error {
 	if cp.closed {
 		return io.ErrClosedPipe
 	}
-	cp.serviceStreamLocked(true)
+	cp.serviceStreamLocked(false)
 	return nil
 }
 
@@ -283,7 +297,8 @@ func (cp *ChunkPlayer) sendAndWait(cmd playerCmd) error {
 }
 
 func (cp *ChunkPlayer) run() {
-	ticker := time.NewTicker(12 * time.Millisecond)
+	interval := 12 * time.Millisecond
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	defer close(cp.done)
 	for cmd := range cp.cmds {
@@ -306,6 +321,10 @@ func (cp *ChunkPlayer) run() {
 				}
 			case <-ticker.C:
 				cp.serviceStreamLocked(false)
+				if next := cp.buffering.interval(); next != interval {
+					interval = next
+					ticker.Reset(interval)
+				}
 				if cp.closed {
 					return
 				}
@@ -377,6 +396,9 @@ func (cp *ChunkPlayer) startStreamLocked(factory StreamFactory, loop bool, chunk
 		lookaheadBytes: lookaheadBytes,
 		targetBytes:    targetBytes,
 	}
+	cp.buffering.start(cp.timeNow(), cp.pcmDuration(lookaheadBytes))
+	cp.nextService = time.Time{}
+	cp.lastRenderCost = 0
 	cp.src.SetBlockingPrefill(targetBytes)
 	cp.serviceStreamLocked(true)
 }
@@ -386,81 +408,75 @@ func (cp *ChunkPlayer) clearStreamLocked() {
 	cp.src.DisableBlockingPrefill()
 }
 
-func (cp *ChunkPlayer) serviceStreamLocked(fillFully bool) {
-	for cp.stream != nil {
-		sp := cp.stream
-		buffered := cp.src.BufferedBytes()
-		if !sp.started {
-			for buffered < sp.targetBytes {
-				chunk, alive := cp.nextStreamBatchLocked(sp, sp.targetBytes-buffered)
-				if len(chunk) > 0 {
-					cp.enqueueChunkLocked(chunk)
-					buffered = cp.src.BufferedBytes()
-				}
-				if !alive || len(chunk) == 0 {
-					break
-				}
-			}
-			buffered = cp.src.BufferedBytes()
-			if buffered == 0 && cp.stream == nil {
-				return
-			}
-			if buffered >= sp.targetBytes || cp.stream == nil {
-				cp.player.Play()
-				sp.started = buffered > 0
-			}
-			if !fillFully {
-				return
-			}
-			if cp.stream == nil {
-				return
-			}
-		}
-		buffered = cp.src.BufferedBytes()
-		if buffered == 0 {
-			cp.player.Pause()
-			if cp.stream == nil {
-				return
-			}
-			if cp.stream.renderer == nil && cp.stream.ended {
-				cp.clearStreamLocked()
-				return
-			}
-			cp.stream.started = false
-			cp.src.SetBlockingPrefill(cp.stream.targetBytes)
-			if !fillFully {
-				return
-			}
-			continue
-		}
-		if buffered >= sp.lookaheadBytes && !fillFully {
-			return
-		}
-		progress := false
-		for buffered < sp.lookaheadBytes {
-			chunk, alive := cp.nextStreamBatchLocked(sp, sp.lookaheadBytes-buffered)
-			if len(chunk) > 0 {
-				cp.enqueueChunkLocked(chunk)
-				buffered = cp.src.BufferedBytes()
-				progress = true
-			}
-			if !alive || len(chunk) == 0 {
-				break
-			}
-			if !fillFully {
-				return
-			}
-		}
-		if !progress {
-			return
-		}
-		if !fillFully {
-			return
-		}
+// Keep each steady-state refill short enough to leave the browser's main thread
+// available for audio delivery, input and rendering. Check between synth chunks:
+// a single chunk cannot be preempted. Startup still primes the minimum reserve.
+const musicRefillBudget = 4 * time.Millisecond
+
+func (cp *ChunkPlayer) timeNow() time.Time {
+	if cp.now != nil {
+		return cp.now()
 	}
+	return time.Now()
 }
 
-func (cp *ChunkPlayer) nextStreamBatchLocked(sp *playerStream, wantBytes int) ([]byte, bool) {
+func (cp *ChunkPlayer) pcmDuration(bytes int) time.Duration {
+	return time.Duration(bytes/4) * time.Second / time.Duration(cp.SampleRate())
+}
+
+func (cp *ChunkPlayer) serviceStreamLocked(startup bool) {
+	sp := cp.stream
+	if sp == nil {
+		return
+	}
+	now := cp.timeNow()
+	if !startup && now.Before(cp.nextService) {
+		return
+	}
+	if !startup {
+		cp.buffering.observe(now, cp.lastRenderCost)
+	}
+	target := int(cp.buffering.reserve()*time.Duration(cp.SampleRate())/time.Second) * 4
+	deadline := now.Add(musicRefillBudget)
+	if startup {
+		// Grow a learned larger reserve incrementally after playback starts.
+		target = sp.targetBytes
+		deadline = time.Time{}
+	}
+	buffered := cp.src.BufferedBytes()
+	rendered := false
+	for buffered < target && !sp.ended && cp.stream == sp {
+		chunk, alive := cp.nextStreamBatchLocked(sp, target-buffered, deadline)
+		if len(chunk) > 0 {
+			cp.enqueueChunkLocked(chunk)
+			rendered = true
+			buffered = cp.src.BufferedBytes()
+		}
+		if !alive || len(chunk) == 0 || (!deadline.IsZero() && !cp.timeNow().Before(deadline)) {
+			break
+		}
+	}
+	if !sp.started && buffered > 0 && (buffered >= sp.targetBytes || sp.ended || cp.stream != sp) {
+		// Once started, release each new chunk immediately. The backend has its
+		// own queue, so an empty source queue is not evidence of an audible gap.
+		cp.src.StartStreamingReads()
+		cp.player.Play()
+		sp.started = true
+	}
+	if sp.ended || cp.stream != sp {
+		// Let the backend play the entire tail, including short one-shot tracks.
+		// Pausing here would discard time already queued in the audio backend.
+		cp.clearStreamLocked()
+		return
+	}
+	cp.lastRenderCost = 0
+	if rendered {
+		cp.lastRenderCost = cp.timeNow().Sub(now)
+	}
+	cp.nextService = now.Add(cp.buffering.interval())
+}
+
+func (cp *ChunkPlayer) nextStreamBatchLocked(sp *playerStream, wantBytes int, deadline time.Time) ([]byte, bool) {
 	if cp == nil || sp == nil {
 		return nil, false
 	}
@@ -484,7 +500,7 @@ func (cp *ChunkPlayer) nextStreamBatchLocked(sp *playerStream, wantBytes int) ([
 		if nextAlive {
 			alive = true
 		}
-		if !nextAlive || len(chunk) == 0 {
+		if !nextAlive || len(chunk) == 0 || (!deadline.IsZero() && !cp.timeNow().Before(deadline)) {
 			break
 		}
 	}
@@ -506,15 +522,17 @@ func (cp *ChunkPlayer) nextStreamChunkLocked(sp *playerStream) ([]byte, bool) {
 				return nil, false
 			}
 			sp.renderer = next
+			sp.loopHasPCM = false
 		}
 		chunk, done, err := sp.renderer.NextChunkS16LE(sp.chunkFrames)
 		if err != nil {
 			cp.clearStreamLocked()
 			return nil, false
 		}
+		sp.loopHasPCM = sp.loopHasPCM || len(chunk) > 0
 		if done {
 			sp.renderer = nil
-			if !sp.loop {
+			if !sp.loop || !sp.loopHasPCM {
 				sp.ended = true
 				return chunk, len(chunk) > 0
 			}
@@ -553,6 +571,7 @@ type pcmChunkBuffer struct {
 	bytes          int
 	prefillBytes   int
 	blockOnStarve  bool
+	streamReads    bool
 	refillPending  bool
 	starving       bool
 	lastL          int16
@@ -618,6 +637,7 @@ func (b *pcmChunkBuffer) Clear() {
 	b.bytes = 0
 	b.prefillBytes = 0
 	b.blockOnStarve = false
+	b.streamReads = false
 	b.refillPending = false
 	b.starving = false
 	b.fadeOutPending = false
@@ -635,7 +655,22 @@ func (b *pcmChunkBuffer) SetBlockingPrefill(targetBytes int) {
 	}
 	b.prefillBytes = targetBytes
 	b.blockOnStarve = true
+	b.streamReads = false
 	b.refillPending = b.bytes < b.prefillBytes
+	b.cond.Broadcast()
+	b.mu.Unlock()
+}
+
+// StartStreamingReads releases the startup gate without generating silence on
+// temporary starvation. Oto refills all sources in one loop: waiting here would
+// also prevent sound effects from refilling. A zero read lets it service the
+// other players and retry later; it is not an EOF or a skipped music sample.
+func (b *pcmChunkBuffer) StartStreamingReads() {
+	b.mu.Lock()
+	b.prefillBytes = 0
+	b.blockOnStarve = false
+	b.refillPending = false
+	b.streamReads = true
 	b.cond.Broadcast()
 	b.mu.Unlock()
 }
@@ -644,6 +679,7 @@ func (b *pcmChunkBuffer) DisableBlockingPrefill() {
 	b.mu.Lock()
 	b.prefillBytes = 0
 	b.blockOnStarve = false
+	b.streamReads = false
 	b.refillPending = false
 	b.cond.Broadcast()
 	b.mu.Unlock()
@@ -675,6 +711,9 @@ func (b *pcmChunkBuffer) Read(p []byte) (int, error) {
 			}
 		}
 		if len(b.chunks) == 0 && !b.closed {
+			if b.streamReads {
+				return 0, nil
+			}
 			n := b.fillStarvationAudio(p)
 			if n > 0 {
 				return n, nil

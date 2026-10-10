@@ -21,7 +21,7 @@ func (g *game) updateAuthoritativeObserverAt(now time.Time) error {
 	}
 	p := g.clientPrediction
 	acknowledge := false
-	for range 8 {
+	for range authoritySnapshotsPerHostUpdate {
 		snapshot, ok, err := client.PollSnapshot()
 		if err != nil {
 			g.setAuthorityConnectionFailure(err)

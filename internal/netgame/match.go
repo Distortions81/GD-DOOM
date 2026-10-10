@@ -25,6 +25,13 @@ type SnapshotSource interface {
 	Snapshot(viewer byte) ([]byte, error)
 }
 
+// SnapshotBatchSource can capture shared world data once for the distinct
+// viewers of one broadcast. Payload ownership is identical to SnapshotSource;
+// per-connection input acknowledgments and compression remain the match's job.
+type SnapshotBatchSource interface {
+	SnapshotBatch(viewers []byte) (map[byte][]byte, error)
+}
+
 // WorldCompletion reports an ordinary terminal match result, independently of
 // simulation errors. The final successful tic is snapshotted before a transport
 // closes the session. Worlds without this interface remain open-ended.
@@ -321,7 +328,14 @@ func (m *Match) snapshotResult(result TickResult) (TickResult, error) {
 		}
 		m.snapshotID++
 		result.Snapshots = make(map[ConnectionID]Snapshot, len(m.players))
-		states := make(map[byte][]byte, MaxPlayers)
+		type recipient struct {
+			handle ConnectionID
+			player *matchPlayer
+			viewer byte
+		}
+		recipients := make([]recipient, 0, len(m.players))
+		viewers := make([]byte, 0, MaxPlayers)
+		var requested [MaxPlayers + 1]bool
 		for _, handle := range m.orderedPlayers() {
 			p := m.players[handle]
 			if p.suspended {
@@ -334,22 +348,41 @@ func (m *Match) snapshotResult(result TickResult) (TickResult, error) {
 					continue
 				}
 			}
-			state := states[viewer]
-			if state == nil {
-				var err error
-				state, err = m.snapshots.Snapshot(viewer)
+			recipients = append(recipients, recipient{handle, p, viewer})
+			if !requested[viewer] {
+				requested[viewer] = true
+				viewers = append(viewers, viewer)
+			}
+		}
+		var states map[byte][]byte
+		if batch, ok := m.snapshots.(SnapshotBatchSource); ok && len(viewers) > 0 {
+			var err error
+			states, err = batch.SnapshotBatch(viewers)
+			if err != nil {
+				m.err = err
+				return result, err
+			}
+		} else {
+			states = make(map[byte][]byte, len(viewers))
+			for _, viewer := range viewers {
+				state, err := m.snapshots.Snapshot(viewer)
 				if err != nil {
 					m.err = err
 					return result, err
 				}
 				states[viewer] = state
 			}
+		}
+		for _, viewer := range viewers {
+			state := states[viewer]
 			if len(state) == 0 || len(state) > MaxSnapshotBytes {
 				m.err = ErrProtocol
 				return result, m.err
 			}
-			result.Snapshots[handle] = Snapshot{Epoch: m.config.Epoch, ID: m.snapshotID, Tick: result.Tick, Finalized: p.input.Ack(), State: state}
-			p.lastSnapshot = m.snapshotID
+		}
+		for _, recipient := range recipients {
+			result.Snapshots[recipient.handle] = Snapshot{Epoch: m.config.Epoch, ID: m.snapshotID, Tick: result.Tick, Finalized: recipient.player.input.Ack(), State: states[recipient.viewer]}
+			recipient.player.lastSnapshot = m.snapshotID
 		}
 	}
 	if result.Completed {

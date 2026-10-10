@@ -199,6 +199,149 @@ func TestSnapshotCodecOwnsCachedStateAndRejectsIDReuse(t *testing.T) {
 	}
 }
 
+func TestSnapshotCodecRecyclesHistoryWithoutChangingPacketsOrEpochDictionaries(t *testing.T) {
+	encoder, decoder := snapshotCodecs(t)
+	var retained []byte
+	for epoch := uint64(1); epoch <= 2; epoch++ {
+		base := noisySnapshot(1)
+		base.Epoch = epoch
+		if epoch == 2 {
+			// Reuse snapshot IDs with different dictionary contents in a new map.
+			for i := range base.State {
+				base.State[i] ^= 0x5a
+			}
+		}
+		if err := encoder.Commit(base); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decoder.Decode(base); err != nil {
+			t.Fatal(err)
+		}
+		ack := uint32(1)
+		for id := uint32(2); id <= 20; id++ {
+			next := base
+			next.ID, next.State = id, bytes.Clone(base.State)
+			next.State[int(id)*31] ^= byte(id)
+			wire, err := encoder.Encode(next, ack)
+			if err != nil {
+				t.Fatal(err)
+			}
+			packet := bytes.Clone(wire.State)
+			got, err := decoder.Decode(wire)
+			if err != nil || !bytes.Equal(got.State, next.State) {
+				t.Fatalf("epoch=%d id=%d decode: %v", epoch, id, err)
+			}
+			if err := encoder.Commit(next); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(wire.State, packet) {
+				t.Fatal("history commit mutated encoded packet")
+			}
+			if id == 2 {
+				retained = got.State
+			}
+			if retained[2*31] != base.State[2*31]^2 {
+				t.Fatal("later history eviction mutated previously returned state")
+			}
+			ack = id
+		}
+		missing := base
+		missing.ID = 21
+		wire, err := encoder.Encode(missing, 1)
+		if err != nil || wire.BaselineID != 0 {
+			t.Fatalf("evicted dictionary reused: %v", err)
+		}
+	}
+}
+
+func TestSnapshotCodecEncodedFramesOwnOutputAcrossCalls(t *testing.T) {
+	encoder, decoder := snapshotCodecs(t)
+	base := noisySnapshot(1)
+	if err := encoder.Commit(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(base); err != nil {
+		t.Fatal(err)
+	}
+	first := base
+	first.ID = 2
+	first.State = bytes.Clone(base.State)
+	first.State[99] ^= 1
+	wire, err := encoder.Encode(first, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet := bytes.Clone(wire.State)
+	for id := uint32(3); id < 20; id++ {
+		next := base
+		next.ID, next.State = id, bytes.Clone(base.State)
+		next.State[id] ^= byte(id)
+		if _, err := encoder.Encode(next, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !bytes.Equal(wire.State, packet) {
+		t.Fatal("later compression mutated retained packet")
+	}
+	got, err := decoder.Decode(wire)
+	if err != nil || !bytes.Equal(got.State, first.State) {
+		t.Fatalf("retained frame no longer decodes: %v", err)
+	}
+}
+
+func TestSnapshotCodecEvictionInvalidatesReinsertedDictionaryID(t *testing.T) {
+	encoder, decoder := snapshotCodecs(t)
+	base := noisySnapshot(1)
+	if err := encoder.Commit(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(base); err != nil {
+		t.Fatal(err)
+	}
+	next := noisySnapshot(2)
+	wire, err := encoder.Encode(next, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(wire); err != nil {
+		t.Fatal(err)
+	}
+	if err := encoder.Commit(next); err != nil {
+		t.Fatal(err)
+	}
+	for id := uint32(3); id <= 10; id++ {
+		s := noisySnapshot(id)
+		if err := encoder.Commit(s); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decoder.Decode(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The network reader rejects stale IDs, but the codec API itself allows a
+	// no-longer-retained ID. It must not reuse the evicted dictionary's tables.
+	for i := range base.State {
+		base.State[i] ^= 0xa5
+	}
+	if err := encoder.Commit(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(base); err != nil {
+		t.Fatal(err)
+	}
+	next = base
+	next.ID, next.State = 11, bytes.Clone(base.State)
+	next.State[41] ^= 1
+	wire, err = encoder.Encode(next, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decoder.Decode(wire)
+	if err != nil || !bytes.Equal(got.State, next.State) {
+		t.Fatalf("stale dictionary after reinsertion: %v", err)
+	}
+}
+
 func TestSnapshotCodecMalformedCompressedState(t *testing.T) {
 	encoder, _ := snapshotCodecs(t)
 	baseline := noisySnapshot(1)
@@ -297,4 +440,82 @@ func FuzzSnapshotDecoder(f *testing.F) {
 			t.Fatal("invalid decoded state")
 		}
 	})
+}
+
+func TestSnapshotCodecInvalidatesDictionaryOnEncoderEpochDetour(t *testing.T) {
+	encoder, decoder := snapshotCodecs(t)
+	base := noisySnapshot(1)
+	if err := encoder.Commit(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encoder.Encode(noisySnapshot(2), 1); err != nil {
+		t.Fatal(err)
+	}
+	// An encoded but uncommitted epoch clears history. Returning to the old
+	// epoch must not revive its cached dictionary when the ID is reused.
+	detour := noisySnapshot(1)
+	detour.Epoch = 2
+	if _, err := encoder.Encode(detour, 0); err != nil {
+		t.Fatal(err)
+	}
+	newBase := noisySnapshot(1)
+	newBase.State[1000] ^= 1
+	if err := encoder.Commit(newBase); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(newBase); err != nil {
+		t.Fatal(err)
+	}
+	next := noisySnapshot(2)
+	wire, err := encoder.Encode(next, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decoder.Decode(wire)
+	if err != nil || !bytes.Equal(got.State, next.State) {
+		t.Fatalf("decode after epoch detour: %v", err)
+	}
+}
+
+func TestSnapshotCodecInvalidatesDictionaryAfterFailedDecoderEpochDetour(t *testing.T) {
+	encoder, decoder := snapshotCodecs(t)
+	base := noisySnapshot(1)
+	if err := encoder.Commit(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(base); err != nil {
+		t.Fatal(err)
+	}
+	wire, err := encoder.Encode(noisySnapshot(2), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decoder.Decode(wire); err != nil {
+		t.Fatal(err)
+	}
+	// Even a failed epoch transition discards history, so it must also
+	// discard the cached dictionary before a former ID can be reused.
+	wire.Epoch = 2
+	if _, err := decoder.Decode(wire); !errors.Is(err, ErrSnapshotBaseline) {
+		t.Fatalf("detour: %v", err)
+	}
+	newBase := noisySnapshot(1)
+	newBase.State[1000] ^= 1
+	if _, err := decoder.Decode(newBase); err != nil {
+		t.Fatal(err)
+	}
+	freshEncoder, _ := snapshotCodecs(t)
+	if err := freshEncoder.Commit(newBase); err != nil {
+		t.Fatal(err)
+	}
+	next := newBase
+	next.ID = 2
+	wire, err = freshEncoder.Encode(next, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decoder.Decode(wire)
+	if err != nil || !bytes.Equal(got.State, next.State) {
+		t.Fatalf("decode after failed epoch detour: %v", err)
+	}
 }

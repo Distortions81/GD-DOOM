@@ -1343,6 +1343,16 @@ func captureGameSaveState(g *game) gameSaveState {
 	}
 }
 
+// restoreSaveSlice keeps live game storage separate from immutable snapshots,
+// while reusing it across frequent multiplayer corrections. Empty input keeps
+// the historical nil result used by lazy world arrays.
+func restoreSaveSlice[T any](dst, src []T) []T {
+	if len(src) == 0 {
+		return nil
+	}
+	return append(dst[:0], src...)
+}
+
 func restoreGameSaveState(g *game, s gameSaveState) {
 	if g == nil {
 		return
@@ -1368,52 +1378,52 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.prevPrevAngle = s.PrevAngle
 	g.prevAngle = s.PrevAngle
 	g.playerViewZ = s.PlayerViewZ
-	g.thingCollected = append([]bool(nil), s.ThingCollected...)
-	g.thingDropped = append([]bool(nil), s.ThingDropped...)
-	g.thingThinkerOrder = append([]int64(nil), s.ThingThinkerOrder...)
-	g.thingSpawnPoint = append([]mapdata.Thing(nil), s.ThingSpawnPoint...)
-	g.thingX = append([]int64(nil), s.ThingX...)
-	g.thingY = append([]int64(nil), s.ThingY...)
-	g.thingMomX = append([]int64(nil), s.ThingMomX...)
-	g.thingMomY = append([]int64(nil), s.ThingMomY...)
-	g.thingMomZ = append([]int64(nil), s.ThingMomZ...)
-	g.thingAngleState = append([]uint32(nil), s.ThingAngleState...)
-	g.thingZState = append([]int64(nil), s.ThingZState...)
-	g.thingFloorState = append([]int64(nil), s.ThingFloorState...)
-	g.thingCeilState = append([]int64(nil), s.ThingCeilState...)
-	g.thingSupportValid = append([]bool(nil), s.ThingSupportValid...)
-	g.thingHP = append([]int(nil), s.ThingHP...)
-	g.thingAggro = append([]bool(nil), s.ThingAggro...)
-	g.thingTargetPlayer = append([]bool(nil), s.ThingTargetPlayer...)
-	g.thingTargetIdx = append([]int(nil), s.ThingTargetIdx...)
-	g.thingTracerFireOrder = append([]int64(nil), s.ThingTracerFireOrder...)
-	g.thingThreshold = append([]int(nil), s.ThingThreshold...)
-	g.thingCooldown = append([]int(nil), s.ThingCooldown...)
+	g.thingCollected = restoreSaveSlice(g.thingCollected, s.ThingCollected)
+	g.thingDropped = restoreSaveSlice(g.thingDropped, s.ThingDropped)
+	g.thingThinkerOrder = restoreSaveSlice(g.thingThinkerOrder, s.ThingThinkerOrder)
+	g.thingSpawnPoint = restoreSaveSlice(g.thingSpawnPoint, s.ThingSpawnPoint)
+	g.thingX = restoreSaveSlice(g.thingX, s.ThingX)
+	g.thingY = restoreSaveSlice(g.thingY, s.ThingY)
+	g.thingMomX = restoreSaveSlice(g.thingMomX, s.ThingMomX)
+	g.thingMomY = restoreSaveSlice(g.thingMomY, s.ThingMomY)
+	g.thingMomZ = restoreSaveSlice(g.thingMomZ, s.ThingMomZ)
+	g.thingAngleState = restoreSaveSlice(g.thingAngleState, s.ThingAngleState)
+	g.thingZState = restoreSaveSlice(g.thingZState, s.ThingZState)
+	g.thingFloorState = restoreSaveSlice(g.thingFloorState, s.ThingFloorState)
+	g.thingCeilState = restoreSaveSlice(g.thingCeilState, s.ThingCeilState)
+	g.thingSupportValid = restoreSaveSlice(g.thingSupportValid, s.ThingSupportValid)
+	g.thingHP = restoreSaveSlice(g.thingHP, s.ThingHP)
+	g.thingAggro = restoreSaveSlice(g.thingAggro, s.ThingAggro)
+	g.thingTargetPlayer = restoreSaveSlice(g.thingTargetPlayer, s.ThingTargetPlayer)
+	g.thingTargetIdx = restoreSaveSlice(g.thingTargetIdx, s.ThingTargetIdx)
+	g.thingTracerFireOrder = restoreSaveSlice(g.thingTracerFireOrder, s.ThingTracerFireOrder)
+	g.thingThreshold = restoreSaveSlice(g.thingThreshold, s.ThingThreshold)
+	g.thingCooldown = restoreSaveSlice(g.thingCooldown, s.ThingCooldown)
 	g.thingMoveDir = restoreMonsterMoveDirSlice(s.ThingMoveDir)
-	g.thingMoveCount = append([]int(nil), s.ThingMoveCount...)
-	g.thingJustAtk = append([]bool(nil), s.ThingJustAtk...)
-	g.thingJustHit = append([]bool(nil), s.ThingJustHit...)
-	g.thingSkullFly = append([]bool(nil), s.ThingSkullFly...)
-	g.thingResumeChaseNow = append([]bool(nil), s.ThingResumeChaseNow...)
-	g.thingReactionTics = append([]int(nil), s.ThingReactionTics...)
-	g.thingWakeTics = append([]int(nil), s.ThingWakeTics...)
-	g.thingLastLook = append([]int(nil), s.ThingLastLook...)
-	g.thingDead = append([]bool(nil), s.ThingDead...)
-	g.thingAmbush = append([]bool(nil), s.ThingAmbush...)
-	g.thingInFloat = append([]bool(nil), s.ThingInFloat...)
-	g.thingGibbed = append([]bool(nil), s.ThingGibbed...)
-	g.thingGibTick = append([]int(nil), s.ThingGibTick...)
-	g.thingXDeath = append([]bool(nil), s.ThingXDeath...)
-	g.thingDeathTics = append([]int(nil), s.ThingDeathTics...)
-	g.thingAttackTics = append([]int(nil), s.ThingAttackTics...)
-	g.thingAttackPhase = append([]int(nil), s.ThingAttackPhase...)
-	g.thingAttackFireTics = append([]int(nil), s.ThingAttackFireTics...)
-	g.thingPainTics = append([]int(nil), s.ThingPainTics...)
-	g.thingThinkWait = append([]int(nil), s.ThingThinkWait...)
-	g.thingDoomState = append([]int(nil), s.ThingDoomState...)
+	g.thingMoveCount = restoreSaveSlice(g.thingMoveCount, s.ThingMoveCount)
+	g.thingJustAtk = restoreSaveSlice(g.thingJustAtk, s.ThingJustAtk)
+	g.thingJustHit = restoreSaveSlice(g.thingJustHit, s.ThingJustHit)
+	g.thingSkullFly = restoreSaveSlice(g.thingSkullFly, s.ThingSkullFly)
+	g.thingResumeChaseNow = restoreSaveSlice(g.thingResumeChaseNow, s.ThingResumeChaseNow)
+	g.thingReactionTics = restoreSaveSlice(g.thingReactionTics, s.ThingReactionTics)
+	g.thingWakeTics = restoreSaveSlice(g.thingWakeTics, s.ThingWakeTics)
+	g.thingLastLook = restoreSaveSlice(g.thingLastLook, s.ThingLastLook)
+	g.thingDead = restoreSaveSlice(g.thingDead, s.ThingDead)
+	g.thingAmbush = restoreSaveSlice(g.thingAmbush, s.ThingAmbush)
+	g.thingInFloat = restoreSaveSlice(g.thingInFloat, s.ThingInFloat)
+	g.thingGibbed = restoreSaveSlice(g.thingGibbed, s.ThingGibbed)
+	g.thingGibTick = restoreSaveSlice(g.thingGibTick, s.ThingGibTick)
+	g.thingXDeath = restoreSaveSlice(g.thingXDeath, s.ThingXDeath)
+	g.thingDeathTics = restoreSaveSlice(g.thingDeathTics, s.ThingDeathTics)
+	g.thingAttackTics = restoreSaveSlice(g.thingAttackTics, s.ThingAttackTics)
+	g.thingAttackPhase = restoreSaveSlice(g.thingAttackPhase, s.ThingAttackPhase)
+	g.thingAttackFireTics = restoreSaveSlice(g.thingAttackFireTics, s.ThingAttackFireTics)
+	g.thingPainTics = restoreSaveSlice(g.thingPainTics, s.ThingPainTics)
+	g.thingThinkWait = restoreSaveSlice(g.thingThinkWait, s.ThingThinkWait)
+	g.thingDoomState = restoreSaveSlice(g.thingDoomState, s.ThingDoomState)
 	g.thingState = restoreMonsterThinkStateSlice(s.ThingState)
-	g.thingStateTics = append([]int(nil), s.ThingStateTics...)
-	g.thingStatePhase = append([]int(nil), s.ThingStatePhase...)
+	g.thingStateTics = restoreSaveSlice(g.thingStateTics, s.ThingStateTics)
+	g.thingStatePhase = restoreSaveSlice(g.thingStatePhase, s.ThingStatePhase)
 	g.bossSpawnCubes = restoreBossSpawnCubes(s.BossSpawnCubes)
 	g.bossSpawnFires = restoreBossSpawnFires(s.BossSpawnFires)
 	g.bossBrainTargetOrder = s.BossBrainTargetOrder
@@ -1444,10 +1454,10 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.playerBlockOrder = s.PlayerBlockOrder
 	g.nextThinkerOrder = s.NextThinkerOrder
 	g.nextBlockmapOrder = s.NextBlockmapOrder
-	g.secretFound = append([]bool(nil), s.SecretFound...)
+	g.secretFound = restoreSaveSlice(g.secretFound, s.SecretFound)
 	g.secretsFound = s.SecretsFound
 	g.secretsTotal = s.SecretsTotal
-	g.sectorSoundTarget = append([]bool(nil), s.SectorSoundTarget...)
+	g.sectorSoundTarget = restoreSaveSlice(g.sectorSoundTarget, s.SectorSoundTarget)
 	g.isDead = s.IsDead
 	g.playerMobjHealth = s.PlayerMobjHealth
 	if g.playerMobjHealth == 0 && g.stats.Health != 0 {
@@ -1457,16 +1467,16 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.bonusFlashTic = s.BonusFlashTic
 	g.sectorLightFx = restoreSectorLightEffects(s.SectorLightFx)
 	if len(s.Things) > 0 {
-		g.m.Things = append([]mapdata.Thing(nil), s.Things...)
+		g.m.Things = restoreSaveSlice(g.m.Things, s.Things)
 	}
 	if len(s.Sidedefs) > 0 {
-		g.m.Sidedefs = append([]mapdata.Sidedef(nil), s.Sidedefs...)
+		g.m.Sidedefs = restoreSaveSlice(g.m.Sidedefs, s.Sidedefs)
 	}
 	if len(s.Sectors) > 0 {
-		g.m.Sectors = append([]mapdata.Sector(nil), s.Sectors...)
+		g.m.Sectors = restoreSaveSlice(g.m.Sectors, s.Sectors)
 	}
-	g.sectorFloor = append([]int64(nil), s.SectorFloor...)
-	g.sectorCeil = append([]int64(nil), s.SectorCeil...)
+	g.sectorFloor = restoreSaveSlice(g.sectorFloor, s.SectorFloor)
+	g.sectorCeil = restoreSaveSlice(g.sectorCeil, s.SectorCeil)
 	for sec := range g.m.Sectors {
 		if sec < len(g.sectorFloor) {
 			g.m.Sectors[sec].FloorHeight = int16(g.sectorFloor[sec] >> fracBits)
@@ -1475,7 +1485,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 			g.m.Sectors[sec].CeilingHeight = int16(g.sectorCeil[sec] >> fracBits)
 		}
 	}
-	g.lineSpecial = append([]uint16(nil), s.LineSpecial...)
+	g.lineSpecial = restoreSaveSlice(g.lineSpecial, s.LineSpecial)
 	g.doors = restoreDoorThinkers(s.Doors)
 	g.floors = restoreFloorThinkers(s.Floors)
 	g.plats = restorePlatThinkers(s.Plats)

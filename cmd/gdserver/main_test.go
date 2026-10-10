@@ -26,12 +26,27 @@ func (b *serverOutput) Write(p []byte) (int, error) {
 func (b *serverOutput) value() string { b.mu.Lock(); defer b.mu.Unlock(); return b.Buffer.String() }
 
 func TestRunCrossTransportDeathmatchRotationAndShutdown(t *testing.T) {
+	for _, rotation := range []string{"", "E1M1,E1M2"} {
+		name := "default-progression"
+		if rotation != "" {
+			name = "explicit-rotation"
+		}
+		t.Run(name, func(t *testing.T) { testRunDeathmatchTransition(t, rotation) })
+	}
+}
+
+func testRunDeathmatchTransition(t *testing.T, rotation string) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var output serverOutput
 	done := make(chan error, 1)
 	go func() {
-		done <- run(ctx, []string{"-listen", "127.0.0.1:0", "-web-listen", "127.0.0.1:0", "-wad", filepath.Join("..", "..", "DOOM1.WAD"), "-mode", "deathmatch", "-rotation", "E1M1,E1M2", "-time-limit", "1", "-no-monsters"}, &output, io.Discard)
+		args := []string{"-listen", "127.0.0.1:0", "-web-listen", "127.0.0.1:0", "-wad", filepath.Join("..", "..", "DOOM1.WAD"), "-mode", "deathmatch", "-time-limit", "1", "-no-monsters"}
+		if rotation != "" {
+			args = append(args, "-rotation", rotation)
+		}
+		done <- run(ctx, args, &output, io.Discard)
 	}()
 	var address, webURL, compatibility string
 	deadline := time.Now().Add(5 * time.Second)

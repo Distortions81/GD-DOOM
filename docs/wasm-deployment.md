@@ -20,6 +20,13 @@ The client runs a continuous input clock, accounts for command lead, and
 smooths small prediction corrections. Doors, lifts and their riders share
 the confirmed snapshot presentation timeline.
 
+Multiplayer world snapshots use the binary-only `gd-doom-authority-dev-2`
+simulation format. Update `gdserver`, `gdlobby`, the deployment probe and the
+browser assets together, and restart the lobby to replace existing room workers.
+Players with an older browser build must reload before joining. The release also
+includes adaptive browser audio buffering and default deathmatch map progression
+when no explicit rotation is configured.
+
 The lobby base URL is `https://m45sci.xyz:6672`. Its user service is
 `gd-doom-lobby.service`, listening only on `127.0.0.1:6675`. The existing co-op
 HTTPS listener forwards `/api/v1/` and `/rooms/` to it; `/netplay`, `/deathmatch`

@@ -11,7 +11,7 @@ import (
 
 // SimulationVersion changes whenever authority physics, rules, or baseline
 // interpretation changes incompatibly. Transport framing has its own version.
-const SimulationVersion = "gd-doom-authority-dev-1"
+const SimulationVersion = "gd-doom-authority-dev-2"
 
 // CompatibilityManifest names content by digest, never by local filesystem path.
 // WADHashes is ordered: changing add-on load order changes the match identity.

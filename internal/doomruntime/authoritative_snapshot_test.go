@@ -140,6 +140,34 @@ func TestAuthoritySnapshotCaptureDoesNotMutateSimulation(t *testing.T) {
 	}
 }
 
+func TestAuthoritySnapshotRestoreKeepsReceivedAndRenderedStateIndependent(t *testing.T) {
+	_, client, data := snapshotFixture(t)
+	r, err := decodeAuthorityReplica(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := decodeAuthorityReplica(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		client.applyValidatedAuthorityReplica(r)
+		frame := client.snapshotAuthorityRenderFrame()
+		floor := frame.sectors[0].floor
+		client.thingX[0]++
+		client.sectorFloor[0]++
+		client.m.Sidedefs[0].TextureOffset++
+		client.m.Sectors[0].FloorHeight++
+		client.inventory.Weapons[2001] = !client.inventory.Weapons[2001]
+		if !reflect.DeepEqual(r, want) {
+			t.Fatal("live world mutation changed a retained decoded baseline")
+		}
+		if frame.sectors[0].floor != floor {
+			t.Fatal("live world mutation changed a retained interpolation endpoint")
+		}
+	}
+}
+
 func TestAuthoritySnapshotRejectsInvalidDataWithoutMutation(t *testing.T) {
 	_, client, valid := snapshotFixture(t)
 	before := captureGameSaveState(client)

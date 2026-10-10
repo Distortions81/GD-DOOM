@@ -4,20 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"math"
-	"reflect"
-	"strings"
 
 	"gddoom/internal/mapdata"
 
 	"github.com/zeebo/blake3"
 )
 
-const authorityReplicaVersion = 1
+const authorityReplicaVersion = 2
 
-// MaxAuthoritySnapshotBytes includes framing, JSON payload, and checksum.
+// MaxAuthoritySnapshotBytes includes framing, binary payload, and checksum.
 const MaxAuthoritySnapshotBytes = 8 << 20
 
 var authorityReplicaMagic = []byte("GDDOOMAUTH\x00")
@@ -63,73 +60,52 @@ type replicaImpactPlayers struct {
 // Snapshot creates an immutable, bounded baseline for an active player's view.
 // Capture must run on the same simulation owner goroutine as Step.
 func (a *Authority) Snapshot(viewer byte) ([]byte, error) {
-	if viewer < 1 || viewer > 4 || a.players[viewer] == nil {
-		return nil, fmt.Errorf("snapshot viewer %d is inactive", viewer)
-	}
-	g := a.g
-	mapHash, err := authorityMapHash(g)
+	states, err := a.SnapshotBatch([]byte{viewer})
 	if err != nil {
 		return nil, err
 	}
-	saved := g.captureAuthoritativePlayer()
-	g.applyAuthoritativePlayer(*a.players[viewer])
-	common := captureGameSaveState(g)
-	g.applyAuthoritativePlayer(saved)
-	common.Session.PlayerSlot = int(viewer)
-	r := authorityReplica{
-		Version: authorityReplicaVersion, Map: g.m.Name, MapHash: mapHash,
-		WADHash: g.opts.WADHash, Viewer: viewer, Tic: a.Tic(), Game: common,
-		ThingBlockOrder:       append([]int64(nil), g.thingBlockOrder...),
-		ThingTelefragTick:     append([]int(nil), g.thingTelefragTick...),
-		ThingTargetPlayerSlot: append([]int(nil), g.thingTargetPlayerSlot...),
-		SectorSoundPlayerSlot: append([]int(nil), g.sectorSoundPlayerSlot...),
-		BarrelSources:         maps.Clone(g.authorityBarrelSources),
-	}
-	r.SoundCursor, r.Sounds = a.snapshotSoundEvents(viewer)
-	for id := 1; id <= 4; id++ {
-		if p := a.players[id]; p != nil {
-			r.Players = append(r.Players, captureReplicaPlayer(*p))
-		}
-	}
-	for _, p := range g.projectiles {
-		r.ProjectilePlayers = append(r.ProjectilePlayers, replicaProjectilePlayers{p.sourcePlayerSlot, p.tracerPlayerSlot, p.sourcePlayerGeneration, p.tracerPlayerGeneration})
-	}
-	for _, p := range g.projectileImpacts {
-		r.ImpactPlayers = append(r.ImpactPlayers, replicaImpactPlayers{p.sourcePlayerSlot, p.fireTargetPlayerSlot, p.sourcePlayerGeneration, p.fireTargetPlayerGeneration})
-	}
-	if g.authorityRules != nil {
-		rules := *g.authorityRules
-		r.Rules = &rules
-	}
-	if err := validateAuthorityReplica(g, r); err != nil {
-		return nil, fmt.Errorf("capture authority baseline: %w", err)
-	}
-	return encodeAuthorityReplica(r)
+	return states[viewer], nil
+}
+
+type authorityMapHashCache struct {
+	template *mapdata.Map
+	hash     [32]byte
 }
 
 func authorityMapHash(g *game) ([32]byte, error) {
 	m := g.restartTemplate
+	if cached := g.authorityMapHashCache; m != nil && cached != nil && cached.template == m {
+		return cached.hash, nil
+	}
 	if m == nil {
+		// Hand-built games can lack the immutable restart copy. Their live map
+		// changes during play, so never reuse a fingerprint for this fallback.
+		g.authorityMapHashCache = nil
 		m = g.m
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("encode static map: %w", err)
 	}
-	return blake3.Sum256(data), nil
+	hash := blake3.Sum256(data)
+	if g.restartTemplate != nil {
+		// newGame owns a deep restart copy that is never mutated. A new map or
+		// replacement template gets a new identity and must be hashed again.
+		g.authorityMapHashCache = &authorityMapHashCache{template: m, hash: hash}
+	}
+	return hash, nil
 }
 
 func encodeAuthorityReplica(r authorityReplica) ([]byte, error) {
-	payload, err := json.Marshal(r)
+	data := make([]byte, 0, 32<<10)
+	data = append(data, authorityReplicaMagic...)
+	data, err := appendAuthorityReplicaPayload(data, r)
 	if err != nil {
 		return nil, err
 	}
-	if len(payload)+len(authorityReplicaMagic)+32 > MaxAuthoritySnapshotBytes {
+	if len(data)+32 > MaxAuthoritySnapshotBytes {
 		return nil, fmt.Errorf("authority baseline exceeds %d bytes", MaxAuthoritySnapshotBytes)
 	}
-	data := make([]byte, 0, len(authorityReplicaMagic)+len(payload)+32)
-	data = append(data, authorityReplicaMagic...)
-	data = append(data, payload...)
 	sum := blake3.Sum256(data)
 	return append(data, sum[:]...), nil
 }
@@ -144,13 +120,10 @@ func decodeAuthorityReplica(data []byte) (authorityReplica, error) {
 	if !bytes.Equal(sum[:], data[end:]) {
 		return r, fmt.Errorf("authority baseline checksum mismatch")
 	}
-	d := json.NewDecoder(bytes.NewReader(data[len(authorityReplicaMagic):end]))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&r); err != nil {
-		return r, fmt.Errorf("decode authority baseline: %w", err)
-	}
-	if err := d.Decode(new(any)); err != io.EOF {
-		return r, fmt.Errorf("unexpected trailing authority baseline data")
+	var err error
+	r, err = decodeAuthorityReplicaPayload(data[len(authorityReplicaMagic):end])
+	if err != nil {
+		return authorityReplica{}, fmt.Errorf("decode authority baseline: %w", err)
 	}
 	if r.Version != authorityReplicaVersion {
 		return r, fmt.Errorf("unsupported authority baseline version %d", r.Version)
@@ -195,12 +168,8 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 	}
 	// Thing state is stored in parallel arrays. Some lazy AI arrays can be empty
 	// before their first tick; nonempty arrays must always cover the whole world.
-	v, typ := reflect.ValueOf(s), reflect.TypeOf(s)
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		if strings.HasPrefix(typ.Field(i).Name, "Thing") && field.Kind() == reflect.Slice && field.Len() != 0 && field.Len() != n {
-			return fmt.Errorf("authority baseline %s shape mismatch", typ.Field(i).Name)
-		}
+	if err := validateAuthorityThingShapes(&s, n); err != nil {
+		return err
 	}
 	for _, length := range []int{len(s.ThingX), len(s.ThingY), len(s.ThingZState), len(s.ThingFloorState), len(s.ThingCeilState), len(s.ThingHP), len(s.ThingDead), len(s.ThingCollected), len(s.ThingDropped), len(r.ThingBlockOrder)} {
 		if length != n {
@@ -217,9 +186,11 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 			return fmt.Errorf("authority baseline changed static sector connectivity")
 		}
 	}
-	for _, slot := range append(append([]int(nil), r.ThingTargetPlayerSlot...), r.SectorSoundPlayerSlot...) {
-		if slot < 0 || slot > 4 {
-			return fmt.Errorf("authority baseline has invalid actor player target")
+	for _, slots := range [][]int{r.ThingTargetPlayerSlot, r.SectorSoundPlayerSlot} {
+		for _, slot := range slots {
+			if slot < 0 || slot > 4 {
+				return fmt.Errorf("authority baseline has invalid actor player target")
+			}
 		}
 	}
 	if len(r.ProjectilePlayers) != len(s.Projectiles) || len(r.ImpactPlayers) != len(s.ProjectileImpacts) {
@@ -278,7 +249,7 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 		}
 		if p.LocalSlot == int(r.Viewer) {
 			found = true
-			if s.Player != p.P || s.Stats != p.Stats || !reflect.DeepEqual(s.Inventory, p.Inventory) || s.WeaponState != int(p.WeaponState) || s.WeaponFlashState != int(p.WeaponFlashState) || s.CheatLevel != p.CheatLevel || s.Invulnerable != p.Invulnerable || s.NoClip != p.NoClip {
+			if s.Player != p.P || s.Stats != p.Stats || !equalAuthorityInventory(s.Inventory, p.Inventory) || s.WeaponState != int(p.WeaponState) || s.WeaponFlashState != int(p.WeaponFlashState) || s.CheatLevel != p.CheatLevel || s.Invulnerable != p.Invulnerable || s.NoClip != p.NoClip {
 				return fmt.Errorf("authority baseline viewer state is inconsistent")
 			}
 		}
@@ -314,11 +285,11 @@ func (g *game) applyValidatedAuthorityReplica(r authorityReplica) {
 	s.ShowGrid, s.ShowLegend = g.showGrid, g.showLegend
 	s.PaletteLUTEnabled, s.GammaLevel, s.CRTEnabled = g.paletteLUTEnabled, g.gammaLevel, g.crtEnabled
 	s.HUDMessagesEnabled = g.hudMessagesEnabled
-	g.thingBlockOrder = append([]int64(nil), r.ThingBlockOrder...)
+	g.thingBlockOrder = restoreSaveSlice(g.thingBlockOrder, r.ThingBlockOrder)
 	restoreGameSaveState(g, s)
-	g.thingTelefragTick = append([]int(nil), r.ThingTelefragTick...)
-	g.thingTargetPlayerSlot = append([]int(nil), r.ThingTargetPlayerSlot...)
-	g.sectorSoundPlayerSlot = append([]int(nil), r.SectorSoundPlayerSlot...)
+	g.thingTelefragTick = restoreSaveSlice(g.thingTelefragTick, r.ThingTelefragTick)
+	g.thingTargetPlayerSlot = restoreSaveSlice(g.thingTargetPlayerSlot, r.ThingTargetPlayerSlot)
+	g.sectorSoundPlayerSlot = restoreSaveSlice(g.sectorSoundPlayerSlot, r.SectorSoundPlayerSlot)
 	g.authorityBarrelSources = maps.Clone(r.BarrelSources)
 	g.authorityRules = nil
 	if r.Rules != nil {

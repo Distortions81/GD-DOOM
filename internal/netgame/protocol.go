@@ -10,9 +10,6 @@ import (
 	"fmt"
 	"io"
 	"unicode/utf8"
-
-	"gddoom/internal/demo"
-	"github.com/zeebo/blake3"
 )
 
 const (
@@ -249,6 +246,12 @@ func MarshalMessage(message any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	switch m := message.(type) {
+	case Snapshot:
+		return marshalSnapshot(m), nil
+	case InputBatch:
+		return marshalInput(m), nil
+	}
 	var body bytes.Buffer
 	put := func(v any) { _ = binary.Write(&body, binary.LittleEndian, v) }
 	putString := func(s string) {
@@ -292,18 +295,6 @@ func MarshalMessage(message any) ([]byte, error) {
 		put(m.InputLead)
 		put(m.ResumeToken)
 		put(m.ResumeGraceTicks)
-	case InputBatch:
-		put(m.Epoch)
-		put(m.SnapshotAck)
-		put(byte(len(m.Inputs)))
-		for _, in := range m.Inputs {
-			put(in.Sequence)
-			put(in.Tick)
-			put(in.Command.Forward)
-			put(in.Command.Side)
-			put(in.Command.AngleTurn)
-			put(in.Command.Buttons)
-		}
 	case MapChange:
 		put(m.PreviousEpoch)
 		put(m.Welcome.Epoch)
@@ -314,31 +305,6 @@ func MarshalMessage(message any) ([]byte, error) {
 		put(m.Welcome.ResumeGraceTicks)
 		putString(m.Map)
 		putString(m.Compatibility)
-	case Snapshot:
-		put(m.Epoch)
-		put(m.ID)
-		put(m.BaselineID)
-		put(m.Tick)
-		var flags byte
-		if m.Finalized.HasTick {
-			flags |= 1
-		}
-		if m.Finalized.HasSequence {
-			flags |= 2
-		}
-		put(flags)
-		put(m.Finalized.Tick)
-		put(m.Finalized.Sequence)
-		put(m.Encoding)
-		if m.Encoding == SnapshotRaw {
-			put(uint32(len(m.State)))
-			put(blake3.Sum256(m.State))
-		} else {
-			put(m.DecodedSize)
-			put(m.Digest)
-		}
-		put(uint32(len(m.State)))
-		body.Write(m.State)
 	case Disconnect:
 		putString(m.Reason)
 	}
@@ -430,6 +396,12 @@ func UnmarshalMessage(data []byte) (any, error) {
 }
 
 func decodeBody(kind MessageKind, body []byte) (any, error) {
+	switch kind {
+	case KindSnapshot:
+		return decodeSnapshot(body)
+	case KindInput:
+		return decodeInput(body)
+	}
 	r := bytes.NewReader(body)
 	var readErr error
 	get := func(v any) {
@@ -520,56 +492,6 @@ func decodeBody(kind MessageKind, body []byte) (any, error) {
 		get(&m.InputLead)
 		get(&m.ResumeToken)
 		get(&m.ResumeGraceTicks)
-		result = m
-	case KindInput:
-		var m InputBatch
-		var n byte
-		get(&m.Epoch)
-		get(&m.SnapshotAck)
-		get(&n)
-		if readErr != nil || n > MaxInputBatch || int(n)*inputCommandBytes != r.Len() {
-			return nil, ErrProtocol
-		}
-		m.Inputs = make([]Input, int(n))
-		for i := range m.Inputs {
-			in := &m.Inputs[i]
-			get(&in.Sequence)
-			get(&in.Tick)
-			var tc demo.Tic
-			get(&tc.Forward)
-			get(&tc.Side)
-			get(&tc.AngleTurn)
-			get(&tc.Buttons)
-			in.Command = tc
-		}
-		result = m
-	case KindSnapshot:
-		var m Snapshot
-		var flags byte
-		var n uint32
-		get(&m.Epoch)
-		get(&m.ID)
-		get(&m.BaselineID)
-		get(&m.Tick)
-		get(&flags)
-		get(&m.Finalized.Tick)
-		get(&m.Finalized.Sequence)
-		get(&m.Encoding)
-		get(&m.DecodedSize)
-		get(&m.Digest)
-		get(&n)
-		if readErr != nil || flags & ^byte(3) != 0 || n == 0 || n > MaxSnapshotBytes || uint64(n) != uint64(r.Len()) {
-			return nil, ErrProtocol
-		}
-		m.Finalized.HasTick, m.Finalized.HasSequence = flags&1 != 0, flags&2 != 0
-		m.State = body[len(body)-int(n):]
-		_, readErr = r.Seek(int64(n), io.SeekCurrent)
-		if m.Encoding == SnapshotRaw {
-			if m.DecodedSize != n || m.Digest != blake3.Sum256(m.State) {
-				return nil, fmt.Errorf("%w: %w", ErrProtocol, ErrSnapshotIntegrity)
-			}
-			m.DecodedSize, m.Digest = 0, [32]byte{}
-		}
 		result = m
 	case KindMapChange:
 		var m MapChange
