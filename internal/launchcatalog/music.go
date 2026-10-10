@@ -345,6 +345,9 @@ func KnownIWADChoices() []KnownIWADChoice {
 		{Label: "Final DOOM: TNT", Paths: []string{"TNT.WAD"}},
 		{Label: "Final DOOM: Plutonia", Paths: []string{"PLUTONIA.WAD"}},
 		{Label: "DOOM Shareware", Paths: []string{"DOOM1.WAD"}},
+		{Label: "Freedoom Phase 1", Paths: []string{"freedoom1.wad"}},
+		{Label: "Freedoom Phase 2", Paths: []string{"freedoom2.wad"}},
+		{Label: "FreeDM Deathmatch", Paths: []string{"freedm.wad"}},
 	}
 }
 

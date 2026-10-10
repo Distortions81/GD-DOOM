@@ -115,6 +115,82 @@ func TestMultiplayerLobbyCreateDefaultsAndRules(t *testing.T) {
 	}
 }
 
+func TestMultiplayerLobbyFreeDMDefaultsFollowSelectionUntilModeConfigured(t *testing.T) {
+	sg := lobbyMenuTestSession(t)
+	m := &sg.multiplayer.lobby
+	m.state.Packs[0].ID, m.state.Packs[0].Name = "freedm", "FreeDM Deathmatch"
+	sg.openAuthorityCreate()
+	if m.request.Settings.Mode != "coop" || m.request.Settings.NoMonsters {
+		t.Fatal("ordinary loaded game did not keep co-op defaults")
+	}
+	m.page, m.row = authorityLobbyPageFiles, 0
+	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
+	if m.request.Settings.PackID != "freedm" || m.request.Settings.Mode != "deathmatch" || !m.request.Settings.NoMonsters {
+		t.Fatal("selecting FreeDM did not apply deathmatch defaults")
+	}
+	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
+	if m.request.Settings.PackID != "loaded" || m.request.Settings.Mode != "coop" || m.request.Settings.NoMonsters {
+		t.Fatal("automatic defaults did not follow the next game")
+	}
+	// An intentional choice of co-op remains a choice even when browsing
+	// deathmatch-oriented content afterwards.
+	m.page, m.row = authorityLobbyPageCreate, authorityCreateModeRow
+	lobbyMenuKey(t, sg, ebiten.KeyEnter)
+	lobbyMenuKey(t, sg, ebiten.KeyEnter)
+	m.page, m.row = authorityLobbyPageFiles, 0
+	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
+	if m.request.Settings.PackID != "freedm" || m.request.Settings.Mode != "coop" || m.request.Settings.NoMonsters {
+		t.Fatal("catalog selection overwrote explicitly chosen mode")
+	}
+	// Reopening the draft must not reset the explicit preference.
+	sg.openAuthorityCreate()
+	if m.request.Settings.Mode != "coop" || !m.modeConfigured {
+		t.Fatal("reopening create lost the configured mode")
+	}
+}
+
+func TestMultiplayerLobbyLoadedFreeDMAndMonsterPreference(t *testing.T) {
+	sg := lobbyMenuTestSession(t)
+	m := &sg.multiplayer.lobby
+	m.state.Packs[1].ID, m.state.Packs[1].Name = "freedm", "FreeDM Deathmatch"
+	sg.openAuthorityCreate()
+	if m.request.Settings.PackID != "freedm" || m.request.Settings.Mode != "deathmatch" || !m.request.Settings.NoMonsters {
+		t.Fatal("loaded FreeDM did not default to deathmatch without monsters")
+	}
+	m.page, m.row = authorityLobbyPageRules, 1
+	lobbyMenuKey(t, sg, ebiten.KeyEnter)
+	if m.request.Settings.NoMonsters || !m.monstersConfigured {
+		t.Fatal("monster preference was not recorded")
+	}
+	m.page, m.row = authorityLobbyPageFiles, 0
+	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
+	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
+	if m.request.Settings.PackID != "freedm" || m.request.Settings.Mode != "deathmatch" || m.request.Settings.NoMonsters {
+		t.Fatal("automatic mode defaults overwrote configured monster preference")
+	}
+}
+
+func TestMultiplayerLobbyColdFreeDMDefaultPreservesExplicitMode(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		sg := lobbyMenuTestSession(t)
+		m := &sg.multiplayer.lobby
+		m.state.Packs[1].ID = "freedm"
+		m.request = lobby.CreateRequest{Settings: lobby.Settings{Mode: "coop", Skill: 3, PlayerLimit: 4}}
+		m.modeConfigured = explicit
+		sg.selectInitialAuthorityPack()
+		if m.request.Settings.PackID != "freedm" {
+			t.Fatal("initial selection did not find loaded FreeDM")
+		}
+		wantMode := "deathmatch"
+		if explicit {
+			wantMode = "coop"
+		}
+		if m.request.Settings.Mode != wantMode || m.request.Settings.NoMonsters != !explicit {
+			t.Fatal("late catalog ignored FreeDM defaults or explicit mode")
+		}
+	}
+}
+
 func TestMultiplayerLobbyOrderedWADStackRequiredBeforeCreateOrJoin(t *testing.T) {
 	sg := lobbyMenuTestSession(t)
 	var creates, joins atomic.Int32
@@ -140,6 +216,103 @@ func TestMultiplayerLobbyOrderedWADStackRequiredBeforeCreateOrJoin(t *testing.T)
 	}
 	if sg.authorityPackMatches(nil) {
 		t.Fatal("missing WAD hashes treated as compatible")
+	}
+}
+
+func downloadableLobbyTestPack(sg *sessionGame) lobby.Pack {
+	return lobby.Pack{ID: "catalog", Name: "Free game", WADHashes: []string{sg.opts.AuthorityWADHashes[0], strings.Repeat("c", 64)}, Maps: []string{"E1M1"}, Files: []lobby.PackFile{
+		{Name: "BASE.WAD", Size: 10 << 20, SHA256: sg.opts.AuthorityWADHashes[0]},
+		{Name: "FREE.WAD", Size: 2 << 20, SHA256: strings.Repeat("c", 64), Downloadable: true},
+	}}
+}
+
+func TestMultiplayerLobbyCreatesDownloadablePackThenPreparesRoom(t *testing.T) {
+	for _, standalone := range []bool{false, true} {
+		t.Run(map[bool]string{false: "private loaded base", true: "standalone"}[standalone], func(t *testing.T) {
+			sg := lobbyMenuTestSession(t)
+			pack := downloadableLobbyTestPack(sg)
+			if standalone {
+				pack.WADHashes, pack.Files = pack.WADHashes[1:], pack.Files[1:]
+			}
+			sg.multiplayer.lobby.state.Packs = []lobby.Pack{pack}
+			sg.openAuthorityCreate()
+			room := lobbyMenuRoom(sg, "downloadable")
+			room.Settings = sg.multiplayer.lobby.request.Settings
+			room.Manifest.WADHashes = slices.Clone(pack.WADHashes)
+			var creates, prepares, joins atomic.Int32
+			sg.opts.AuthorityPrepareRoom = func(ctx context.Context, address string, got lobby.Room, _ func(runtimecfg.AuthorityContentProgress)) (runtimecfg.AuthorityContentPreparation, error) {
+				prepares.Add(1)
+				if address != sg.opts.AuthorityLobbyURL || got.ID != room.ID || !slices.Equal(got.Manifest.WADHashes, pack.WADHashes) {
+					return runtimecfg.AuthorityContentPreparation{}, errors.New("wrong room passed for download")
+				}
+				<-ctx.Done()
+				return runtimecfg.AuthorityContentPreparation{}, ctx.Err()
+			}
+			sg.opts.AuthorityCreateGame = func(_ context.Context, _ string, request lobby.CreateRequest) (lobby.Room, error) {
+				creates.Add(1)
+				if request.Settings.PackID != pack.ID {
+					return lobby.Room{}, errors.New("wrong pack selected")
+				}
+				return room, nil
+			}
+			sg.opts.AuthorityJoin = func(context.Context, runtimecfg.AuthorityJoinRequest) (runtimecfg.AuthorityJoinResult, error) {
+				joins.Add(1)
+				return runtimecfg.AuthorityJoinResult{}, errors.New("joined before loading matching content")
+			}
+			if hint := sg.authorityCreateContentHint(pack); hint != "CREATE & JOIN DOWNLOADS 2.0 MIB" {
+				t.Fatalf("download size hint = %s", hint)
+			}
+			sg.beginAuthorityCreate()
+			if sg.multiplayer.lobby.creating == nil {
+				t.Fatalf("downloadable pack refused: %s", sg.multiplayer.status)
+			}
+			settleLobby(t, func() bool { return sg.multiplayer.lobby.creating != nil }, sg.pollAuthorityCreate)
+			settleLobby(t, func() bool { return prepares.Load() == 0 }, func() {})
+			if creates.Load() != 1 || joins.Load() != 0 || sg.multiplayer.content == nil || sg.multiplayer.content.room.ID != room.ID {
+				t.Fatal("created room did not enter content preparation before joining")
+			}
+		})
+	}
+}
+
+func TestMultiplayerLobbyCreateRejectsUnavailableOrUnverifiedDownloads(t *testing.T) {
+	for _, name := range []string{"no loader", "private missing file", "missing metadata", "metadata hash mismatch", "metadata too large"} {
+		t.Run(name, func(t *testing.T) {
+			sg := lobbyMenuTestSession(t)
+			pack := downloadableLobbyTestPack(sg)
+			sg.opts.AuthorityPrepareRoom = func(context.Context, string, lobby.Room, func(runtimecfg.AuthorityContentProgress)) (runtimecfg.AuthorityContentPreparation, error) {
+				return runtimecfg.AuthorityContentPreparation{}, errors.New("unexpected prepare")
+			}
+			switch name {
+			case "no loader":
+				sg.opts.AuthorityPrepareRoom = nil
+			case "private missing file":
+				pack.Files[1].Downloadable = false
+			case "missing metadata":
+				pack.Files = nil
+			case "metadata hash mismatch":
+				pack.Files[1].SHA256 = pack.Files[0].SHA256
+			case "metadata too large":
+				pack.Files[1].Size = lobby.MaxDownloadFileBytes + 1
+			}
+			sg.multiplayer.lobby.state.Packs = []lobby.Pack{pack}
+			sg.openAuthorityCreate()
+			var creates atomic.Int32
+			sg.opts.AuthorityCreateGame = func(context.Context, string, lobby.CreateRequest) (lobby.Room, error) {
+				creates.Add(1)
+				return lobby.Room{}, nil
+			}
+			sg.beginAuthorityCreate()
+			if sg.multiplayer.lobby.creating != nil || creates.Load() != 0 || sg.multiplayer.status == "" {
+				t.Fatalf("invalid download created a room: %s", sg.multiplayer.status)
+			}
+			if name == "private missing file" && !strings.Contains(sg.multiplayer.status, "FREE.WAD") {
+				t.Fatalf("private file refusal lost file name: %s", sg.multiplayer.status)
+			}
+			if hint := sg.authorityCreateContentHint(pack); hint != sg.multiplayer.status {
+				t.Fatalf("file page hint disagrees with create refusal: %s != %s", hint, sg.multiplayer.status)
+			}
+		})
 	}
 }
 

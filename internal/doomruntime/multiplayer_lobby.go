@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -59,19 +60,21 @@ type authorityCreateAttempt struct {
 	reply  chan authorityCreateReply
 }
 type authorityLobbyMenu struct {
-	page, row, scroll int
-	selected          string
-	state             lobby.State
-	refresh           *authorityLobbyRefresh
-	creating          *authorityCreateAttempt
-	uploading         *authorityUploadAttempt
-	request           lobby.CreateRequest
-	requestReady      bool
-	editRoomName      bool
-	homeRow           int
-	playerReturnPage  int
-	playerReturnRow   int
-	initialRoomsFocus bool
+	page, row, scroll  int
+	selected           string
+	state              lobby.State
+	refresh            *authorityLobbyRefresh
+	creating           *authorityCreateAttempt
+	uploading          *authorityUploadAttempt
+	request            lobby.CreateRequest
+	requestReady       bool
+	modeConfigured     bool
+	monstersConfigured bool
+	editRoomName       bool
+	homeRow            int
+	playerReturnPage   int
+	playerReturnRow    int
+	initialRoomsFocus  bool
 }
 
 func (sg *sessionGame) authorityLobbyAvailable() bool {
@@ -224,6 +227,8 @@ func (sg *sessionGame) openAuthorityCreate() {
 			name = name[:len(name)-size]
 		}
 		m.request = lobby.CreateRequest{Name: name, Settings: lobby.Settings{PackID: pack.ID, Mode: "coop", Skill: 3, PlayerLimit: 4}}
+		m.modeConfigured, m.monstersConfigured = false, false
+		m.applyPackModeDefaults(pack.ID)
 		if len(pack.Maps) > 0 {
 			m.request.Settings.Map = pack.Maps[0]
 		}
@@ -237,6 +242,23 @@ func (sg *sessionGame) openAuthorityCreate() {
 		} else {
 			sg.multiplayer.status = "CHECKING GAME FILES..."
 		}
+	}
+}
+
+// FreeDM maps are intended for deathmatch. Follow the selected catalog game
+// until the player explicitly chooses a mode; keep their monster preference.
+func (m *authorityLobbyMenu) applyPackModeDefaults(packID string) {
+	if m.modeConfigured {
+		return
+	}
+	s := &m.request.Settings
+	if packID == "freedm" {
+		s.Mode, s.FriendlyFire = "deathmatch", false
+	} else {
+		s.Mode, s.FragLimit = "coop", 0
+	}
+	if !m.monstersConfigured {
+		s.NoMonsters = s.Mode == "deathmatch"
 	}
 }
 
@@ -256,12 +278,16 @@ func (sg *sessionGame) beginAuthorityCreate() {
 		return
 	}
 	pack, ok := m.selectedPack()
-	if !ok || !sg.authorityPackMatches(pack.WADHashes) {
-		if !ok && m.refresh != nil {
+	if !ok {
+		if m.refresh != nil {
 			menu.status = "WAIT FOR GAME FILES TO LOAD"
 		} else {
-			menu.status = "LOAD MATCHING WAD FIRST"
+			menu.status = "SELECT AVAILABLE GAME FILES"
 		}
+		return
+	}
+	if _, err := sg.authorityCreateContentBytes(pack); err != nil {
+		menu.status = strings.ToUpper(err.Error())
 		return
 	}
 	if !slices.Contains(pack.Maps, m.request.Settings.Map) {
@@ -300,6 +326,30 @@ func (sg *sessionGame) beginAuthorityCreate() {
 	m.creating, menu.status = job, "CREATING GAME... ESC TO CANCEL"
 	create, address, request := sg.opts.AuthorityCreateGame, sg.opts.AuthorityLobbyURL, m.request
 	go func() { room, err := create(ctx, address, request); job.reply <- authorityCreateReply{room, err} }()
+}
+
+func (sg *sessionGame) authorityCreateContentBytes(pack lobby.Pack) (int64, error) {
+	if sg.authorityPackMatches(pack.WADHashes) {
+		return 0, lobby.ValidatePack(pack)
+	}
+	if sg.opts.AuthorityPrepareRoom == nil {
+		return 0, errors.New("load matching WAD first")
+	}
+	return lobby.RequiredDownloadBytes(pack, sg.opts.AuthorityWADHashes)
+}
+
+func (sg *sessionGame) authorityCreateContentHint(pack lobby.Pack) string {
+	bytes, err := sg.authorityCreateContentBytes(pack)
+	if err != nil {
+		return strings.ToUpper(err.Error())
+	}
+	if sg.authorityPackMatches(pack.WADHashes) {
+		return "GAME FILES READY"
+	}
+	if bytes > 0 {
+		return "CREATE & JOIN DOWNLOADS " + authorityContentSize(bytes)
+	}
+	return "CREATE & JOIN LOADS SELECTED WADS"
 }
 
 func (sg *sessionGame) pollAuthorityCreate() {

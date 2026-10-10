@@ -916,6 +916,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			pickerChoices = []iwadChoice{fallback}
 		}
 	}
+	if noExplicitWAD && len(resolvedFilePaths) == 0 {
+		pickerChoices = appendFreeGameChoices(pickerChoices)
+	}
 	if !networkActive && shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
 		buildCfg := renderBuildConfig{
 			authorityJoinDefaults:      joinDefaults,
@@ -998,12 +1001,17 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			cfg = applyPickerSFX(cfg, sfxIndex)
 			cfg = applyPickerPCSpeakerVariant(cfg, pcSpeakerVariantIndex)
 			cfg = applyPickerSynth(cfg, synthIndex)
+			if strings.EqualFold(filepath.Base(path), "freedm.wad") {
+				cfg.gameMode, cfg.noMonsters = "deathmatch", true
+			}
 			return buildRenderBundle(resolveIWADAliasPath(path), cfg, stderr)
 		})
 		if perr != nil {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
 			return 1
 		}
+		defer picker.Close()
+		picker.freeGameServer = lobbyURL
 		if forceWASMPicker && !wadFlagSet {
 			picker.stage = pickerStageIWAD
 		}
@@ -1011,7 +1019,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", err)
 			return 1
 		}
-		defer picker.Close()
 		if picker.Session() == nil {
 			return 1
 		}
@@ -2448,6 +2455,11 @@ type iwadPickerGame struct {
 	confirmArmed          bool
 	status                string
 	loadingPath           string
+	freeGameServer        string
+	freeGameDownload      *pickerFreeGameDownload
+	freeGameID            string
+	freeGamePath          string
+	freeGameCleanup       func()
 	tic                   int
 	launchQueued          bool
 	launchDrawn           bool
@@ -2628,6 +2640,7 @@ func (g *iwadPickerGame) shouldDrawPickerTouchControls() bool {
 }
 
 func (g *iwadPickerGame) pickerBack() error {
+	g.status = ""
 	switch g.stage {
 	case pickerStageSynth:
 		g.stage = pickerStageSFX
@@ -2704,6 +2717,15 @@ func (g *iwadPickerGame) Update() error {
 		return g.sessionGame.Update()
 	}
 	g.sampleTouchControls()
+	if g.freeGameDownload != nil {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || g.pickerTouchActivated(pickerTouchBack) {
+			g.cancelFreeGameDownload()
+			g.status = "DOWNLOAD CANCELLED - ENTER TO RETRY"
+			return nil
+		}
+		g.pollFreeGameDownload()
+		return nil
+	}
 	if len(g.choices) == 0 {
 		g.err = fmt.Errorf("no IWADs available")
 		return ebiten.Termination
@@ -2728,7 +2750,15 @@ func (g *iwadPickerGame) Update() error {
 			g.err = fmt.Errorf("iwad loader unavailable")
 			return ebiten.Termination
 		}
-		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
+		path := g.choices[g.selected].Path
+		if game, ok := freeGameChoice(path); ok {
+			if g.freeGameID != game.ID {
+				g.beginFreeGameDownload(game)
+				return nil
+			}
+			path = g.freeGamePath
+		}
+		bundle, err := g.load(path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
 		if err != nil {
 			g.status = err.Error()
 			g.launchQueued = false
@@ -2891,7 +2921,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	}
 	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
 	textScale := g.pickerTextScaleForLayout(sw, sh)
-	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || g.launchQueued
+	loadingSoundFont := g.pickerLoading()
 	if g.launchQueued {
 		g.launchDrawn = true
 	}
@@ -2983,7 +3013,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		fileWidth := 0
 		for i, choice := range g.choices {
 			labelTexts[i] = strings.ToUpper(choice.Label)
-			fileTexts[i] = strings.ToUpper(filepath.Base(choice.Path))
+			fileTexts[i] = pickerChoiceDetail(choice)
 			labelWidth = max(labelWidth, g.pickerTextWidthScaled("> "+labelTexts[i], textScale))
 			fileWidth = max(fileWidth, g.pickerTextWidthScaled(fileTexts[i], textScale))
 		}
@@ -3000,6 +3030,10 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			}
 			g.drawPickerTextScaled(screen, labelTexts[i], labelX, y+i*rowHeight, textScale)
 			g.drawPickerTextScaled(screen, fileTexts[i], fileX, y+i*rowHeight, textScale)
+		}
+		if _, ok := freeGameChoice(g.choices[g.selected].Path); ok {
+			detailScale := max(1, textScale/2)
+			g.drawPickerTextCenteredScaled(screen, freeGameStandaloneHint, sw/2, y+blockHeight+12*textScale, detailScale)
 		}
 	}
 	if strings.TrimSpace(g.status) != "" {
@@ -3050,6 +3084,13 @@ func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *e
 }
 
 func (g *iwadPickerGame) Close() {
+	g.cancelFreeGameDownload()
+	defer func() {
+		if g.freeGameCleanup != nil {
+			g.freeGameCleanup()
+			g.freeGameCleanup = nil
+		}
+	}()
 	if g.sfx != nil {
 		g.sfx.StopAll()
 	}
@@ -3239,7 +3280,7 @@ func (g *iwadPickerGame) pickerTextFitsLayout(screenW, screenH, scale int) bool 
 	contentMaxH := max(screenH-24, 1)
 	skullW := g.pickerSelectionMarkerWidth(scale)
 	selectionPad := skullW + 3
-	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || g.launchQueued
+	loadingSoundFont := g.pickerLoading()
 
 	fitsBlock := func(blockW, topY, blockH int) bool {
 		return blockW <= contentMaxW && topY >= 0 && topY+blockH <= contentMaxH
@@ -3298,7 +3339,7 @@ func (g *iwadPickerGame) pickerTextFitsLayout(screenW, screenH, scale int) bool 
 		fileW := 0
 		for _, choice := range g.choices {
 			labelW = max(labelW, g.pickerTextWidthScaled("> "+strings.ToUpper(choice.Label), scale))
-			fileW = max(fileW, g.pickerTextWidthScaled(strings.ToUpper(filepath.Base(choice.Path)), scale))
+			fileW = max(fileW, g.pickerTextWidthScaled(pickerChoiceDetail(choice), scale))
 		}
 		blockW := labelW + 8*scale + fileW + selectionPad
 		rowH := 10 * scale
@@ -3306,6 +3347,15 @@ func (g *iwadPickerGame) pickerTextFitsLayout(screenW, screenH, scale int) bool 
 		startY := screenH/2 - blockH/2
 		if !fitsBlock(blockW, startY, blockH) {
 			return false
+		}
+		if g.selected >= 0 && g.selected < len(g.choices) {
+			if _, ok := freeGameChoice(g.choices[g.selected].Path); ok {
+				detailScale := max(1, scale/2)
+				footerY := startY + blockH + 12*scale
+				if !fitsBlock(g.pickerTextWidthScaled(freeGameStandaloneHint, detailScale), footerY, 8*detailScale) {
+					return false
+				}
+			}
 		}
 	}
 

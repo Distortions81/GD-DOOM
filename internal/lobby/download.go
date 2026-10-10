@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -58,6 +59,26 @@ func ValidateDownloadPack(pack Pack) error {
 		total += file.Size
 	}
 	return nil
+}
+
+// RequiredDownloadBytes validates a replacement stack and checks that every
+// missing file is approved for download. Matching local hashes may be reused
+// in any position, including a private base WAD; filenames grant no access.
+func RequiredDownloadBytes(pack Pack, localHashes []string) (int64, error) {
+	if err := ValidateDownloadPack(pack); err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, file := range pack.Files {
+		if slices.Contains(localHashes, file.SHA256) {
+			continue
+		}
+		if !file.Downloadable {
+			return 0, fmt.Errorf("load %s locally first; it is not available for download", file.Name)
+		}
+		total += file.Size
+	}
+	return total, nil
 }
 
 // Download returns verified owned bytes for one operator-approved file. The

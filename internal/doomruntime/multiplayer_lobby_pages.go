@@ -109,6 +109,7 @@ func (sg *sessionGame) selectInitialAuthorityPack() {
 		}
 	}
 	m.request.Settings.PackID = pack.ID
+	m.applyPackModeDefaults(pack.ID)
 	if len(pack.Maps) != 0 {
 		m.request.Settings.Map = pack.Maps[0]
 	}
@@ -273,6 +274,9 @@ func (sg *sessionGame) tickAuthorityLobby(escape, selectPressed bool) error {
 			}
 		} else {
 			m.adjustRule(dir)
+			if m.row == 1 {
+				m.monstersConfigured = true
+			}
 		}
 	case authorityLobbyPageFiles:
 		switch m.row {
@@ -281,6 +285,7 @@ func (sg *sessionGame) tickAuthorityLobby(escape, selectPressed bool) error {
 			if len(m.state.Packs) > 0 {
 				pack := m.state.Packs[(max(0, index)+dir+len(m.state.Packs))%len(m.state.Packs)]
 				m.request.Settings.PackID, m.request.Settings.Map = pack.ID, ""
+				m.applyPackModeDefaults(pack.ID)
 				if len(pack.Maps) > 0 {
 					m.request.Settings.Map = pack.Maps[0]
 				}
@@ -307,6 +312,7 @@ func (sg *sessionGame) tickAuthorityLobby(escape, selectPressed bool) error {
 				menu.editOriginal = m.request.Name
 			}
 		case authorityCreateModeRow:
+			m.modeConfigured, m.monstersConfigured = true, false
 			if m.request.Settings.Mode == "coop" {
 				m.request.Settings.Mode, m.request.Settings.NoMonsters = "deathmatch", true
 				m.request.Settings.FriendlyFire = false
@@ -440,8 +446,8 @@ func (sg *sessionGame) drawAuthorityLobby(text func(string, int, int)) {
 			labels = append(labels, "UPLOAD LOADED WADS")
 		}
 		drawRows(append(labels, "BACK"), 56, 26)
-		if menu.status == "" && !sg.authorityPackMatches(pack.WADHashes) {
-			text("LOAD MATCHING WAD TO CREATE", 24, 168)
+		if menu.status == "" && pack.ID != "" {
+			text(fit(sg.authorityCreateContentHint(pack), 272), 24, 168)
 		}
 	case authorityLobbyPageRules:
 		s := m.request.Settings

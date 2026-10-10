@@ -75,7 +75,9 @@ func configureAuthorityLobby(opts *runtimecfg.Options, paths []string, address s
 				continue
 			}
 			if !slices.Equal(hashes, pack.WADHashes) {
-				return lobby.Room{}, fmt.Errorf("load this room's matching WADs in the launcher first")
+				if _, err := lobby.RequiredDownloadBytes(pack, hashes); err != nil {
+					return lobby.Room{}, fmt.Errorf("cannot load selected game files: %w", err)
+				}
 			}
 			if _, err := lobby.ValidateSettings(request.Settings, pack); err != nil {
 				return lobby.Room{}, err

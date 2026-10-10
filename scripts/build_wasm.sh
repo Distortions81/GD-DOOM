@@ -99,6 +99,9 @@ cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"
 cat "${ROOT_DIR}/internal/render/menufont/assets/NOTICE.md" \
   "${ROOT_DIR}/internal/render/menufont/assets/UPSTREAM-LICENSE.md" > "${OUT_DIR}/font-notice.txt"
+cat "${ROOT_DIR}/internal/freegames/licenses/freedoom-0.13.0/COPYING.txt" \
+  "${ROOT_DIR}/internal/freegames/licenses/freedoom-0.13.0/CREDITS.txt" \
+  "${ROOT_DIR}/internal/freegames/licenses/freedoom-0.13.0/CREDITS-MUSIC.txt" > "${OUT_DIR}/free-game-notices.txt"
 cp "${ROOT_DIR}/cmd/wasmserve/main.go" "${OUT_DIR}/server.go"
 
 gzip -n -f -c "${OUT_DIR}/gddoom.wasm" > "${OUT_DIR}/gddoom.wasm.gz"

@@ -24,7 +24,8 @@ smooths small prediction corrections. Doors, lifts and their riders share
 the confirmed snapshot presentation timeline.
 
 Multiplayer uses GDMP protocol version 3 with binary roster updates and the
-binary-only `gd-doom-authority-dev-2` simulation format. Update `gdserver`,
+binary-only `gd-doom-authority-dev-3` simulation. The simulation revision adds
+vanilla repeatable fast floor raises used by Freedoom. Update `gdserver`,
 `gdlobby`, the deployment probe and browser assets together, and restart the lobby to replace existing room workers.
 Players with an older browser build must reload before joining. The release also
 includes adaptive browser audio buffering and default deathmatch map progression
@@ -261,6 +262,18 @@ remain available under **Servers** even when the lobby is empty.
 
 ## Publish the browser assets
 
+For the free standalone game catalog, first run
+`python3 scripts/fetch_free_games.py /tmp/gd-doom-free-games --shareware DOOM1.WAD`.
+The generated directory contains Doom Shareware, Freedoom Phase 1, Freedoom
+Phase 2, FreeDM, notices, and a hash-approved lobby catalog. Stage these files
+on the server and use its `catalog.json` with the lobby; preserve or merge
+any existing operator-managed catalog entries rather than discarding them.
+Restart the lobby after updating its catalog. Keep the upload storage intact.
+The startup picker downloads these games from the configured lobby (or the
+default public content server on desktop) only after a player chooses one.
+The installer does not alter a running deployment. See
+[free-game installation and terms](free-games.md) for details.
+
 Build from the committed source with a traceable release ID:
 
 ```bash
@@ -275,11 +288,13 @@ The output includes the shareware WAD and General MIDI SoundFont embedded in
 `gddoom.wasm`. The server and lobby defaults are also embedded in the WASM;
 `build-id.js` contains only the release ID. The HTML/JS has no multiplayer join
 controls or launch arguments. Players choose graphics and audio during game
-setup, then join through the in-game Multiplayer menu. Publish these eight
+setup, then join through the in-game Multiplayer menu. Publish these nine
 assets and an updated `wasm-manifest.json`:
 `index.html`, `player.html`, `launch.js`, `build-id.js`, `wasm_exec.js`,
-`gddoom.wasm`, `gddoom.wasm.gz`, and `font-notice.txt`. The font notice retains
-the credits and separate game-artwork terms for the embedded menu font.
+`gddoom.wasm`, `gddoom.wasm.gz`, `font-notice.txt`, and `free-game-notices.txt`. The font notice retains
+the credits and separate game-artwork terms for the embedded menu font. The
+free-game notice includes the complete Freedoom license and contributor/music
+credits and must accompany the downloadable game data.
 Use a staged upload, verify the hashes, and
 publish the manifest last. For direct updates, `rsync --delay-updates` delays
 replacement until the transfer has completed.
@@ -291,7 +306,7 @@ The existing nginx configuration already sends `application/wasm` and
 
 Preserve the existing manifest's `branch`, `commit`, `build_id` and `files`
 fields. Add `schema_version: 1`, `source_dirty` and `built_at` (UTC RFC3339).
-`files` maps each of the eight asset names to its SHA-256; it excludes the
+`files` maps each of the nine asset names to its SHA-256; it excludes the
 manifest itself. `build_id` must equal the value in `build-id.js`.
 
 ## Alternative: WSS through the existing HTTPS port

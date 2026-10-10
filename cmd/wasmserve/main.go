@@ -46,15 +46,17 @@ func hasAppFiles(dir string) bool {
 
 func newHandler(dir string) http.Handler {
 	files := map[string]string{
-		"/":               "index.html",
-		"/index.html":     "index.html",
-		"/player.html":    "player.html",
-		"/favicon.ico":    "",
-		"/launch.js":      "launch.js",
-		"/build-id.js":    "build-id.js",
-		"/wasm_exec.js":   "wasm_exec.js",
-		"/gddoom.wasm":    "gddoom.wasm",
-		"/gddoom.wasm.gz": "gddoom.wasm.gz",
+		"/":                      "index.html",
+		"/index.html":            "index.html",
+		"/player.html":           "player.html",
+		"/favicon.ico":           "",
+		"/launch.js":             "launch.js",
+		"/build-id.js":           "build-id.js",
+		"/wasm_exec.js":          "wasm_exec.js",
+		"/gddoom.wasm":           "gddoom.wasm",
+		"/gddoom.wasm.gz":        "gddoom.wasm.gz",
+		"/font-notice.txt":       "font-notice.txt",
+		"/free-game-notices.txt": "free-game-notices.txt",
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

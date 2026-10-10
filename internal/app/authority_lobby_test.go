@@ -19,7 +19,7 @@ import (
 	"gddoom/internal/runtimecfg"
 )
 
-func TestAuthorityLobbyCreatesOnlyLoadedContent(t *testing.T) {
+func TestAuthorityLobbyCreatesLoadedContentAndRejectsUnverifiedReplacements(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "custom.wad")
 	data := []byte("loaded WAD bytes")
 	if err := os.WriteFile(path, data, 0600); err != nil {
@@ -57,18 +57,77 @@ func TestAuthorityLobbyCreatesOnlyLoadedContent(t *testing.T) {
 	if err != nil || got.ID != room.ID || posts != 1 {
 		t.Fatalf("create = %v, %v, posts=%d", got, err, posts)
 	}
-	// Neither mutable UI identity nor a changed catalog may authorize a process
-	// with content different from the client's originally loaded world.
+	// Mutable UI identity cannot grant access to missing private content.
 	opts.AuthorityWADHashes[0] = strings.Repeat("b", 64)
 	pack.WADHashes = slices.Clone(opts.AuthorityWADHashes)
 	_, err = opts.AuthorityCreateGame(context.Background(), server.URL, request)
-	if err == nil || !strings.Contains(err.Error(), "matching WADs") || posts != 1 {
+	if err == nil || !strings.Contains(err.Error(), "cannot load selected game files") || posts != 1 {
 		t.Fatalf("mismatch = %v, posts=%d", err, posts)
 	}
 	pack.ID = "replacement"
 	_, err = opts.AuthorityCreateGame(context.Background(), server.URL, request)
 	if err == nil || !strings.Contains(err.Error(), "no longer") || posts != 1 {
 		t.Fatalf("removed pack = %v, posts=%d", err, posts)
+	}
+}
+
+func TestAuthorityLobbyCreatesDownloadableContentAndRechecksFreshApproval(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "base.wad")
+	data := []byte("private locally loaded WAD bytes")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	baseHash := fmt.Sprintf("%x", sha256.Sum256(data))
+	for _, standalone := range []bool{false, true} {
+		t.Run(fmt.Sprintf("standalone=%v", standalone), func(t *testing.T) {
+			addonHash := strings.Repeat("c", 64)
+			pack := lobby.Pack{ID: "catalog", Name: "Catalog game", WADHashes: []string{baseHash, addonHash}, Maps: []string{"E1M1"}, Files: []lobby.PackFile{
+				{Name: "base.wad", Size: int64(len(data)), SHA256: baseHash},
+				{Name: "free.wad", Size: 1024, SHA256: addonHash, Downloadable: true},
+			}}
+			if standalone {
+				pack.WADHashes, pack.Files = pack.WADHashes[1:], pack.Files[1:]
+			}
+			settings := lobby.Settings{PackID: pack.ID, Map: "E1M1", Mode: "coop", Skill: 3, PlayerLimit: 4}
+			manifest, err := lobby.ValidateSettings(settings, pack)
+			if err != nil {
+				t.Fatal(err)
+			}
+			room := lobby.Room{ID: "room1", Name: "Our game", State: "ready", Address: "ws://127.0.0.1:1234/rooms/room1/netplay", Settings: settings, Manifest: manifest, PlayerLimit: 4, CreatedAt: time.Now().UTC()}
+			var posts, fetches int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v1/lobby":
+					fetches++
+					_ = json.NewEncoder(w).Encode(lobby.State{Version: lobby.APIVersion, MaxRooms: 8, Packs: []lobby.Pack{pack}})
+				case "/api/v1/rooms":
+					posts++
+					w.WriteHeader(http.StatusCreated)
+					_ = json.NewEncoder(w).Encode(room)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			var opts runtimecfg.Options
+			if err := configureAuthorityLobby(&opts, []string{path}, server.URL); err != nil {
+				t.Fatal(err)
+			}
+			request := lobby.CreateRequest{RequestID: strings.Repeat("d", 32), Name: room.Name, Settings: settings}
+			got, err := opts.AuthorityCreateGame(context.Background(), server.URL, request)
+			if err != nil || got.ID != room.ID || posts != 1 || fetches != 1 {
+				t.Fatalf("downloadable create = %v, %v, posts=%d fetches=%d", got, err, posts, fetches)
+			}
+			// A stale menu and mutable UI hashes must not override the freshly
+			// fetched redistribution permission or original local identity.
+			pack.Files[len(pack.Files)-1].Downloadable = false
+			opts.AuthorityWADHashes = slices.Clone(pack.WADHashes)
+			_, err = opts.AuthorityCreateGame(context.Background(), server.URL, request)
+			if err == nil || !strings.Contains(err.Error(), "free.wad") || posts != 1 || fetches != 2 {
+				t.Fatalf("revoked approval = %v, posts=%d fetches=%d", err, posts, fetches)
+			}
+		})
 	}
 }
 

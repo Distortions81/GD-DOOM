@@ -436,6 +436,12 @@ This changes the simulation compatibility identifier to
 `gd-doom-authority-dev-2`: deploy the server and browser client together. Older
 clients/servers are rejected during the compatibility handshake.
 
+The standalone free-game catalog subsequently advances the simulation to
+`gd-doom-authority-dev-3` for vanilla linedef 129 (repeatable fast floor raise).
+The binary snapshot schema is unchanged. Deploy matching client and server
+binaries together; the lobby must use the same worker binary and approved
+catalog described in [free games](free-games.md).
+
 `BenchmarkAuthorityReplicaRenderCaches` separates binary/JSON encoding and
 decoding, validation, application and lazy automap rebuilding. `ValidateRehash`
 compares the former repeated-map-hash cost, while

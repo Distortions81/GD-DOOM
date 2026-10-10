@@ -173,10 +173,14 @@ go run . -wad DOOM2.WAD -sourceport-mode
 go run . -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
 ```
 
-The WAD can also be the first positional argument. Without `-wad`, one known
-WAD in the working directory is selected automatically; multiple supported
-WADs can open the frontend picker. For demos and live sessions, use matching
-base WADs and add-ons on every instance.
+The WAD can also be the first positional argument. Without `-wad`, the in-game
+picker offers installed games plus **Freedoom Phase 1**, **Freedoom Phase 2**,
+and **FreeDM**. These standalone games need no other base WAD and download only
+when selected, with size and SHA-256 verification. Graphics, sound, and music
+setup still runs before play. Doom Shareware remains bundled for offline use.
+FreeDM supplies deathmatch arenas; the two Freedoom phases supply campaigns.
+See [free games, licenses, and server installation](docs/free-games.md).
+For demos and live sessions, use matching base WADs and add-ons on every instance.
 
 Source builds require **Go 1.26.6 or newer** and a Doom WAD. Linux also needs
 the usual X11, OpenGL, and audio development dependencies. On Debian/Ubuntu:

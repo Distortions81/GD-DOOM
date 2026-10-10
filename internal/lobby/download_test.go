@@ -30,6 +30,39 @@ func testDownloadPack() Pack {
 	return pack
 }
 
+func TestRequiredDownloadBytesUsesOnlyApprovedMissingHashes(t *testing.T) {
+	pack := testDownloadPack()
+	bytes, err := RequiredDownloadBytes(pack, pack.WADHashes[:1])
+	if err != nil || bytes != pack.Files[1].Size {
+		t.Fatalf("private loaded base plus approved overlay = %d, %v", bytes, err)
+	}
+	if bytes, err := RequiredDownloadBytes(pack, []string{pack.WADHashes[1], pack.WADHashes[0]}); err != nil || bytes != 0 {
+		t.Fatalf("reordered local content = %d, %v", bytes, err)
+	}
+	if _, err := RequiredDownloadBytes(pack, nil); err == nil || !strings.Contains(err.Error(), pack.Files[0].Name) {
+		t.Fatalf("missing private base = %v", err)
+	}
+	pack.Files[0].Downloadable = true
+	if bytes, err := RequiredDownloadBytes(pack, nil); err != nil || bytes != 1536 {
+		t.Fatalf("complete downloadable stack = %d, %v", bytes, err)
+	}
+	// A fully local stack still needs trustworthy ordered metadata when it
+	// will be rebuilt, including the sizes used to bound the replacement.
+	pack.Files[1].Size = MaxDownloadFileBytes + 1
+	if _, err := RequiredDownloadBytes(pack, pack.WADHashes); err == nil {
+		t.Fatal("oversized metadata bypassed by local hash")
+	}
+	pack = testDownloadPack()
+	pack.Files[1].SHA256 = pack.Files[0].SHA256
+	if _, err := RequiredDownloadBytes(pack, pack.WADHashes); err == nil {
+		t.Fatal("metadata hash mismatch bypassed by local hash")
+	}
+	pack.Files = nil
+	if _, err := RequiredDownloadBytes(pack, pack.WADHashes); err == nil {
+		t.Fatal("missing metadata accepted")
+	}
+}
+
 func TestDownloadPackMetadataPreservesPrivateBaseAndOrderedOverlay(t *testing.T) {
 	pack := testDownloadPack()
 	if err := ValidateDownloadPack(pack); err != nil {

@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "source": "https://github.com/freedoom/freedoom/releases/tag/v0.13.0",
+  "checksum_source": "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0-CHECKSUM",
+  "archives": [
+    {
+      "id": "freedoom-0.13.0",
+      "url": "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip",
+      "filename": "freedoom-0.13.0.zip",
+      "size": 24143781,
+      "sha256": "3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59",
+      "notices": [
+        {
+          "filename": "COPYING.txt",
+          "size": 1644,
+          "sha256": "7c62f2c520769c798774f416637eec4921e5f0aafdac1245ae7c8a8cf65fe102",
+          "member": "freedoom-0.13.0/COPYING.txt"
+        },
+        {
+          "filename": "CREDITS.txt",
+          "size": 15872,
+          "sha256": "72364333d295c598d75ef9553d3b3661ad0b60e27271c87b7637c74b2f46918a",
+          "member": "freedoom-0.13.0/CREDITS.txt"
+        },
+        {
+          "filename": "CREDITS-MUSIC.txt",
+          "size": 9388,
+          "sha256": "2bb77677bbc4e587bba44ccb6514ee0f5397c7bb8ae9580b9188d3d6a57c0a31",
+          "member": "freedoom-0.13.0/CREDITS-MUSIC.txt"
+        }
+      ]
+    },
+    {
+      "id": "freedm-0.13.0",
+      "url": "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedm-0.13.0.zip",
+      "filename": "freedm-0.13.0.zip",
+      "size": 11331651,
+      "sha256": "b420f13508ef745d7b38e83d15e55e0fc0b09d9a503c96741cddd9773d43f7c9",
+      "notices": [
+        {
+          "filename": "COPYING.txt",
+          "size": 1644,
+          "sha256": "7c62f2c520769c798774f416637eec4921e5f0aafdac1245ae7c8a8cf65fe102",
+          "member": "freedm-0.13.0/COPYING.txt"
+        },
+        {
+          "filename": "CREDITS.txt",
+          "size": 15872,
+          "sha256": "72364333d295c598d75ef9553d3b3661ad0b60e27271c87b7637c74b2f46918a",
+          "member": "freedm-0.13.0/CREDITS.txt"
+        },
+        {
+          "filename": "CREDITS-MUSIC.txt",
+          "size": 9388,
+          "sha256": "2bb77677bbc4e587bba44ccb6514ee0f5397c7bb8ae9580b9188d3d6a57c0a31",
+          "member": "freedm-0.13.0/CREDITS-MUSIC.txt"
+        }
+      ]
+    }
+  ],
+  "games": [
+    {
+      "id": "freedoom1",
+      "name": "Freedoom: Phase 1",
+      "filename": "freedoom1.wad",
+      "description": "Four episodes of classic single-player and co-op action. No other game required.",
+      "version": "0.13.0",
+      "sha256": "7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d",
+      "size": 28795076,
+      "project_url": "https://freedoom.github.io/",
+      "archive": "freedoom-0.13.0",
+      "member": "freedoom-0.13.0/freedoom1.wad",
+      "license": "BSD-3-Clause",
+      "license_source": "https://github.com/freedoom/freedoom/blob/v0.13.0/COPYING.adoc"
+    },
+    {
+      "id": "freedoom2",
+      "name": "Freedoom: Phase 2",
+      "filename": "freedoom2.wad",
+      "description": "A 32-level campaign with the full arsenal. No other game required.",
+      "version": "0.13.0",
+      "sha256": "a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b",
+      "size": 28787748,
+      "project_url": "https://freedoom.github.io/",
+      "archive": "freedoom-0.13.0",
+      "member": "freedoom-0.13.0/freedoom2.wad",
+      "license": "BSD-3-Clause",
+      "license_source": "https://github.com/freedoom/freedoom/blob/v0.13.0/COPYING.adoc"
+    },
+    {
+      "id": "freedm",
+      "name": "FreeDM",
+      "filename": "freedm.wad",
+      "description": "32 arenas built for deathmatch. No other game required.",
+      "version": "0.13.0",
+      "sha256": "d9adc4d792627e7fc47b09067b15486da724010c71dd12831e1cf8e0755b68ad",
+      "size": 22218796,
+      "project_url": "https://freedoom.github.io/",
+      "archive": "freedm-0.13.0",
+      "member": "freedm-0.13.0/freedm.wad",
+      "license": "BSD-3-Clause",
+      "license_source": "https://github.com/freedoom/freedoom/blob/v0.13.0/COPYING.adoc"
+    }
+  ],
+  "shareware": {
+    "id": "doom-shareware",
+    "name": "DOOM Shareware",
+    "filename": "DOOM1.WAD",
+    "size": 4196020,
+    "sha256": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+    "license": "Original shareware redistribution terms",
+    "license_source": "https://sources.debian.org/src/doom-wad-shareware/1.9.fixed-4/debian/copyright/",
+    "project_url": "https://github.com/id-Software/DOOM"
+  }
+}

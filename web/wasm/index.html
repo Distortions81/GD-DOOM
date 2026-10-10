@@ -238,6 +238,17 @@
       outline: none;
     }
 
+    .download-details {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .download-details a {
+      color: var(--text);
+      text-underline-offset: 3px;
+    }
+
     .panel-title {
       margin-bottom: 14px;
     }
@@ -380,7 +391,7 @@
         <p class="eyebrow">Browser Build</p>
         <h1 id="gddoom-title" class="logo">GD-DOOM</h1>
         <p class="tagline">Doom's classic software-rendered appearance, accelerated by GPU shaders in your browser.</p>
-        <p class="subcopy">Faithful mode keeps the 256-color palette and Doom lighting tables. Source Port mode adds smooth motion and high-resolution output. Load your own IWAD or play shareware, with persistent saves.</p>
+        <p class="subcopy">Faithful mode keeps the 256-color palette and Doom lighting tables. Source Port mode adds smooth motion and high-resolution output. Play Doom Shareware, choose a free standalone game, or load your own IWAD, with persistent saves.</p>
         <p class="subcopy">Use Load WAD Files to select a base game and custom maps. Choose your graphics, sound, and music settings in the game, then open Multiplayer to join or create a game.</p>
         <div id="local-wad-panel" hidden>
           <label for="local-wad-base">Base game</label>
@@ -397,8 +408,10 @@
         </div>
         <div class="actions">
           <button id="start-button" class="cta" type="button">GO TO HELL</button>
-          <a class="secondary" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View Repository</a>
+          <a class="secondary" href="https://github.com/Distortions81/GD-DOOM/releases/latest" target="_blank" rel="noreferrer">Download Desktop</a>
         </div>
+        <p class="download-details">Windows · macOS · Linux · <a href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View Repository</a></p>
+        <p class="download-details">Free games: Freedoom Phase 1, Phase 2, and FreeDM. No other game required; downloads start when selected. <a href="./free-game-notices.txt" target="_blank" rel="noreferrer">Licenses and credits</a></p>
       </section>
 
       <aside class="sidebar" aria-labelledby="controls-title">
