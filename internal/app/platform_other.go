@@ -2,10 +2,13 @@
 
 package app
 
-import "gddoom/internal/platformcfg"
+import (
+	"gddoom/internal/freegames"
+	"gddoom/internal/platformcfg"
+)
 
 func multiplayerBuildDefaults() (server, lobby string) {
-	return "", ""
+	return defaultAuthorityCoopAddress, freegames.DefaultContentServer
 }
 
 func isWASMBuild() bool {
