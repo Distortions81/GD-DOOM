@@ -492,6 +492,7 @@ type game struct {
 	authorityMapHashCache       *authorityMapHashCache
 	authorityEvents             *authorityEventLog
 	authorityFailure            *netgame.ConnectionStatus
+	authorityNotices            authorityNoticeState
 	clientUpdate                authorityClientUpdateState
 	lastAttackRange             int64 // Original p_map.c attackrange, also read by tracer puffs.
 	localSlot                   int

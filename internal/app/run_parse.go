@@ -71,6 +71,20 @@ func shouldOpenIWADPicker(render, noExplicitWAD, forceWASMPicker bool, pickerCho
 	return forceWASMPicker
 }
 
+// A browser-selected base WAD still needs profile and audio setup. Keep that
+// exact base as the only choice so its selected overlays remain paired with it.
+func wasmPickerChoices(choices []iwadChoice, selectedWAD string) []iwadChoice {
+	if selectedWAD == "" {
+		return choices
+	}
+	choice, known := knownIWADChoiceForPath(selectedWAD)
+	if !known {
+		choice = iwadChoice{Path: selectedWAD, Label: filepath.Base(selectedWAD)}
+	}
+	choice.Path = selectedWAD
+	return []iwadChoice{choice}
+}
+
 func resolveForceWASMMode(args []string) bool {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -636,8 +650,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	broadcastAddr := fs.String("broadcast", "", "publish to GDSF relay at addr (default 127.0.0.1:6670; bare -broadcast uses localhost)")
 	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
 	connectAddr := fs.String("connect", "", "join an authoritative server: host:port, HTTPS/WebTransport, or WebSocket URL")
-	multiplayerServer := fs.String("multiplayer-server", "", "prefill the in-game Multiplayer server address without joining")
-	multiplayerLobby := fs.String("multiplayer-lobby", "", "HTTP(S) lobby URL for browsing rooms and creating games")
+	defaultMultiplayerServer, defaultMultiplayerLobby := multiplayerBuildDefaults()
+	multiplayerServer := fs.String("multiplayer-server", defaultMultiplayerServer, "prefill the in-game Multiplayer server address without joining")
+	multiplayerLobby := fs.String("multiplayer-lobby", defaultMultiplayerLobby, "HTTP(S) lobby URL for browsing rooms and creating games")
 	netName := fs.String("player-name", "Player", "multiplayer display name")
 	netSpectator := fs.Bool("spectate", false, "join authoritative multiplayer as a spectator (F12 changes view)")
 	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
@@ -890,9 +905,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer stopCPUProfile()
 	noExplicitWAD := !wadFlagSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
-	forceWASMPicker := isWASMBuild() && *render && !wadFlagSet
+	forceWASMPicker := isWASMBuild() && *render
 	choices := detectAvailableIWADChoices(".")
 	pickerChoices := choices
+	if forceWASMPicker && wadFlagSet {
+		pickerChoices = wasmPickerChoices(pickerChoices, resolvedWADPath)
+	}
 	if len(pickerChoices) == 0 && isWASMBuild() {
 		if fallback, ok := knownIWADChoiceForPath(defaultWAD); ok {
 			pickerChoices = []iwadChoice{fallback}
@@ -986,7 +1004,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
 			return 1
 		}
-		if forceWASMPicker {
+		if forceWASMPicker && !wadFlagSet {
 			picker.stage = pickerStageIWAD
 		}
 		if err := runGameWithPlatformOptions(picker); err != nil && !errors.Is(err, ebiten.Termination) {

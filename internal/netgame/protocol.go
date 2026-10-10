@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	ProtocolVersion         = 2
+	ProtocolVersion         = 3
 	TickRate                = 35
 	MaxPlayers              = 4
 	MaxSpectators           = 16
@@ -45,6 +45,7 @@ const (
 	KindFollowPlayer
 	KindStatusQuery
 	KindServerStatus
+	KindRoster
 )
 
 // Hello verifies the exact ordered WAD set, simulation build, and rules digest.
@@ -132,6 +133,11 @@ func validateMessage(message any) (MessageKind, error) {
 		return len(value) > 0 && len(value) <= max && utf8.ValidString(value)
 	}
 	switch m := message.(type) {
+	case Roster:
+		if err := validateRoster(m); err != nil {
+			return 0, err
+		}
+		return KindRoster, nil
 	case FollowPlayer:
 		if m.PlayerID > MaxPlayers {
 			return 0, ErrProtocol
@@ -261,6 +267,24 @@ func MarshalMessage(message any) ([]byte, error) {
 	switch m := message.(type) {
 	case FollowPlayer:
 		put(m.PlayerID)
+	case Roster:
+		put(m.Revision)
+		put(m.PlayerLimit)
+		put(m.Count)
+		for _, p := range m.Players[:m.Count] {
+			put(p.ID)
+			put(p.PlayerID)
+			var flags byte
+			if p.Connected {
+				flags |= 1
+			}
+			if p.Spectator {
+				flags |= 2
+			}
+			put(flags)
+			put(p.PingMillis)
+			putString(p.Name)
+		}
 	case ChatSay:
 		putString(m.Text)
 	case ChatEvent:
@@ -340,11 +364,13 @@ func readMessage(r io.Reader, clientOnly bool) (any, error) {
 	}
 	n := binary.LittleEndian.Uint32(header[6:])
 	kind := MessageKind(header[5])
-	if clientOnly && kind != KindHello && kind != KindInput && kind != KindDisconnect && kind != KindQuery && kind != KindStatusQuery && kind != KindPing && kind != KindChatSay && kind != KindFollowPlayer {
+	if clientOnly && kind != KindHello && kind != KindInput && kind != KindDisconnect && kind != KindQuery && kind != KindStatusQuery && kind != KindPing && kind != KindPong && kind != KindChatSay && kind != KindFollowPlayer {
 		return nil, ErrProtocol
 	}
 	var minimum, maximum uint32
 	switch kind {
+	case KindRoster:
+		minimum, maximum = 10, rosterBodyMaxBytes
 	case KindFollowPlayer:
 		minimum, maximum = 1, 1
 	case KindChatSay:
@@ -431,6 +457,28 @@ func decodeBody(kind MessageKind, body []byte) (any, error) {
 	}
 	var result any
 	switch kind {
+	case KindRoster:
+		var m Roster
+		get(&m.Revision)
+		get(&m.PlayerLimit)
+		get(&m.Count)
+		if int(m.Count) > MaxParticipants {
+			return nil, ErrProtocol
+		}
+		for i := range int(m.Count) {
+			p := &m.Players[i]
+			get(&p.ID)
+			get(&p.PlayerID)
+			var flags byte
+			get(&flags)
+			if flags > 3 {
+				return nil, ErrProtocol
+			}
+			p.Connected, p.Spectator = flags&1 != 0, flags&2 != 0
+			get(&p.PingMillis)
+			p.Name = getString(64)
+		}
+		result = m
 	case KindFollowPlayer:
 		var m FollowPlayer
 		get(&m.PlayerID)

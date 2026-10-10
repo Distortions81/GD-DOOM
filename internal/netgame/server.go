@@ -19,21 +19,24 @@ const maxQueuedPeerInputs = 8
 // Server owns a Match. Its transport goroutines may read/write only connection
 // queues; all simulation, roster and input-buffer operations run in Serve.
 type Server struct {
-	match           *Match
-	joins           chan joinRequest
-	queries         chan discoveryRequest
-	chats           chan chatRequest
-	follows         chan followRequest
-	incoming        chan clientMessage
-	leaves          chan clientLeave
-	peers           map[ConnectionID]*streamPeer
-	wg              sync.WaitGroup
-	started         atomic.Bool
-	transition      TransitionHandler
-	lifecycleMu     sync.Mutex
-	serveContext    context.Context
-	accepting       bool
-	connectionSlots chan struct{}
+	match            *Match
+	joins            chan joinRequest
+	queries          chan discoveryRequest
+	chats            chan chatRequest
+	follows          chan followRequest
+	incoming         chan clientMessage
+	leaves           chan clientLeave
+	peers            map[ConnectionID]*streamPeer
+	wg               sync.WaitGroup
+	started          atomic.Bool
+	transition       TransitionHandler
+	lifecycleMu      sync.Mutex
+	serveContext     context.Context
+	accepting        bool
+	connectionSlots  chan struct{}
+	rosterRevision   uint64
+	rosterMembership uint64
+	rosterStamp      time.Time
 }
 
 type joinRequest struct {
@@ -70,6 +73,9 @@ type streamPeer struct {
 	finishing   atomic.Bool
 	requestFull atomic.Bool
 	snapshotAck atomic.Pointer[snapshotAcknowledgment]
+	rosters     chan Roster
+	latencyMu   sync.Mutex
+	latency     latencyProbe
 }
 
 type snapshotAcknowledgment struct {
@@ -173,6 +179,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 					}
 				}
 				s.peers[id] = request.peer
+				s.publishRoster(time.Now())
 			}
 			request.reply <- joinReply{id: id, welcome: welcome, err: err}
 		case message := <-s.incoming:
@@ -224,6 +231,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 					next = next.Add(period)
 				}
 			}
+			s.publishRoster(time.Now())
 			delay := time.Until(next)
 			if delay < 0 {
 				delay = 0
@@ -269,6 +277,7 @@ func (s *Server) drop(id ConnectionID) {
 		p.close()
 	}
 	s.match.Leave(id)
+	s.publishRoster(time.Now())
 }
 
 func (s *Server) acceptClientInput(message clientMessage) {
@@ -298,6 +307,7 @@ func (s *Server) suspend(id ConnectionID) {
 		p.close()
 	}
 	s.match.Suspend(id)
+	s.publishRoster(time.Now())
 }
 
 func (p *streamPeer) close() { p.once.Do(func() { close(p.done); _ = p.conn.Close() }) }
@@ -322,6 +332,7 @@ func (p *streamPeer) offer(snapshot Snapshot) {
 
 func (s *Server) serveConnection(ctx context.Context, conn net.Conn) {
 	p := &streamPeer{conn: conn, snapshots: make(chan Snapshot, 1), controls: make(chan Pong, 4), chats: make(chan ChatEvent, 32), chatSlots: make(chan struct{}, 4), final: make(chan finalMessage, 1), transitions: make(chan transitionMessage, 4), inputSlots: make(chan struct{}, maxQueuedPeerInputs), done: make(chan struct{})}
+	p.rosters = make(chan Roster, 1)
 	defer p.close()
 	// Cancellation must interrupt reads, writes and pending handshakes.
 	stop := context.AfterFunc(ctx, p.close)
@@ -384,6 +395,8 @@ func (s *Server) serveConnection(ctx context.Context, conn net.Conn) {
 			return
 		}
 		defer encoder.Close()
+		pingTicker := time.NewTicker(pingInterval)
+		defer pingTicker.Stop()
 		writerEpoch := reply.welcome.Epoch
 		writeTransition := func(change transitionMessage) bool {
 			if change.control.PreviousEpoch != writerEpoch {
@@ -441,6 +454,21 @@ func (s *Server) serveConnection(ctx context.Context, conn net.Conn) {
 				if err := writeStreamMessage(conn, pong); err != nil {
 					return
 				}
+			case <-pingTicker.C:
+				p.latencyMu.Lock()
+				ping, send := p.latency.begin(time.Now())
+				p.latencyMu.Unlock()
+				if send {
+					_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+					if err := writeStreamMessage(conn, ping); err != nil {
+						return
+					}
+				}
+			case roster := <-p.rosters:
+				_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+				if err := writeStreamMessage(conn, roster); err != nil {
+					return
+				}
 			case chat := <-p.chats:
 				_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 				if err := writeStreamMessage(conn, chat); err != nil {
@@ -460,6 +488,7 @@ func (s *Server) serveConnection(ctx context.Context, conn net.Conn) {
 		}
 	}()
 	defer func() { p.close(); <-writerDone }()
+	var pongReplies latencyReplyLimit
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		message, err := readPeerClientMessage(conn)
@@ -518,6 +547,19 @@ func (s *Server) serveConnection(ctx context.Context, conn net.Conn) {
 				resumable = false
 				return
 			}
+			continue
+		}
+		if pong, ok := message.(Pong); ok {
+			// Only an outstanding server nonce can change this peer's RTT.
+			// Pong traffic never refreshes gameplay activity or enters its queue.
+			now := time.Now()
+			if !pongReplies.allow(now) {
+				resumable = false
+				return
+			}
+			p.latencyMu.Lock()
+			p.latency.receive(pong, now)
+			p.latencyMu.Unlock()
 			continue
 		}
 		batch, ok := message.(InputBatch)

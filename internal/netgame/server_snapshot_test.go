@@ -47,7 +47,7 @@ func TestServerWritesAcknowledgedSnapshotDelta(t *testing.T) {
 	if err := writeStreamMessage(conn, Hello{Compatibility: "test-content", Name: "codec"}); err != nil {
 		t.Fatal(err)
 	}
-	message, err := ReadMessage(conn)
+	message, err := readGameplayTestMessage(conn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestServerWritesAcknowledgedSnapshotDelta(t *testing.T) {
 	_, decoder := snapshotCodecs(t)
 	sawDelta := false
 	for range 6 {
-		message, err = ReadMessage(conn)
+		message, err = readGameplayTestMessage(conn)
 		if err != nil {
 			t.Fatal(err)
 		}

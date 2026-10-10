@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	WebSocketSubprotocol = "gd-doom.v2"
+	WebSocketSubprotocol = "gd-doom.v3"
 	// Bounded client controls include up to 160 UTF-8 chat runes.
 	maxClientWebSocketMessage = 1024
 	maxServerWebSocketMessage = MaxSnapshotBytes + 1024

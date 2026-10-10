@@ -78,7 +78,14 @@ func (sg *sessionGame) applyAuthorityMapChange(change netgame.MapChange) error {
 	sg.opts.PlayerSlot = int(change.Welcome.PlayerID)
 	sg.current = m.Name
 	sg.currentTemplate = cloneMapForRestart(m)
+	var notices authorityNoticeState
+	if sg.g != nil {
+		notices = sg.g.authorityNotices
+	}
 	sg.rebuildGameWithPersistentSettings(m)
+	if sg.g != nil {
+		sg.g.authorityNotices = notices
+	}
 	sg.intermission = sessionIntermission{}
 	sg.finale.Active = false
 	sg.transition.Clear()

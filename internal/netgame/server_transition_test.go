@@ -41,7 +41,7 @@ func TestServerMapTransitionKeepsTwoClientsAndIgnoresOldEpochInput(t *testing.T)
 		if err := writeStreamMessage(conn, Hello{Compatibility: "test-content", Name: "player"}); err != nil {
 			t.Fatal(err)
 		}
-		message, err := ReadMessage(conn)
+		message, err := readGameplayTestMessage(conn)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,7 +59,7 @@ func TestServerMapTransitionKeepsTwoClientsAndIgnoresOldEpochInput(t *testing.T)
 	}{{a, wa}, {b, wb}} {
 		var change MapChange
 		for {
-			message, err := ReadMessage(peer.conn)
+			message, err := readGameplayTestMessage(peer.conn)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,7 +74,7 @@ func TestServerMapTransitionKeepsTwoClientsAndIgnoresOldEpochInput(t *testing.T)
 		if change.PreviousEpoch != peer.old.Epoch || change.Welcome.Epoch != 100 || change.Welcome.PlayerID != peer.old.PlayerID || change.Map != "E1M2" || change.Compatibility != "next-content" {
 			t.Fatalf("wrong transition: %+v", change)
 		}
-		message, err := ReadMessage(peer.conn)
+		message, err := readGameplayTestMessage(peer.conn)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestServerMapTransitionKeepsTwoClientsAndIgnoresOldEpochInput(t *testing.T)
 		}
 	}
 	for _, conn := range []net.Conn{a, b} {
-		message, err := ReadMessage(conn)
+		message, err := readGameplayTestMessage(conn)
 		if err != nil {
 			t.Fatalf("stale epoch disconnected client: %v", err)
 		}
@@ -127,7 +127,7 @@ func TestServerPendingMapControlPrecedesFastNextRoundCompletion(t *testing.T) {
 	if err := writeStreamMessage(conn, Hello{Compatibility: "test-content", Name: "player"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadMessage(conn); err != nil {
+	if _, err := readGameplayTestMessage(conn); err != nil {
 		t.Fatal(err)
 	}
 	// The first replaceable snapshot blocks this pipe's writer. Let the
@@ -135,7 +135,7 @@ func TestServerPendingMapControlPrecedesFastNextRoundCompletion(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	sawChange, sawInitial, sawFinal := false, false, false
 	for {
-		message, err := ReadMessage(conn)
+		message, err := readGameplayTestMessage(conn)
 		if err != nil {
 			t.Fatal(err)
 		}

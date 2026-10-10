@@ -10,13 +10,6 @@ const localWADOverlays = document.getElementById("local-wad-overlays");
 const localWADApply = document.getElementById("local-wad-apply");
 const buildPill = document.getElementById("build-pill");
 const statusAnnouncer = document.getElementById("status-announcer");
-const multiplayerForm = document.getElementById("multiplayer-form");
-const multiplayerServer = document.getElementById("multiplayer-server");
-const multiplayerName = document.getElementById("multiplayer-name");
-const multiplayerWAD = document.getElementById("multiplayer-wad");
-const multiplayerRole = document.getElementById("multiplayer-role");
-const joinStatus = document.getElementById("join-status");
-let multiplayerLaunch = null;
 let localWADLaunch = null;
 let localWADLoadGeneration = 0;
 let localWADLoading = false;
@@ -47,19 +40,14 @@ function isMobileLike() {
 function getPlayerURL() {
   const url = new URL("./player.html", window.location.href);
   const launchParams = new URLSearchParams(window.location.search);
-  for (const name of ["connect", "multiplayer-server", "multiplayer-lobby", "player-name", "spectate", "map", "skill", "no-monsters", "wad", "file"]) {
+  // Only select content here; game setup and joining happen in the game menus.
+  for (const name of ["wad", "file"]) {
     if (launchParams.has(name)) url.searchParams.set(name, launchParams.get(name));
   }
   if (localWADLaunch) {
     url.searchParams.set("wad", localWADLaunch.wad);
     if (localWADLaunch.files.length) url.searchParams.set("file", localWADLaunch.files.join(","));
     else url.searchParams.delete("file");
-  }
-  if (multiplayerLaunch) {
-    url.searchParams.set("connect", multiplayerLaunch.address);
-    url.searchParams.set("player-name", multiplayerLaunch.name);
-    url.searchParams.set("wad", multiplayerLaunch.wad);
-    url.searchParams.set("spectate", String(multiplayerLaunch.spectator));
   }
   const buildID = getBuildID();
   if (buildID) {
@@ -211,12 +199,10 @@ function renderLocalWADSelection(staged) {
   }
   for (const entry of overlays.values()) ordered.push({ entry, checked: true });
   localWADBase.replaceChildren(new Option("Doom shareware", "DOOM1.WAD"));
-  if (multiplayerWAD) multiplayerWAD.replaceChildren(new Option("Doom shareware", "DOOM1.WAD"));
   localWADOverlays.replaceChildren();
   for (const entry of store) {
     if (entry.kind === "IWAD") {
       localWADBase.add(new Option(entry.name, entry.path));
-      if (multiplayerWAD) multiplayerWAD.add(new Option(entry.name, entry.path));
     }
   }
   for (const { entry, checked } of ordered) {
@@ -244,7 +230,6 @@ function renderLocalWADSelection(staged) {
   const newBase = staged.find((entry) => entry.kind === "IWAD");
   localWADBase.value = newBase ? newBase.path : selectedBase;
   if (!localWADBase.value) localWADBase.value = "DOOM1.WAD";
-  if (multiplayerWAD) multiplayerWAD.value = localWADBase.value;
 }
 
 function captureLocalWADSelection(base = localWADBase.value) {
@@ -272,9 +257,7 @@ function applyLocalWADSelection(forceReload = true) {
     setStatus(err.message);
     return false;
   }
-  if (multiplayerWAD) multiplayerWAD.value = localWADLaunch.wad;
   if (changed || forceReload) {
-    multiplayerLaunch = null;
     pendingReload = false;
     reloadPlayer();
     setStatus("Loading selected WADs. Open Multiplayer to create or join a game.");
@@ -317,45 +300,7 @@ function updateBuildPill() {
 }
 
 updateBuildPill();
-if (multiplayerServer) {
-  const defaults = new URLSearchParams(window.location.search);
-  multiplayerServer.value = defaults.get("connect") || defaults.get("multiplayer-server") || window.__gddoomMultiplayerServer || "";
-}
 initializePlayerFrame();
-
-if (multiplayerForm) {
-  multiplayerForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const address = multiplayerServer.value.trim();
-    const name = multiplayerName.value.trim();
-    if (!/^(https|wss|ws|wt):\/\//i.test(address)) {
-      joinStatus.textContent = "Enter the server's HTTPS or WebSocket URL.";
-      return;
-    }
-    if (!name || new TextEncoder().encode(name).length > 64) {
-      joinStatus.textContent = "Choose a shorter player name.";
-      return;
-    }
-    if (localWADLoading) {
-      joinStatus.textContent = "Wait for the selected WAD files to finish loading.";
-      return;
-    }
-    if (hasLocalWADs()) {
-      try {
-        captureLocalWADSelection(multiplayerWAD.value);
-      } catch (err) {
-        joinStatus.textContent = err.message;
-        return;
-      }
-    }
-    multiplayerLaunch = {address, name, wad: multiplayerWAD.value, spectator: multiplayerRole.value === "spectator"};
-    joinStatus.textContent = "Connecting…";
-    // A deliberate join replaces the idle single-player frame.
-    pendingReload = false;
-    reloadPlayer();
-    hideSplash();
-  });
-}
 
 if (isMobileLike()) {
   hideLocalWADControls();
@@ -386,11 +331,6 @@ if (startButton) {
 }
 
 if (localWADApply) localWADApply.addEventListener("click", () => applyLocalWADSelection());
-if (localWADBase && multiplayerWAD) {
-  localWADBase.addEventListener("change", () => { multiplayerWAD.value = localWADBase.value; });
-  multiplayerWAD.addEventListener("change", () => { localWADBase.value = multiplayerWAD.value; });
-}
-
 if (fullscreenButton) {
   fullscreenButton.addEventListener("click", () => {
     requestFullscreen();

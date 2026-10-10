@@ -274,20 +274,13 @@
         setLoading("Starting", "Creating Go runtime.");
         const go = new Go();
         go.exit = (code) => {
-          if (code !== 0) showSessionEnd("Unable to continue", "Check the server address and that your WADs match the server. The browser console has the error details.");
+          if (code !== 0) showSessionEnd("Unable to continue", "The browser console has the error details.");
           else showSessionEnd("Session ended", "You can return to the launcher to play again.");
         };
         go.argv = ["gddoom", "-music-backend=impsynth"];
         const launchParams = new URLSearchParams(window.location.search);
-        if (!launchParams.has("multiplayer-server") && typeof window.__gddoomMultiplayerServer === "string" && window.__gddoomMultiplayerServer) {
-          go.argv.push(`-multiplayer-server=${window.__gddoomMultiplayerServer}`);
-        }
-        if (!launchParams.has("multiplayer-lobby") && typeof window.__gddoomMultiplayerLobby === "string" && window.__gddoomMultiplayerLobby) {
-          go.argv.push(`-multiplayer-lobby=${window.__gddoomMultiplayerLobby}`);
-        }
-        // Accept named launch options, never an arbitrary shell/argument string.
-        // Go validates addresses, rule bounds, local content, and compatibility.
-        for (const name of ["connect", "multiplayer-server", "multiplayer-lobby", "player-name", "spectate", "map", "skill", "no-monsters", "wad", "file"]) {
+        // URLs select content only. Always enter the game setup and menus.
+        for (const name of ["wad", "file"]) {
           if (launchParams.has(name)) go.argv.push(`-${name}=${launchParams.get(name)}`);
         }
         return instantiateGame(go).then((result) => {

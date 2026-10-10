@@ -25,8 +25,9 @@ const (
 )
 
 type chatHistoryEntry struct {
-	Text string
-	Tics int
+	Text   string
+	Tics   int
+	Notice bool
 }
 
 func (g *game) chatSource() runtimecfg.LiveChatSource {
@@ -220,10 +221,14 @@ func (g *game) appendChatHistory(name, text string) {
 	if strings.TrimSpace(name) != "" {
 		label = fmt.Sprintf("%s: %s", name, text)
 	}
-	g.chatHistory = append(g.chatHistory, chatHistoryEntry{
+	g.appendChatHistoryEntry(chatHistoryEntry{
 		Text: label,
 		Tics: chatHistoryTTL,
 	})
+}
+
+func (g *game) appendChatHistoryEntry(entry chatHistoryEntry) {
+	g.chatHistory = append(g.chatHistory, entry)
 	if len(g.chatHistory) > chatHistoryMaxEntries {
 		g.chatHistory = append([]chatHistoryEntry(nil), g.chatHistory[len(g.chatHistory)-chatHistoryMaxEntries:]...)
 	}
@@ -254,9 +259,13 @@ func (g *game) drawChatOverlayText(draw func(string, float64, float64, float64, 
 	if g == nil || (!g.chatComposeOpen && len(g.chatHistory) == 0) {
 		return
 	}
+	g.drawAuthorityNoticesText(draw)
 	maxWidth := max(80, min(g.viewW-chatMarginX*2-chatWrapPadding, g.viewW/2))
 	lines := make([]string, 0, len(g.chatHistory))
 	for _, entry := range g.chatHistory {
+		if entry.Notice {
+			continue
+		}
 		lines = append(lines, g.wrapChatText(entry.Text, maxWidth, "", "  ")...)
 	}
 	y := float64(chatMarginY)

@@ -107,7 +107,7 @@ WSS uses binary messages and bounded queues. Multiple logical channels on one
 WebSocket do not remove TCP head-of-line blocking; bulk transfer needs a separate
 connection or scheduling that prevents unbounded gameplay delay.
 
-Current wire limits: GDMP version 2; 8 inputs per batch; 8 MiB maximum decoded
+Current wire limits: GDMP version 3; 8 inputs per batch; 8 MiB maximum decoded
 snapshot; 1,100 bytes maximum game datagram. Input packets and small compressed
 updates use datagrams on WebTransport. Independent baselines, larger updates,
 discovery, map changes, chat and follow controls use reliable streams. The
@@ -147,17 +147,28 @@ UTF-8 runes, with a four-message burst and a two-message-per-second refill. Chat
 has monotonically increasing event IDs across maps, bounded reliable queues and
 client deduplication. Menus keep receiving chat and snapshots while gameplay
 controls are neutral; opening chat never pauses the match.
-Hold F6 to view the current roster, frags and deaths.
+Hold F6 to view player names, ping, frags and deaths. **Multiplayer → Players**
+opens a scrollable list including spectators and reconnecting players. Join,
+leave, connection-loss and reconnect notices appear in an on-screen feed. The
+gameplay connection indicator shows your ping and player count, with a warning
+when confirmed server updates stall.
+
+The server publishes a small binary roster control message on membership
+changes and at most once per second for latency updates. Ping uses nonce-bound
+round trips measured by the server; probes do not keep an inactive player alive
+or affect simulation timing. Roster identities survive reconnects and map changes;
+no addresses or reconnect credentials are included. Client and server must both
+use GDMP version 3; there is no older-protocol fallback.
 
 The desktop and WASM title/pause menus place **Multiplayer** directly below
 **New Game**. The multiplayer home separates **Find Game**, **Create Game**,
-**Player Setup** and **Direct Connect**. Find Game shows the live room list with
+**Player Setup** and **Servers**. Find Game shows the live room list with
 only refresh and back actions. Player Setup contains name and player/spectator
-preference. Direct Connect opens the saved server list. Without a configured
+preference. Servers opens the saved server list. Without a configured
 lobby, the home offers **Saved Servers** and Player Setup.
 Select a room or server and press Enter or tap the touch **Use** button to join.
 Details show map, mode, occupancy and whether the loaded game files match.
-Direct Connect selects the configured default server, so joining does not
+Servers selects the configured default server, so joining does not
 require entering an address or choosing a transport.
 The built-in list includes **GD-DOOM Co-op** at
 `https://m45sci.xyz:6672/netplay` and **GD-DOOM Deathmatch** at
@@ -170,7 +181,7 @@ WSS through the same public port, forwarded to an isolated loopback match
 process; gameplay RNG is never shared between the two matches.
 
 **Player Setup → Join As** selects spectator mode; the game list then offers
-**Watch**. **Manage Servers** under Direct Connect contains custom addresses.
+**Watch**. **Manage Servers** under Servers contains custom addresses.
 **Add Server** and **Edit Selected Server**
 accept an HTTPS/WebTransport or WS/WSS URL, or a native `host:port` TCP address.
 This page also shows the selected address and response time. Entries persist
@@ -186,9 +197,10 @@ resumes the current match. **Leave Match** releases the player and returns to th
 title menu without exiting the program or reloading the browser. Escape returns
 to the parent menu. Leaving restores local rules and keeps current audio,
 rendering and input preferences.
-The `-multiplayer-server` option selects the default list entry; `-connect` still
-joins immediately. `MULTIPLAYER_SERVER` supplies the default browser address
-when running `scripts/build_wasm.sh`.
+The native `-multiplayer-server` option selects the default list entry;
+`-connect` joins immediately. `MULTIPLAYER_SERVER` supplies the default in-game
+server address when running `scripts/build_wasm.sh`. Browser builds always
+enter game setup before joining through the in-game Multiplayer menu.
 
 ## Multi-room lobby and custom WADs
 
@@ -257,9 +269,9 @@ go run ./cmd/wasmserve
 For public hosting, use an HTTPS public URL and TLS termination that forwards
 WebSocket upgrades and the HTTP API to the lobby. Allow the frontend's exact
 origin with `-web-origins`. Configure the proxy's upload body limit and timeout
-to accommodate WAD uploads. Worker ports stay private. The browser accepts
-`?multiplayer-lobby=<HTTP(S) base URL>`; native clients accept
-`-multiplayer-lobby=<URL>`. **Direct Connect** retains the saved server browser.
+to accommodate WAD uploads. Worker ports stay private. Browser builds embed the
+lobby URL from `MULTIPLAYER_LOBBY`; native clients accept
+`-multiplayer-lobby=<URL>`. **Servers** retains the saved server browser.
 The room list is transient and is not added to saved favorites.
 
 **Create Game** selects name, mode and difficulty. Its **Game Files** page
@@ -625,13 +637,14 @@ The server's `-no-monsters`, `-skill`, and `-friendly-fire` settings are authori
 WebSocket testing adds `-web-listen 127.0.0.1:6672` and, when the browser page is
 served from another origin, an explicit allowlist such as
 `-web-origins http://localhost:8000`. Join with
-`-connect ws://127.0.0.1:6672/netplay`. The browser launcher accepts a `connect`
-query parameter and optional `player-name`, `wad`, and `file` parameters.
+`-connect ws://127.0.0.1:6672/netplay` on native clients. In the browser, complete
+the graphics and audio setup, then add the address under **Multiplayer → Servers
+→ Manage Servers**. The browser launcher accepts only `wad` and `file` content
+parameters; URLs cannot join a server or set multiplayer options.
 
-Add `-spectate` to a native client command, or `spectate=true` in the browser
-launcher query, to join as an observer. Use F12 to switch followed player and T
-to chat; hold F6 for the roster and score. The browser launch panel also exposes
-the server/name/spectator fields.
+Add `-spectate` to a native client command, or select spectator under the
+in-game **Player Setup → Join As**, to join as an observer. Use F12 to switch
+followed player and T to chat; hold F6 for the roster and score.
 
 For TLS TCP and WSS listeners supply `-tls-cert` and `-tls-key`; native clients
 use `tls://host:port`, while browser clients use `wss://host:port/netplay`.

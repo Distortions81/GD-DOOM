@@ -13,6 +13,7 @@ func TestMatchResetEpochRetainsConnectionsAndDiscardsOldTimeline(t *testing.T) {
 	m.world, m.snapshots = w, w
 	a, wa := joinTestMatch(t, m)
 	b, wb := joinTestMatch(t, m)
+	aPresence, bPresence, rosterRevision := m.players[a].presenceID, m.players[b].presenceID, m.rosterRevision
 	submitTestInput(t, m, a, 1, 10)
 	submitTestInput(t, m, a, 3, 50)
 	old, err := m.Step()
@@ -26,6 +27,9 @@ func TestMatchResetEpochRetainsConnectionsAndDiscardsOldTimeline(t *testing.T) {
 	}
 	if m.PlayerCount() != 2 || welcomes[a].PlayerID != wa.PlayerID || welcomes[b].PlayerID != wb.PlayerID || welcomes[a].Epoch != 100 || welcomes[a].ServerTick != 0 {
 		t.Fatalf("epoch reset replaced authenticated membership: %+v", welcomes)
+	}
+	if m.players[a].presenceID != aPresence || m.players[b].presenceID != bPresence || m.rosterRevision != rosterRevision {
+		t.Fatal("map transition replaced participant identity or membership")
 	}
 	if err := m.Submit(a, InputBatch{Epoch: 99, SnapshotAck: old.Snapshots[a].ID}); !errors.Is(err, ErrSessionEpoch) {
 		t.Fatalf("old epoch input reached new timeline: %v", err)

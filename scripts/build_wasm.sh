@@ -19,6 +19,26 @@ js_string_literal() {
   printf '"%s"' "${s}"
 }
 
+# Go splits -ldflags itself, without shell-style escaping inside quotes.
+# Quote the complete assignment so a configured address cannot add flags.
+ldflag_string() {
+  local s="$1"
+  if [[ "${s}" != *[$' \t\r\n']* ]]; then
+    printf '%s' "${s}"
+  elif [[ "${s}" != *"'"* ]]; then
+    printf "'%s'" "${s}"
+  elif [[ "${s}" != *'"'* ]]; then
+    printf '"%s"' "${s}"
+  else
+    echo 'multiplayer build address cannot contain whitespace with both quote types; URL-encode those characters' >&2
+    return 1
+  fi
+}
+
+WASM_SERVER_LDFLAG="$(ldflag_string "gddoom/internal/app.wasmMultiplayerServer=${MULTIPLAYER_SERVER:-}")"
+WASM_LOBBY_LDFLAG="$(ldflag_string "gddoom/internal/app.wasmMultiplayerLobby=${MULTIPLAYER_LOBBY:-}")"
+WASM_LDFLAGS="-s -w -X ${WASM_SERVER_LDFLAG} -X ${WASM_LOBBY_LDFLAG}"
+
 if [[ ! -f "${ROOT_DIR}/DOOM1.WAD" ]]; then
   echo "missing ${ROOT_DIR}/DOOM1.WAD" >&2
   exit 1
@@ -58,7 +78,7 @@ echo "Removing previous WASM output at ${OUT_DIR}..."
 rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
 
-GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "${OUT_DIR}/gddoom.wasm" "${ROOT_DIR}"
+GOOS=js GOARCH=wasm go build -trimpath -ldflags="${WASM_LDFLAGS}" -o "${OUT_DIR}/gddoom.wasm" "${ROOT_DIR}"
 
 if [[ "${use_wasm_opt}" == "true" ]]; then
   before_bytes="$(wc -c < "${OUT_DIR}/gddoom.wasm" | tr -d ' ')"
@@ -74,8 +94,6 @@ fi
 
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"
 printf 'window.__gddoomBuildID = %s;\n' "$(js_string_literal "${BUILD_ID}")" > "${OUT_DIR}/build-id.js"
-printf 'window.__gddoomMultiplayerServer = %s;\n' "$(js_string_literal "${MULTIPLAYER_SERVER:-}")" >> "${OUT_DIR}/build-id.js"
-printf 'window.__gddoomMultiplayerLobby = %s;\n' "$(js_string_literal "${MULTIPLAYER_LOBBY:-}")" >> "${OUT_DIR}/build-id.js"
 cp "${ROOT_DIR}/web/wasm/index.html" "${OUT_DIR}/index.html"
 cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"

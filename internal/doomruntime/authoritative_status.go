@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"errors"
-	"fmt"
 	"image/color"
 	"strings"
 
@@ -83,29 +82,25 @@ func (g *game) authorityStatusLines() []string {
 		}
 		lines = append(lines, "ESC: MENU")
 	default:
+		if g.opts.AuthorityClient.Welcome().PlayerID == 0 {
+			// An observer keeps the last view after the final player leaves;
+			// lack of new snapshots then is expected, not a stalled server.
+			if roster := g.authorityNetworkHUD(); roster.known && roster.players == 0 {
+				return []string{"WAITING FOR PLAYERS", "F12: CHANGE SPECTATOR VIEW"}
+			}
+		}
 		if g.clientPrediction == nil || !g.clientPrediction.Ready() {
 			if g.opts.AuthorityClient.Welcome().PlayerID == 0 {
 				return []string{"WAITING FOR PLAYERS", "F12: CHANGE SPECTATOR VIEW"}
 			}
 			return []string{"WAITING FOR SERVER STATE"}
 		}
-		if g.clientUpdate.scoreboardHeld && g.authorityRules != nil {
-			title := "CO-OP SCORES"
+		if g.clientUpdate.scoreboardHeld {
+			title := "CO-OP PLAYERS"
 			if g.opts.GameMode == gameModeDeathmatch {
-				title = "DEATHMATCH SCORES"
+				title = "DEATHMATCH PLAYERS"
 			}
 			lines = append([]string{title}, g.authorityScoreLines()...)
-		}
-	}
-	return lines
-}
-
-func (g *game) authorityScoreLines() []string {
-	var lines []string
-	for slot := 1; slot <= 4; slot++ {
-		score := g.authorityRules.Scores[slot]
-		if score.Generation != 0 {
-			lines = append(lines, fmt.Sprintf("PLAYER %d  FRAGS %d  DEATHS %d", slot, score.Frags, score.Deaths))
 		}
 	}
 	return lines
@@ -123,6 +118,7 @@ func (sg *sessionGame) authorityOverlayLines() []string {
 func (sg *sessionGame) drawAuthorityConnectionOverlay(screen *ebiten.Image) {
 	lines := sg.authorityOverlayLines()
 	if len(lines) == 0 {
+		sg.drawAuthorityNetworkHUD(screen)
 		return
 	}
 	w, h := screen.Bounds().Dx(), screen.Bounds().Dy()
@@ -134,22 +130,10 @@ func (sg *sessionGame) drawAuthorityConnectionOverlay(screen *ebiten.Image) {
 		scale = 2
 	}
 	lineHeight := 14 * scale
-	var wrapped []string
-	for _, line := range lines {
-		line = strings.ToUpper(line)
-		var part string
-		for _, char := range line {
-			next := part + string(char)
-			if float64(sg.g.huTextWidth(next))*scale > float64(w)-32 && part != "" {
-				wrapped = append(wrapped, part)
-				part = string(char)
-			} else {
-				part = next
-			}
-		}
-		if part != "" {
-			wrapped = append(wrapped, part)
-		}
+	wrapped := sg.g.wrapAuthorityOverlay(lines, int((float64(w)-32)/scale))
+	if fit := float64(max(1, h-28)) / float64(max(1, len(wrapped))*14); fit < scale {
+		scale = fit
+		lineHeight = 14 * scale
 	}
 	panelHeight := float64(len(wrapped))*lineHeight + 20
 	y := float64(h)/2 - panelHeight/2

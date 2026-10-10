@@ -16,6 +16,10 @@ import (
 
 func protocolExamples() []any {
 	return []any{
+		Roster{Revision: 1, PlayerLimit: 4, Count: 2, Players: [MaxParticipants]PlayerPresence{
+			{ID: 1, PlayerID: 2, Name: "Marine", Connected: true, PingMillis: 42},
+			{ID: 2, Name: "Observer", Connected: true, Spectator: true},
+		}},
 		Ping{Nonce: 1}, Pong{Nonce: math.MaxUint64},
 		Hello{Compatibility: "engine:wad:rules", Name: "Doom marine 🌍"},
 		Welcome{Epoch: 12, PlayerID: 4, ServerTick: 12345, InputLead: 3},
@@ -71,7 +75,7 @@ func TestProtocolRoundTrip(t *testing.T) {
 func TestProtocolWelcomeGoldenFrame(t *testing.T) {
 	// Header, body length 51, epoch 12, player 4, tic 12345, lead 3,
 	// followed by a disabled (all zero) resume token and grace period.
-	want, err := hex.DecodeString("47444d500202330000000c0000000000000004393000000300" + strings.Repeat("00", 36))
+	want, err := hex.DecodeString("47444d500302330000000c0000000000000004393000000300" + strings.Repeat("00", 36))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +193,7 @@ func TestProtocolRejectsMalformedWireValues(t *testing.T) {
 	tests := map[string][]byte{
 		"magic":                          corrupt(hello, func(b []byte) { b[0] = 'X' }),
 		"version":                        corrupt(hello, func(b []byte) { b[4] = ProtocolVersion + 1 }),
+		"old version":                    corrupt(hello, func(b []byte) { b[4] = ProtocolVersion - 1 }),
 		"kind":                           corrupt(hello, func(b []byte) { b[5] = 0xff }),
 		"zero body":                      corrupt(hello, func(b []byte) { binary.LittleEndian.PutUint32(b[6:10], 0) }),
 		"huge body":                      corrupt(hello, func(b []byte) { binary.LittleEndian.PutUint32(b[6:10], math.MaxUint32) }),
@@ -241,7 +246,8 @@ func TestProtocolMaximumLegalSizes(t *testing.T) {
 
 func TestProtocolHeaderBoundsBeforePayloadRead(t *testing.T) {
 	for kind, maximum := range map[MessageKind]uint32{
-		KindHello: 357, KindWelcome: welcomeBodyBytes, KindPing: 8, KindPong: 8, KindInput: inputBodyHeaderBytes + MaxInputBatch*inputCommandBytes,
+		KindRoster: rosterBodyMaxBytes,
+		KindHello:  357, KindWelcome: welcomeBodyBytes, KindPing: 8, KindPong: 8, KindInput: inputBodyHeaderBytes + MaxInputBatch*inputCommandBytes,
 		KindSnapshot: snapshotBodyHeaderBytes + MaxSnapshotBytes, KindDisconnect: 258, KindMapChange: 8 + welcomeBodyBytes + 2 + 32 + 2 + 256,
 	} {
 		header := protocolFrame(kind, nil)
@@ -258,7 +264,7 @@ func TestProtocolClientReaderRejectsServerFramesBeforePayload(t *testing.T) {
 	for _, message := range protocolExamples() {
 		frame := marshalProtocol(t, message)
 		switch message.(type) {
-		case Snapshot, Welcome, MapChange, Pong:
+		case Snapshot, Welcome, MapChange, Roster:
 			if _, err := ReadClientMessage(bytes.NewReader(frame[:messageHeaderBytes])); !errors.Is(err, ErrProtocol) {
 				t.Fatalf("server-only %T payload read attempted: %v", message, err)
 			}

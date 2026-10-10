@@ -97,6 +97,13 @@ func TestAuthoritativeTCPRealMapContinuesAndRecoversSilentClient(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		switch control := message.(type) {
+		case netgame.Roster:
+			continue
+		case netgame.Ping:
+			send(first, netgame.Pong{Nonce: control.Nonce})
+			continue
+		}
 		snapshot, ok := message.(netgame.Snapshot)
 		if !ok {
 			t.Fatalf("message=%T", message)
@@ -122,7 +129,7 @@ func TestAuthoritativeTCPRealMapContinuesAndRecoversSilentClient(t *testing.T) {
 		if snapshot.Finalized.Tick != snapshot.Tick || latest.Tic != snapshot.Tick {
 			t.Fatalf("snapshot and input deadlines disagree: %+v", snapshot.Finalized)
 		}
-		// This low-level framing test decodes full JSON on the reader goroutine.
+		// This low-level framing test decodes full state on the reader goroutine.
 		// Allow bounded instrumentation delay under -race. The production client
 		// instead measures RTT and schedules its lead adaptively.
 		const testLead = 12

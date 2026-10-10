@@ -38,6 +38,8 @@ type Client struct {
 	err          error
 	stopContext  func() bool
 	latency      latencyProbe
+	roster       Roster
+	pongs        chan Pong
 	unreliable   bool
 }
 
@@ -73,6 +75,7 @@ func Connect(ctx context.Context, transport MessageTransport, hello Hello) (*Cli
 	c := &Client{transport: transport, welcome: welcome, wireWelcome: welcome, transitions: make(chan MapChange, 4), snapshots: make(chan Snapshot, 1), outgoing: make(chan InputBatch, 1), done: make(chan struct{}), stopContext: stop, latency: latencyProbe{roundTrip: clampRoundTrip(time.Since(handshakeStarted))}}
 	c.chatOutgoing, c.chats, c.leaving = make(chan ChatSay, 4), make(chan ChatEvent, 64), make(chan clientLeaveRequest, 1)
 	c.following = make(chan FollowPlayer, 4)
+	c.pongs = make(chan Pong, 4)
 	if datagrams, ok := transport.(DatagramTransport); ok {
 		c.unreliable = datagrams.UnreliableSnapshots()
 	}
@@ -246,6 +249,31 @@ func (c *Client) readLoop() {
 			c.fail(err)
 			return
 		}
+		if roster, ok := message.(Roster); ok {
+			if err := validateRoster(roster); err != nil {
+				c.fail(err)
+				return
+			}
+			c.mu.Lock()
+			if roster.Revision > c.roster.Revision {
+				c.roster = roster
+			}
+			c.mu.Unlock()
+			continue
+		}
+		if ping, ok := message.(Ping); ok {
+			if _, err := validateMessage(ping); err != nil {
+				c.fail(err)
+				return
+			}
+			select {
+			case c.pongs <- Pong{Nonce: ping.Nonce}:
+			default:
+				c.fail(ErrControlQueueFull)
+				return
+			}
+			continue
+		}
 		if pong, ok := message.(Pong); ok {
 			if _, err := validateMessage(pong); err != nil {
 				c.fail(err)
@@ -366,6 +394,11 @@ func (c *Client) writeLoop() {
 			return
 		case say := <-c.chatOutgoing:
 			if err := c.transport.WriteMessage(say); err != nil {
+				c.fail(err)
+				return
+			}
+		case pong := <-c.pongs:
+			if err := c.transport.WriteMessage(pong); err != nil {
 				c.fail(err)
 				return
 			}

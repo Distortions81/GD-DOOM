@@ -21,6 +21,24 @@ type latencyProbe struct {
 	roundTrip time.Duration
 }
 
+// Server probes run once per second. Permit a small burst for delayed replies,
+// while bounding an unsolicited Pong stream independently of gameplay queues.
+type latencyReplyLimit struct {
+	stamp time.Time
+	count uint8
+}
+
+func (l *latencyReplyLimit) allow(now time.Time) bool {
+	if l.stamp.IsZero() || now.Sub(l.stamp) >= pingInterval {
+		l.stamp, l.count = now, 0
+	}
+	if l.count >= 4 {
+		return false
+	}
+	l.count++
+	return true
+}
+
 func clampRoundTrip(sample time.Duration) time.Duration {
 	if sample < 0 {
 		return 0

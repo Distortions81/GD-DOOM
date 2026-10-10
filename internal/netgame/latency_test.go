@@ -42,6 +42,24 @@ func TestLatencyProbeSinglePendingNonceAndEWMA(t *testing.T) {
 	}
 }
 
+func TestLatencyReplyLimitBoundsUnsolicitedPongs(t *testing.T) {
+	var limit latencyReplyLimit
+	now := time.Unix(10, 0)
+	for range 4 {
+		if !limit.allow(now) {
+			t.Fatal("small delayed burst rejected")
+		}
+	}
+	for range 100 {
+		if limit.allow(now.Add(pingInterval - time.Nanosecond)) {
+			t.Fatal("Pong flood accepted")
+		}
+	}
+	if !limit.allow(now.Add(pingInterval)) {
+		t.Fatal("next probe interval remained throttled")
+	}
+}
+
 func TestLatencyProbeExpiryCapAndCounterExhaustion(t *testing.T) {
 	start := time.Unix(100, 0)
 	var probe latencyProbe
@@ -107,7 +125,7 @@ func TestClientPeriodicPingIsSerializedAndMeasured(t *testing.T) {
 
 func TestServerPingsDoNotKeepInactivePlayerAlive(t *testing.T) {
 	match, _ := newTestMatch(t)
-	match.config.DisconnectTicks = 4
+	match.config.DisconnectTicks = 40
 	server, err := NewServer(match)
 	if err != nil {
 		t.Fatal(err)
@@ -131,13 +149,13 @@ func TestServerPingsDoNotKeepInactivePlayerAlive(t *testing.T) {
 	if err := writeStreamMessage(conn, Hello{Compatibility: "test-content", Name: "ping only"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadMessage(conn); err != nil {
+	if _, err := readGameplayTestMessage(conn); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeStreamMessage(conn, Ping{Nonce: 1}); err != nil {
 		t.Fatal(err)
 	}
-	pongs := 0
+	pings, pongs := 0, 0
 	var lastTick uint32
 	for {
 		message, err := ReadMessage(conn)
@@ -148,6 +166,13 @@ func TestServerPingsDoNotKeepInactivePlayerAlive(t *testing.T) {
 			break
 		}
 		switch m := message.(type) {
+		case Roster:
+			continue
+		case Ping:
+			pings++
+			if err := writeStreamMessage(conn, Pong{Nonce: m.Nonce}); err != nil {
+				t.Fatal(err)
+			}
 		case Pong:
 			pongs++
 			if m.Nonce == 0 {
@@ -162,7 +187,7 @@ func TestServerPingsDoNotKeepInactivePlayerAlive(t *testing.T) {
 			t.Fatalf("unexpected message %T", message)
 		}
 	}
-	if pongs == 0 || lastTick < 3 {
-		t.Fatalf("closed before echoes/deadline: pongs=%d tic=%d", pongs, lastTick)
+	if pings == 0 || pongs == 0 || lastTick < 39 {
+		t.Fatalf("closed before bidirectional probes/deadline: pings=%d pongs=%d tic=%d", pings, pongs, lastTick)
 	}
 }

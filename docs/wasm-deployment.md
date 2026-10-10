@@ -11,18 +11,21 @@ The current release ID, source commit, and asset hashes are recorded in the
 site's `wasm-manifest.json`. Build and deploy the browser and server from the
 same clean commit. Browser launches start AUTO detail at full resolution.
 Esc → Multiplayer opens a compact home page with **Find Game**, **Create
-Game**, **Player Setup**, and **Direct Connect**. Creation has separate
+Game**, **Player Setup**, and **Servers**. Creation has separate
 **Game Files** and **Rules** pages, including custom WAD uploads and automatic
-loading of approved downloadable content. Direct Connect retains **GD-DOOM
+loading of approved downloadable content. Servers lists **GD-DOOM
 Co-op**, **GD-DOOM Deathmatch**, and saved custom servers. Select a room and
 press Enter to join; the connected menu offers Return to Game and Leave Match.
+Its Players page shows names, ping, scores, and connection state; F6 opens the
+quick scoreboard. Join/leave/reconnect notices and a gameplay connection
+indicator make changes visible without opening a menu.
 The client runs a continuous input clock, accounts for command lead, and
 smooths small prediction corrections. Doors, lifts and their riders share
 the confirmed snapshot presentation timeline.
 
-Multiplayer world snapshots use the binary-only `gd-doom-authority-dev-2`
-simulation format. Update `gdserver`, `gdlobby`, the deployment probe and the
-browser assets together, and restart the lobby to replace existing room workers.
+Multiplayer uses GDMP protocol version 3 with binary roster updates and the
+binary-only `gd-doom-authority-dev-2` simulation format. Update `gdserver`,
+`gdlobby`, the deployment probe and browser assets together, and restart the lobby to replace existing room workers.
 Players with an older browser build must reload before joining. The release also
 includes adaptive browser audio buffering and default deathmatch map progression
 when no explicit rotation is configured.
@@ -254,7 +257,7 @@ handshake. Test both existing direct servers as well. Browser requests from
 Dynamic rooms expire after ten minutes without players, spectators or reconnect
 reservations. Any rooms seeded during deployment follow the same lifecycle and
 are not permanent default servers. The direct co-op and deathmatch services
-remain available under **Direct Connect** even when the lobby is empty.
+remain available under **Servers** even when the lobby is empty.
 
 ## Publish the browser assets
 
@@ -269,7 +272,11 @@ MULTIPLAYER_LOBBY=https://m45sci.xyz:6672 \
 ```
 
 The output includes the shareware WAD and General MIDI SoundFont embedded in
-`gddoom.wasm`. Publish these eight assets and an updated `wasm-manifest.json`:
+`gddoom.wasm`. The server and lobby defaults are also embedded in the WASM;
+`build-id.js` contains only the release ID. The HTML/JS has no multiplayer join
+controls or launch arguments. Players choose graphics and audio during game
+setup, then join through the in-game Multiplayer menu. Publish these eight
+assets and an updated `wasm-manifest.json`:
 `index.html`, `player.html`, `launch.js`, `build-id.js`, `wasm_exec.js`,
 `gddoom.wasm`, `gddoom.wasm.gz`, and `font-notice.txt`. The font notice retains
 the credits and separate game-artwork terms for the embedded menu font.

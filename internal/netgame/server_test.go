@@ -44,7 +44,7 @@ func TestTCPServerKeepsAdvancingAfterOneClientLosesInput(t *testing.T) {
 		if err := writeStreamMessage(c, Hello{Compatibility: "test-content", Name: "test"}); err != nil {
 			t.Fatal(err)
 		}
-		message, err := ReadMessage(c)
+		message, err := readGameplayTestMessage(c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +63,7 @@ func TestTCPServerKeepsAdvancingAfterOneClientLosesInput(t *testing.T) {
 	_ = b
 	var previous uint32
 	for previous < 15 {
-		message, err := ReadMessage(a)
+		message, err := readGameplayTestMessage(a)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,12 +148,12 @@ func TestServerCompletionFlushesFinalSnapshotBeforeDisconnect(t *testing.T) {
 	if err := writeStreamMessage(c, Hello{Compatibility: "test-content", Name: "player"}); err != nil {
 		t.Fatal(err)
 	}
-	if message, err := ReadMessage(c); err != nil {
+	if message, err := readGameplayTestMessage(c); err != nil {
 		t.Fatal(err)
 	} else if _, ok := message.(Welcome); !ok {
 		t.Fatalf("first message = %T", message)
 	}
-	message, err := ReadMessage(c)
+	message, err := readGameplayTestMessage(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestServerCompletionFlushesFinalSnapshotBeforeDisconnect(t *testing.T) {
 	if !ok || snapshot.Tick != 2 || len(snapshot.State) == 0 || snapshot.Finalized.Tick != 2 {
 		t.Fatalf("terminal snapshot = %+v", message)
 	}
-	message, err = ReadMessage(c)
+	message, err = readGameplayTestMessage(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func standalonePeer(t *testing.T, s *Server, id ConnectionID) (net.Conn, <-chan 
 	case <-time.After(time.Second):
 		t.Fatal("peer did not request join")
 	}
-	if _, err := ReadMessage(client); err != nil {
+	if _, err := readGameplayTestMessage(client); err != nil {
 		t.Fatal(err)
 	}
 	return client, done
@@ -334,7 +334,7 @@ func TestTCPServerRejectsContentMismatch(t *testing.T) {
 	if err := writeStreamMessage(c, Hello{Compatibility: "another-wad", Name: "test"}); err != nil {
 		t.Fatal(err)
 	}
-	message, err := ReadMessage(c)
+	message, err := readGameplayTestMessage(c)
 	if err != nil {
 		t.Fatal(err)
 	}

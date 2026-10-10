@@ -57,6 +57,7 @@ type MatchConfig struct {
 type ConnectionID uint64
 
 type matchPlayer struct {
+	presenceID          uint64
 	id                  byte
 	name                string
 	chatRate            chatRateLimit
@@ -73,6 +74,7 @@ type matchPlayer struct {
 }
 
 type Match struct {
+	rosterRevision     uint64
 	config             MatchConfig
 	world              World
 	snapshots          SnapshotSource
@@ -167,14 +169,16 @@ func (m *Match) Join(hello Hello) (ConnectionID, Welcome, error) {
 	}
 	m.nextConnection++
 	handle := m.nextConnection
-	p := &matchPlayer{id: id, name: hello.Name, input: buffer, lastActivity: m.world.Tic(), resumeToken: token}
+	p := &matchPlayer{presenceID: uint64(handle), id: id, name: hello.Name, input: buffer, lastActivity: m.world.Tic(), resumeToken: token}
 	m.players[handle] = p
+	m.rosterRevision++
 	return handle, m.welcome(p), nil
 }
 
 func (m *Match) Leave(handle ConnectionID) {
 	if p, ok := m.players[handle]; ok {
 		delete(m.players, handle)
+		m.rosterRevision++
 		if !p.spectator {
 			m.world.RemovePlayer(p.id)
 		}

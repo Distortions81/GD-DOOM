@@ -54,7 +54,7 @@ func TestServerResumeReplacesActiveSocketAndKeepsSlot(t *testing.T) {
 		if err := writeStreamMessage(conn, Hello{Compatibility: "test-content", Name: "player", ResumeToken: token}); err != nil {
 			t.Fatal(err)
 		}
-		message, err := ReadMessage(conn)
+		message, err := readGameplayTestMessage(conn)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,11 +71,11 @@ func TestServerResumeReplacesActiveSocketAndKeepsSlot(t *testing.T) {
 	}
 	_ = old.SetReadDeadline(time.Now().Add(time.Second))
 	for {
-		if _, err := ReadMessage(old); err != nil {
+		if _, err := readGameplayTestMessage(old); err != nil {
 			break
 		}
 	}
-	message, err := ReadMessage(fresh)
+	message, err := readGameplayTestMessage(fresh)
 	baseline, ok := message.(Snapshot)
 	if err != nil || !ok || baseline.BaselineID != 0 || baseline.Finalized.HasSequence {
 		t.Fatalf("resume lacks independent baseline: %T %v", message, err)
@@ -89,7 +89,7 @@ func TestServerResumeReplacesActiveSocketAndKeepsSlot(t *testing.T) {
 	if again.PlayerID != first.PlayerID {
 		t.Fatal("transport loss created a new player")
 	}
-	if _, err := ReadMessage(latest); err != nil {
+	if _, err := readGameplayTestMessage(latest); err != nil {
 		t.Fatalf("late previous-socket cleanup killed resumed connection: %v", err)
 	}
 }

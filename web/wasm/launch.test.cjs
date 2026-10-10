@@ -78,24 +78,22 @@ class Option extends Element {
   }
 }
 
-function harness() {
+function harness(search = "", userAgent = "desktop") {
   const nodes = new Map();
-  for (const id of ["splash", "game-shell", "start-button", "fullscreen-button", "local-wad-button", "local-wad-input", "local-wad-panel", "local-wad-base", "local-wad-overlays", "local-wad-apply", "build-pill", "status-announcer", "multiplayer-form", "multiplayer-server", "multiplayer-name", "multiplayer-wad", "multiplayer-role", "join-status"]) {
-    const tag = ["local-wad-base", "multiplayer-wad", "multiplayer-role"].includes(id) ? "select" : id.endsWith("button") ? "button" : "div";
+  for (const id of ["splash", "game-shell", "start-button", "fullscreen-button", "local-wad-button", "local-wad-input", "local-wad-panel", "local-wad-base", "local-wad-overlays", "local-wad-apply", "build-pill", "status-announcer"]) {
+    const tag = id === "local-wad-base" ? "select" : id.endsWith("button") ? "button" : "div";
     nodes.set(id, Object.assign(new Element(tag), { id }));
   }
-  for (const id of ["local-wad-base", "multiplayer-wad"]) nodes.get(id).add(new Option("Shareware", "DOOM1.WAD"));
-  nodes.get("multiplayer-role").add(new Option("Player", "player"));
-  nodes.get("multiplayer-name").value = "Player";
+  nodes.get("local-wad-base").add(new Option("Shareware", "DOOM1.WAD"));
   const shell = nodes.get("game-shell");
   shell.contentWindow = { focus() {}, postMessage() {} };
   const window = new Element();
-  window.location = { href: "https://play.example/index.html", search: "", origin: "https://play.example", replace() {} };
+  window.location = { href: `https://play.example/index.html${search}`, search, origin: "https://play.example", replace(url) { this.replaced = url; } };
   const document = new Element();
   document.getElementById = (id) => nodes.get(id);
   document.createElement = (tag) => new Element(tag);
   document.createTextNode = (text) => Object.assign(new Element("#text"), { textContent: text });
-  const context = vm.createContext({ window, document, navigator: { userAgent: "desktop" }, Element, Option, URL, URLSearchParams, Uint8Array, TextEncoder });
+  const context = vm.createContext({ window, document, navigator: { userAgent }, Element, Option, URL, URLSearchParams, Uint8Array, TextEncoder });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "launch.js"), "utf8"), context);
   return {
     nodes, window, shell,
@@ -142,7 +140,7 @@ test("replacement file kinds remove stale base and overlay options", async () =>
   const h = harness();
   await h.load([wad("base.wad", "IWAD"), wad("map.wad")]);
   await h.load([wad("base.wad", "PWAD")]);
-  assert.equal(h.nodes.get("multiplayer-wad").options.length, 1);
+  assert.equal(h.nodes.get("local-wad-base").options.length, 1);
   assert.equal(h.nodes.get("local-wad-base").value, "DOOM1.WAD");
   assert.equal(h.inputs().length, 2);
 });
@@ -174,15 +172,12 @@ test("launch actions wait for loading instead of applying stale selection", asyn
   h.run("claimFocusAndStart()");
   assert.equal(h.nodes.get("splash").hidden, false);
   assert.equal(h.shell.src, before);
-  h.nodes.get("multiplayer-server").value = "wss://host.example/netplay";
-  await h.nodes.get("multiplayer-form").dispatch("submit");
-  assert.equal(h.shell.src, before);
-  assert.match(h.nodes.get("join-status").textContent, /Wait/);
+  assert.match(h.nodes.get("status-announcer").textContent, /Wait/);
   release();
   await pending;
 });
 
-for (const action of ["start", "splash", "enter", "join"]) {
+for (const action of ["start", "splash", "enter"]) {
   test(`${action} uses current base and ordered overlays without requiring Apply`, async () => {
     const h = harness();
     await h.load([wad("base.wad", "IWAD"), wad("first.wad"), wad("second.wad")]);
@@ -192,17 +187,51 @@ for (const action of ["start", "splash", "enter", "join"]) {
       case "start": await h.nodes.get("start-button").dispatch("click"); break;
       case "splash": await h.nodes.get("splash").dispatch("click"); break;
       case "enter": await h.window.dispatch("keydown", { key: "Enter" }); break;
-      case "join":
-        h.nodes.get("multiplayer-server").value = "wss://host.example/netplay";
-        await h.nodes.get("multiplayer-form").dispatch("submit");
-        assert.equal(h.url().searchParams.get("connect"), "wss://host.example/netplay");
-        break;
     }
     assert.equal(h.url().searchParams.get("wad"), "browser-upload/base.wad");
     assert.equal(h.url().searchParams.get("file"), "browser-upload/second.wad,browser-upload/first.wad");
     assert.equal(h.nodes.get("splash").hidden, true);
   });
 }
+
+const oldJoinQuery = "?connect=wss%3A%2F%2Fhost.example%2Fnetplay&player-name=Player&spectate=true&multiplayer-server=wss%3A%2F%2Fhost.example%2Fnetplay&multiplayer-lobby=https%3A%2F%2Flobby.example&map=E1M3&skill=4&no-monsters=true&wad=DOOM1.WAD&file=custom.wad";
+
+for (const userAgent of ["desktop", "iPhone"]) {
+  test(`${userAgent} launcher only forwards content from old direct-join links`, async () => {
+    const h = harness(oldJoinQuery, userAgent);
+    const url = userAgent === "desktop" ? h.url() : new URL(h.window.location.replaced);
+    assert.deepEqual([...url.searchParams], [["wad", "DOOM1.WAD"], ["file", "custom.wad"]]);
+    await h.nodes.get("start-button").dispatch("click");
+    assert.equal(h.url().searchParams.has("connect"), false);
+  });
+}
+
+test("opening player.html directly cannot bypass setup through join or map parameters", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "player.html"), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
+  const window = new Element();
+  window.location = { href: `https://play.example/player.html${oldJoinQuery}`, search: oldJoinQuery };
+  window.parent = window;
+  window.requestAnimationFrame = () => {};
+  // Even stale build metadata must not inject multiplayer launch arguments.
+  window.__gddoomMultiplayerServer = "wss://old.example/netplay";
+  window.__gddoomMultiplayerLobby = "https://old.example";
+  const document = {
+    getElementById: () => ({ remove() {} }),
+    createElement: () => ({}),
+    head: { appendChild: (script) => script.onload() },
+  };
+  let argv;
+  class Go {
+    run() { argv = Array.from(this.argv); }
+  }
+  await vm.runInNewContext(source, {
+    window, document, Go, URL, URLSearchParams, Uint8Array,
+    fetch: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }),
+    WebAssembly: { instantiate: async () => ({ instance: {} }) },
+    console: { error(error) { throw error; } },
+  });
+  assert.deepEqual(argv, ["gddoom", "-music-backend=impsynth", "-wad=DOOM1.WAD", "-file=custom.wad"]);
+});
 
 test("ready messages preserve load controls and selection before play intent", async () => {
   const h = harness();

@@ -11,7 +11,7 @@ import (
 )
 
 func TestAuthorityLiveScoreboardHeldF6UsesServerScores(t *testing.T) {
-	for _, mode := range []struct{ mode, title string }{{gameModeCoop, "CO-OP SCORES"}, {gameModeDeathmatch, "DEATHMATCH SCORES"}} {
+	for _, mode := range []struct{ mode, title string }{{gameModeCoop, "CO-OP PLAYERS"}, {gameModeDeathmatch, "DEATHMATCH PLAYERS"}} {
 		t.Run(mode.mode, func(t *testing.T) {
 			_, g, _ := authorityClientTestWorld(t, 0)
 			g.opts.GameMode = mode.mode
@@ -99,7 +99,7 @@ func TestAuthorityLiveScoreboardBackgroundPumpClearsHeldState(t *testing.T) {
 	g.input.pressedKeys = map[ebiten.Key]struct{}{ebiten.KeyF6: {}}
 	g.captureAuthorityScoreboardInput()
 	g.clearSampledInput()
-	if lines := g.authorityStatusLines(); len(lines) == 0 || lines[0] != "CO-OP SCORES" {
+	if lines := g.authorityStatusLines(); len(lines) == 0 || lines[0] != "CO-OP PLAYERS" {
 		t.Fatalf("frame lost scoreboard after clearing sampled input: %q", lines)
 	}
 	// Menus run the neutral pump instead of capturing gameplay controls. A key

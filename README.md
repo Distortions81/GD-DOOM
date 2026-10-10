@@ -208,12 +208,16 @@ Authoritative co-op/deathmatch is available through `cmd/gdserver` and the
 `-connect` client option, with prediction, reconnects, chat and spectators.
 In desktop and browser games, open **Esc → Multiplayer**. **Find Game** opens
 the live room list; **Create Game** starts a room of your own. **Player Setup**
-contains your name and player/spectator preference. **Direct Connect** opens
+contains your name and player/spectator preference. **Servers** opens
 the public **GD-DOOM Co-op** and **GD-DOOM Deathmatch** servers and your saved
 addresses, with a separate **Manage Servers** page for adding or editing them.
 Select a game and press **Enter** or tap **Use** to join. The list shows map,
 mode, player counts and whether your loaded WADs match. Saved addresses persist
 in native config or browser local storage. **Back** or **Esc** returns one page.
+During a match, **Multiplayer → Players** shows the live player list with names,
+ping, scores, and connection state; hold **F6** for the quick scoreboard.
+Join, leave, and reconnect notices appear in a readable on-screen feed. A small gameplay
+indicator shows player count and your ping, with a warning for a stalled connection.
 In a match, **Return to Game** resumes play and **Leave Match** returns to the
 title menu without restarting the game.
 For user-created games, run `cmd/gdlobby` and configure the client with
@@ -254,9 +258,12 @@ The build uses `DOOM1.WAD` and your Go toolchain's `wasm_exec.js`; optional
 SoundFont caching, touch controls, and persistent saves. Click or tap once to
 start audio where browser autoplay policies require it.
 Set `MULTIPLAYER_SERVER=https://your-host:6672/netplay` when building to prefill
-the browser's join form and in-game menu. This does not join automatically.
+the in-game server list. This does not join automatically.
 Set `MULTIPLAYER_LOBBY=https://your-lobby-host` to enable the live room browser
-and Create Game in the WASM build; `?multiplayer-lobby=...` overrides it.
+and Create Game in the WASM build. These defaults are embedded in the game.
+The browser page only launches the game and selects WAD files. Choose graphics,
+sound, and music during game setup, then use the in-game Multiplayer menu to
+join or create a game. Browser URLs cannot join a server or skip game setup.
 Browser rendering uses VSync by default, with no separate WASM frame throttle.
 Automatic detail starts at full resolution and reduces quality if performance
 requires it. Re-enabling AUTO also starts at full resolution; explicit

@@ -43,6 +43,7 @@ func (m *Match) Suspend(handle ConnectionID) {
 		return
 	}
 	p.suspended, p.resumeTicks = true, m.config.ResumeGraceTicks
+	m.rosterRevision++
 }
 
 // A successful resume rotates both the transport handle and the bearer token,
@@ -74,6 +75,7 @@ func (m *Match) resume(token [32]byte) (ConnectionID, Welcome, error) {
 		p.previousResumeToken = token
 		p.lastActivity, p.lastSnapshot, p.ackedSnapshot = m.world.Tic(), 0, 0
 		m.players[m.nextConnection] = p
+		m.rosterRevision++
 		return m.nextConnection, m.welcome(p), nil
 	}
 	return 0, Welcome{}, ErrResumeUnavailable

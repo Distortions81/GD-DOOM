@@ -41,6 +41,8 @@ type authorityMenuState struct {
 	editName         bool
 	editNew          bool
 	moreOptions      bool
+	showPlayers      bool
+	playersScroll    int
 	lobby            authorityLobbyMenu
 	joinLabel        string
 	content          *authorityContentAttempt
@@ -90,6 +92,7 @@ func (sg *sessionGame) openFrontendMultiplayer() {
 	}
 	menu.showServers()
 	menu.editing = false
+	menu.showPlayers, menu.playersScroll = false, 0
 	if sg.opts.AuthorityClient != nil {
 		menu.row = 0
 		menu.lobby.page = authorityLobbyPageNone
@@ -208,6 +211,10 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 	if menu.lobby.page != authorityLobbyPageNone && sg.opts.AuthorityClient == nil {
 		return sg.tickAuthorityLobby(escape, selectPressed)
 	}
+	if sg.opts.AuthorityClient != nil && menu.showPlayers {
+		sg.tickAuthorityPlayersPage(escape, selectPressed)
+		return nil
+	}
 	if escape {
 		if menu.moreOptions {
 			menu.showServers()
@@ -227,7 +234,7 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 	count := menu.actionStart() + len(menu.actions())
 	connected := sg.opts.AuthorityClient != nil
 	if connected {
-		count = 2
+		count = 3
 	}
 	if sg.keyJustPressed(ebiten.KeyArrowUp) || sg.touchJustPressed(touchActionUp) {
 		menu.row = (menu.row + count - 1) % count
@@ -265,6 +272,8 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 			}
 			sg.clearSampledInput()
 			sg.suppressTouchUntilRelease()
+		} else if menu.row == 1 {
+			menu.showPlayers, menu.playersScroll = true, 0
 		} else {
 			sg.leaveAuthorityMatch()
 		}
@@ -455,6 +464,7 @@ func (sg *sessionGame) installAuthorityJoin(result runtimecfg.AuthorityJoinResul
 	return nil
 }
 func (sg *sessionGame) leaveAuthorityMatch() {
+	sg.multiplayer.showPlayers, sg.multiplayer.playersScroll = false, 0
 	sg.rememberAuthorityLocalRules()
 	sg.cancelAuthorityJoin()
 	client, cancel := sg.opts.AuthorityClient, sg.multiplayer.sessionCancel
@@ -524,6 +534,10 @@ func (sg *sessionGame) drawFrontendMultiplayer(screen *ebiten.Image, scale, ox, 
 		return
 	}
 	if sg.opts.AuthorityClient != nil {
+		if menu.showPlayers {
+			sg.drawAuthorityPlayersPage(text)
+			return
+		}
 		text("IN A MULTIPLAYER MATCH", 32, 46)
 		mode := strings.ToUpper(sg.opts.GameMode)
 		if mode == "COOP" {
@@ -536,7 +550,8 @@ func (sg *sessionGame) drawFrontendMultiplayer(screen *ebiten.Image, scale, ox, 
 		}
 		text(role, 32, 88)
 		text("RETURN TO GAME", 48, 116)
-		text("LEAVE MATCH", 48, 140)
+		text("PLAYERS", 48, 140)
+		text("LEAVE MATCH", 48, 164)
 		sg.drawMenuSkull(screen, 16, 112+menu.row*24, scale, ox, oy)
 		return
 	}

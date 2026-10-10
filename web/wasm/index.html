@@ -117,13 +117,6 @@
       overflow-y: auto;
     }
 
-    .multiplayer { position: relative; margin-top: 20px; color: var(--muted); font-size: 14px; }
-    .multiplayer summary { cursor: pointer; color: var(--accent); font-weight: 800; }
-    .multiplayer form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-    .multiplayer label { display: grid; gap: 4px; min-width: 0; }
-    .multiplayer .wide { grid-column: 1 / -1; }
-    .multiplayer input, .multiplayer select { width: 100%; padding: 9px; color: var(--text); background: #140d0b; border: 1px solid var(--line); font: inherit; }
-    #join-status { margin: 0; color: #ffb49b; min-height: 1.4em; }
     #local-wad-panel { position: relative; margin-top: 18px; padding: 12px; border: 1px solid var(--line); color: var(--muted); font-size: 14px; }
     #local-wad-panel[hidden] { display: none; }
     #local-wad-panel select { width: 100%; margin: 6px 0; padding: 8px; color: var(--text); background: #140d0b; border: 1px solid var(--line); }
@@ -388,7 +381,7 @@
         <h1 id="gddoom-title" class="logo">GD-DOOM</h1>
         <p class="tagline">Doom's classic software-rendered appearance, accelerated by GPU shaders in your browser.</p>
         <p class="subcopy">Faithful mode keeps the 256-color palette and Doom lighting tables. Source Port mode adds smooth motion and high-resolution output. Load your own IWAD or play shareware, with persistent saves.</p>
-        <p class="subcopy">Use Load WAD Files to select a base game and custom maps. In Multiplayer, choose Create Game to host a room with your loaded WADs.</p>
+        <p class="subcopy">Use Load WAD Files to select a base game and custom maps. Choose your graphics, sound, and music settings in the game, then open Multiplayer to join or create a game.</p>
         <div id="local-wad-panel" hidden>
           <label for="local-wad-base">Base game</label>
           <select id="local-wad-base"><option value="DOOM1.WAD">Doom shareware</option></select>
@@ -406,17 +399,6 @@
           <button id="start-button" class="cta" type="button">GO TO HELL</button>
           <a class="secondary" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View Repository</a>
         </div>
-        <details class="multiplayer">
-          <summary>Join multiplayer</summary>
-          <form id="multiplayer-form">
-            <label class="wide">Server URL<input id="multiplayer-server" type="url" placeholder="https://server.example/netplay" required></label>
-            <label>Player name<input id="multiplayer-name" value="Player" maxlength="32" required></label>
-            <label>Game WAD<select id="multiplayer-wad"><option value="DOOM1.WAD">Doom shareware</option></select></label>
-            <label class="wide">Join as<select id="multiplayer-role"><option value="player">Player</option><option value="spectator">Spectator (F12 changes view)</option></select></label>
-            <button class="secondary wide" type="submit">Join server</button>
-            <p id="join-status" class="wide" aria-live="polite"></p>
-          </form>
-        </details>
       </section>
 
       <aside class="sidebar" aria-labelledby="controls-title">

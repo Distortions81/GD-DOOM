@@ -44,7 +44,7 @@ func TestAuthorityChatUsesExistingUIAndBackgroundPump(t *testing.T) {
 	if err := g.updateAuthoritativeClientAt(now, nil); err != nil {
 		t.Fatal(err)
 	}
-	if len(g.chatHistory) != 1 || g.chatHistory[0].Text != "Marine (P2): hello" || connection.snapshotPolls == 0 {
+	if len(g.chatHistory) != 2 || g.chatHistory[0].Text != "Marine (P2): hello" || g.chatHistory[1].Text != "CONNECTED - F6: PLAYERS" || connection.snapshotPolls == 0 {
 		t.Fatal("menu/background update omitted chat or stopped snapshots")
 	}
 	if err := g.updateAuthoritativeClientAt(now.Add(11*time.Second), nil); err != nil {

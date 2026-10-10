@@ -68,6 +68,9 @@ func (sg *sessionGame) openAuthorityDirectServers() {
 }
 
 func (sg *sessionGame) authorityMultiplayerPageTitle() string {
+	if sg.opts.AuthorityClient != nil && sg.multiplayer.showPlayers {
+		return "PLAYERS"
+	}
 	switch sg.multiplayer.lobby.page {
 	case authorityLobbyPageRooms:
 		return "FIND GAME"
@@ -85,7 +88,7 @@ func (sg *sessionGame) authorityMultiplayerPageTitle() string {
 				return "MANAGE SERVERS"
 			}
 			if sg.authorityLobbyAvailable() {
-				return "DIRECT CONNECT"
+				return "SERVERS"
 			}
 			return "SAVED SERVERS"
 		}
@@ -368,7 +371,7 @@ func (sg *sessionGame) drawAuthorityLobby(text func(string, int, int)) {
 		if !sg.authorityLobbyAvailable() {
 			find = "SAVED SERVERS"
 		}
-		all := []string{find, "CREATE GAME", "PLAYER SETUP", "DIRECT CONNECT", "BACK"}
+		all := []string{find, "CREATE GAME", "PLAYER SETUP", "SERVERS", "BACK"}
 		for _, action := range sg.authorityHomeActions() {
 			labels = append(labels, all[action])
 		}

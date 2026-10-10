@@ -31,7 +31,9 @@ func (m *Match) joinSpectator(hello Hello) (ConnectionID, Welcome, error) {
 	}
 	p := &matchPlayer{name: hello.Name, spectator: true, input: buffer}
 	m.nextConnection++
+	p.presenceID = uint64(m.nextConnection)
 	m.players[m.nextConnection] = p
+	m.rosterRevision++
 	return m.nextConnection, m.welcome(p), nil
 }
 

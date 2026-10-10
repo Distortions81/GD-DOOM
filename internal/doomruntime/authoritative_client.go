@@ -16,6 +16,7 @@ import (
 type authorityClientUpdateState struct {
 	mouseTurnPending int64
 	scoreboardHeld   bool
+	networkHUD       authorityNetworkHUDCache
 	stamp            time.Time
 	accum            time.Duration
 	step             time.Duration
@@ -100,6 +101,7 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 	if client == nil {
 		return nil
 	}
+	defer g.updateAuthorityNotices()
 	g.captureAuthoritativeMouseInput(sample != nil)
 	if g.authorityFailure != nil {
 		return nil

@@ -299,6 +299,18 @@ func TestMultiplayerMenuConnectedDefaultsToResumeAndKeepsLeaveClear(t *testing.T
 	_ = sg.tickFrontendMultiplayer()
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
+	if !sg.multiplayer.showPlayers || sg.authorityMultiplayerPageTitle() != "PLAYERS" || client.leaves.Load() != 0 || sg.opts.AuthorityClient != client {
+		t.Fatal("Players should open the roster without leaving the match")
+	}
+	menuKey(sg, ebiten.KeyEscape)
+	_ = sg.tickFrontendMultiplayer()
+	if sg.multiplayer.showPlayers || sg.multiplayer.row != 1 || sg.frontend.Mode != frontendModeMultiplayer {
+		t.Fatal("Back from Players should return to the connected menu")
+	}
+	menuKey(sg, ebiten.KeyArrowDown)
+	_ = sg.tickFrontendMultiplayer()
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
 	select {
 	case <-client.left:
 	case <-time.After(time.Second):
