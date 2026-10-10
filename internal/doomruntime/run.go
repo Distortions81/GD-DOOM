@@ -862,6 +862,9 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	sg.touch.screenW = max(outsideWidth, 1)
 	sg.touch.screenH = max(outsideHeight, 1)
 	sg.g.ensureDefaultHUDScaleForViewport(outsideWidth, outsideHeight)
+	// Both modes return a window-sized input layout. Cursor deltas are
+	// already in those coordinates, independent of the internal render buffer.
+	sg.g.mouseInputScaleX = 1
 	aspectH := faithfulAspectLogicalH
 	if sg.opts.DisableAspectCorrection {
 		aspectH = doomLogicalH
@@ -869,7 +872,6 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		layoutW := max(outsideWidth, 1)
 		layoutH := max(outsideHeight, 1)
-		sg.g.mouseInputScaleX = float64(layoutW) / float64(max(layoutW, 1))
 		if sg.g.skyOutputW != layoutW || sg.g.skyOutputH != layoutH {
 			sg.rt.setSkyOutputSize(layoutW, layoutH)
 		}
@@ -895,7 +897,6 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	layoutW := max(outsideWidth, 1)
 	layoutH := max(outsideHeight, 1)
 	rw, rh := faithfulDetailPresetSize(sg.g.detailLevel)
-	sg.g.mouseInputScaleX = float64(layoutW) / float64(faithfulBufferW)
 	sg.rt.Layout(rw, rh)
 	_ = aspectH
 	return layoutW, layoutH

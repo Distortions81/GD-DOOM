@@ -28,9 +28,13 @@ class MockWebTransport {
    readable: new ReadableStream({start: c => {this.streamControl = c;}}),
    writable: new WritableStream({write: b => {this.streamWrites.push(new Uint8Array(b));}, close: () => {this.fin = true;}})
   };
-  this.datagrams = {maxDatagramSize:1100,
+  this.datagrams = {maxDatagramSize:1100, incomingMaxAge:null, outgoingMaxAge:null,
+   incomingMaxBufferedDatagrams:32, outgoingMaxBufferedDatagrams:32,
    readable: new ReadableStream({start:c => {this.datagramControl = c;}}),
-   writable: new WritableStream({write:b => {this.datagramWrites.push(new Uint8Array(b));}})
+   writable: new WritableStream({write:b => {
+    this.datagramWrites.push(new Uint8Array(b));
+    if(this.holdDatagrams) return new Promise(resolve => {this.resumeDatagram = resolve;});
+   }})
   };
  }
  createBidirectionalStream() { return Promise.resolve(this.stream); }
@@ -42,11 +46,23 @@ class MockWebTransport {
   this.finish();
  }
 }
+
 return MockWebTransport;
 `)
 	js.Global().Set("WebTransport", factory.Invoke())
 	t.Cleanup(func() { js.Global().Set("WebTransport", previous); js.Global().Delete("__mockWT") })
 	return previous
+}
+
+func waitBrowserWT(t *testing.T, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for !ready() {
+		if time.Now().After(deadline) {
+			t.Fatal("browser WebTransport operation did not complete")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func wtTestBytes(data []byte) js.Value {
@@ -89,9 +105,7 @@ func TestWebTransportWASMStreamAndDatagrams(t *testing.T) {
 	if err := transport.WriteMessage(batch); err != nil {
 		t.Fatal(err)
 	}
-	if mock.Get("datagramWrites").Length() != 1 {
-		t.Fatal("input was not sent as datagram")
-	}
+	waitBrowserWT(t, func() bool { return mock.Get("datagramWrites").Length() == 1 })
 	mock.Get("datagrams").Set("maxDatagramSize", 1)
 	if err := transport.WriteMessage(batch); err != nil || mock.Get("datagramWrites").Length() != 1 {
 		t.Fatal("MTU refusal was not safe datagram loss")
@@ -118,6 +132,53 @@ func TestWebTransportWASMStreamAndDatagrams(t *testing.T) {
 	if !mock.Get("hardClosed").Bool() {
 		t.Fatal("drained session not closed")
 	}
+}
+
+func TestWebTransportWASMBackpressureDoesNotBlockControls(t *testing.T) {
+	installBrowserWTMock(t)
+	transport, err := OpenWebTransport(context.Background(), "https://localhost:4433/netplay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transport.Close()
+	mock := js.Global().Get("__mockWT")
+	for name, want := range map[string]int{"incomingMaxAge": 100, "outgoingMaxAge": 100, "incomingMaxBufferedDatagrams": 4, "outgoingMaxBufferedDatagrams": 1} {
+		if got := mock.Get("datagrams").Get(name).Int(); got != want {
+			t.Fatalf("%s=%d want %d", name, got, want)
+		}
+	}
+	mock.Set("holdDatagrams", true)
+	batch := InputBatch{Epoch: 1, Inputs: []Input{{Sequence: 1, Tick: 1}}}
+	if err := transport.WriteMessage(batch); err != nil {
+		t.Fatal(err)
+	}
+	waitBrowserWT(t, func() bool { return mock.Get("datagramWrites").Length() == 1 })
+	for range 100 {
+		if err := transport.WriteMessage(batch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if mock.Get("datagramWrites").Length() != 1 {
+		t.Fatal("browser datagram backlog grew")
+	}
+	if err := transport.WriteMessage(Ping{Nonce: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if mock.Get("streamWrites").Length() != 1 {
+		t.Fatal("reliable control blocked by datagram backpressure")
+	}
+	mock.Call("resumeDatagram")
+	session := transport.(*webTransportTransport).session.(*browserWTSession)
+	waitBrowserWT(t, func() bool {
+		session.writeMu.Lock()
+		defer session.writeMu.Unlock()
+		return !session.datagramPending
+	})
+	mock.Set("holdDatagrams", false)
+	if err := transport.WriteMessage(batch); err != nil {
+		t.Fatal(err)
+	}
+	waitBrowserWT(t, func() bool { return mock.Get("datagramWrites").Length() == 2 })
 }
 
 func TestWebTransportWASMCancellationAndUnavailable(t *testing.T) {

@@ -19,9 +19,38 @@ import (
 )
 
 type WebTransportOptions struct{ OriginPatterns []string }
-type WebTransportServer struct{ server *wt.Server }
+type WebTransportServer struct {
+	server  *wt.Server
+	mux     *http.ServeMux
+	origins []string
+}
 
 func (s *Server) NewWebTransportServer(tlsConfig *tls.Config, options WebTransportOptions) (*WebTransportServer, error) {
+	web, err := NewWebTransportServer(tlsConfig, options)
+	if err != nil {
+		return nil, err
+	}
+	web.Handle("/netplay", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		ctx, admitted := s.reserveConnection()
+		if !admitted {
+			http.Error(writer, "multiplayer server unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer s.releaseConnection()
+		connection, err := web.Accept(ctx, writer, request)
+		if err != nil {
+			return
+		}
+		defer connection.(*webTransportTransport).waitClosed()
+		defer connection.Close()
+		s.serveConnection(ctx, connection.(net.Conn))
+	}))
+	return web, nil
+}
+
+// NewWebTransportServer creates an authenticated UDP listener whose routes can
+// select isolated matches. Register handlers before calling Serve.
+func NewWebTransportServer(tlsConfig *tls.Config, options WebTransportOptions) (*WebTransportServer, error) {
 	if tlsConfig == nil || len(tlsConfig.Certificates) == 0 {
 		return nil, errors.New("WebTransport requires a TLS server certificate")
 	}
@@ -31,37 +60,33 @@ func (s *Server) NewWebTransportServer(tlsConfig *tls.Config, options WebTranspo
 	origins := append([]string(nil), options.OriginPatterns...)
 	server := &wt.Server{H3: &http3.Server{TLSConfig: http3.ConfigureTLSConfig(config), Handler: mux, QUICConfig: webTransportQUICConfig(), MaxHeaderBytes: 16 << 10}, Config: &wt.Config{MaxIncomingStreams: 1, MaxIncomingUniStreams: -1, MaxIncomingData: 16 << 20}, CheckOrigin: func(request *http.Request) bool { return allowedWebTransportOrigin(request, origins) }}
 	wt.ConfigureHTTP3Server(server.H3)
-	mux.HandleFunc("/netplay", func(writer http.ResponseWriter, request *http.Request) {
-		ctx, admitted := s.reserveConnection()
-		if !admitted {
-			http.Error(writer, "multiplayer server unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		defer s.releaseConnection()
-		// Unlike websocket.Accept, Upgrade returns validation errors without
-		// writing an HTTP failure. A bare handler return would imply 200 OK.
-		if !allowedWebTransportOrigin(request, origins) {
-			http.Error(writer, "browser origin forbidden", http.StatusForbidden)
-			return
-		}
-		session, err := server.Upgrade(writer, request)
-		if err != nil {
-			http.Error(writer, "invalid WebTransport request", http.StatusBadRequest)
-			return
-		}
-		opening, cancel := context.WithTimeout(ctx, 5*time.Second)
-		stream, err := session.AcceptStream(opening)
-		cancel()
-		if err != nil {
-			_ = session.CloseWithError(1, "missing control stream")
-			return
-		}
-		connection := newWebTransportTransport(ctx, &nativeWebTransportStream{Stream: stream, session: session}, nativeWebTransportSession{session}, true)
-		defer connection.waitClosed()
-		defer connection.Close()
-		s.serveConnection(ctx, connection)
-	})
-	return &WebTransportServer{server: server}, nil
+	return &WebTransportServer{server: server, mux: mux, origins: origins}, nil
+}
+
+func (s *WebTransportServer) Handle(pattern string, handler http.Handler) {
+	s.mux.Handle(pattern, handler)
+}
+
+// Accept validates the origin and opens the client's reliable control stream.
+// The caller must close the resulting transport after serving the connection.
+func (s *WebTransportServer) Accept(ctx context.Context, writer http.ResponseWriter, request *http.Request) (MessageTransport, error) {
+	if !allowedWebTransportOrigin(request, s.origins) {
+		http.Error(writer, "browser origin forbidden", http.StatusForbidden)
+		return nil, errors.New("browser origin forbidden")
+	}
+	session, err := s.server.Upgrade(writer, request)
+	if err != nil {
+		http.Error(writer, "invalid WebTransport request", http.StatusBadRequest)
+		return nil, err
+	}
+	opening, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	stream, err := session.AcceptStream(opening)
+	if err != nil {
+		_ = session.CloseWithError(1, "missing control stream")
+		return nil, err
+	}
+	return newWebTransportTransport(ctx, &nativeWebTransportStream{Stream: stream, session: session}, nativeWebTransportSession{session}, true), nil
 }
 
 func (s *WebTransportServer) Serve(conn net.PacketConn) error { return s.server.Serve(conn) }
@@ -95,6 +120,12 @@ func webTransportQUICConfig() *quic.Config {
 // availability/capability failures can be retried through the caller's WSS path.
 func OpenWebTransport(ctx context.Context, address string) (MessageTransport, error) {
 	return openNativeWebTransport(ctx, address, nil)
+}
+
+// OpenWebTransportWithTLS supports operator-installed trust roots. Hostname and
+// certificate verification remain mandatory, including for self-hosted games.
+func OpenWebTransportWithTLS(ctx context.Context, address string, config *tls.Config) (MessageTransport, error) {
+	return openNativeWebTransport(ctx, address, config)
 }
 
 func openNativeWebTransport(ctx context.Context, address string, tlsConfig *tls.Config) (MessageTransport, error) {

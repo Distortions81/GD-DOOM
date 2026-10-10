@@ -9,7 +9,7 @@ import (
 )
 
 func TestLobbyCommandValidationAndHelp(t *testing.T) {
-	for _, args := range [][]string{{}, {"-catalog", "catalog.json"}, {"-public-url", "https://play.example"}, {"-catalog", "catalog.json", "-public-url", "https://play.example", "-tls-cert", "certificate.pem"}, {"-catalog", "catalog.json", "-public-url", "https://play.example", "extra"}} {
+	for _, args := range [][]string{{}, {"-catalog", "catalog.json"}, {"-public-url", "https://play.example"}, {"-catalog", "catalog.json", "-public-url", "https://play.example", "-tls-cert", "certificate.pem"}, {"-catalog", "catalog.json", "-public-url", "https://play.example", "-udp-listen", "127.0.0.1:0"}, {"-catalog", "catalog.json", "-public-url", "https://play.example", "extra"}} {
 		if err := run(context.Background(), args, io.Discard, io.Discard); err == nil {
 			t.Fatalf("accepted incomplete CLI configuration: %v", args)
 		}

@@ -13,7 +13,43 @@ import (
 	"strings"
 
 	"gddoom/internal/lobby"
+	"gddoom/internal/netgame"
 )
+
+// Called with the manager mutex held so room shutdown cannot race admission.
+func (m *Manager) roomTunnel(room *managedRoom) http.Handler {
+	ctx, address := room.ctx, room.tcpAddress
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		// Public HTTP proxy requests always carry forwarding headers. The
+		// native UDP gateway opens this private hop itself, with no such header.
+		if len(request.Header.Values("X-Forwarded-For")) != 0 {
+			http.Error(w, "private game route", http.StatusForbidden)
+			return
+		}
+		if !m.allowOrigin(request.Header.Get("Origin")) {
+			http.Error(w, "browser origin forbidden", http.StatusForbidden)
+			return
+		}
+		m.mu.Lock()
+		if m.closed || room.room.State != "ready" {
+			m.mu.Unlock()
+			http.NotFound(w, request)
+			return
+		}
+		select {
+		case room.connections <- struct{}{}:
+			m.wg.Add(1)
+		default:
+			m.mu.Unlock()
+			http.Error(w, "room is busy", http.StatusServiceUnavailable)
+			return
+		}
+		m.mu.Unlock()
+		defer m.wg.Done()
+		defer func() { <-room.connections }()
+		netgame.LocalGameTunnelHandler(ctx, address, m.remoteAddress(request), w, request)
+	})
+}
 
 func (m *Manager) Handler() http.Handler { return http.HandlerFunc(m.serveHTTP) }
 
@@ -26,19 +62,27 @@ func (m *Manager) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/rooms/") {
 		parts := strings.Split(r.URL.Path, "/")
-		if len(parts) != 4 || parts[3] != "netplay" || r.Method != http.MethodGet {
+		if len(parts) != 4 || parts[3] != "netplay" || (r.Method != http.MethodGet && r.Method != http.MethodConnect) {
 			http.NotFound(w, r)
 			return
 		}
 		m.mu.Lock()
 		room := m.rooms[parts[2]]
 		var proxy http.Handler
+		var native http.Handler
 		if room != nil && room.room.State == "ready" && !m.closed {
 			proxy = room.proxy
+			if r.Method == http.MethodConnect {
+				native = m.roomTunnel(room)
+			}
 		}
 		m.mu.Unlock()
 		if proxy == nil {
 			http.NotFound(w, r)
+			return
+		}
+		if native != nil {
+			native.ServeHTTP(w, r)
 			return
 		}
 		proxy.ServeHTTP(w, r)

@@ -172,12 +172,15 @@ Servers selects the configured default server, so joining does not
 require entering an address or choosing a transport.
 The built-in list includes **GD-DOOM Co-op** at
 `https://m45sci.xyz:6672/netplay` and **GD-DOOM Deathmatch** at
-`wss://m45sci.xyz:6672/deathmatch`. A configured custom address remains preferred.
+`https://m45sci.xyz:6672/deathmatch`. A configured custom address remains preferred.
 The hosted deathmatch room has four slots, no monsters, a 20-frag/10-minute
 limit, and E1M1/E1M2 rotation. Map exits can rotate early. Press Use after the
 one-second respawn delay; scores and loadouts reset on each map.
-Co-op uses WebTransport with WSS fallback. The hosted deathmatch endpoint uses
-WSS through the same public port, forwarded to an isolated loopback match
+Both built-in servers prefer WebTransport with WSS fallback. Enabling
+`-udp-proxy /deathmatch=tcp://127.0.0.1:6673` on the public gateway routes
+deathmatch QUIC sessions directly to the isolated match's loopback native
+listener. Until that listener configuration is deployed, deathmatch falls back
+to WSS through the same public port, forwarded to the isolated loopback match
 process; gameplay RNG is never shared between the two matches.
 
 **Player Setup → Join As** selects spectator mode; the game list then offers
@@ -204,7 +207,7 @@ enter game setup before joining through the in-game Multiplayer menu.
 
 ## Multi-room lobby and custom WADs
 
-`cmd/gdlobby` is the HTTP control plane and WebSocket gateway for user-created
+`cmd/gdlobby` is the HTTP control plane and QUIC/WebSocket gateway for user-created
 games. It launches one `gdserver` child process for each room, with private
 loopback listeners. Each process owns its world, RNG, clocks, players and rules.
 A room appears as ready only after the supervisor queries the running worker
@@ -214,9 +217,77 @@ request ID: a retry after a lost HTTP response does not start a second match.
 The default capacity is eight rooms (maximum 32). Empty rooms expire after ten
 minutes; reconnect reservations and spectators keep a room occupied. Failed
 children are reaped, and stopping the lobby stops its children and upgraded
-WebSocket connections. Startup, logs, creation rate and retained room records
-are bounded. Rooms use WSS through `/rooms/<id>/netplay` on the public gateway;
-the existing direct servers can still use WebTransport or native TCP.
+connections. Startup, logs, creation rate and retained room records are bounded.
+With `-udp-listen` or `-game-datagrams`, rooms advertise HTTPS URLs at `/rooms/<id>/netplay`.
+The client automatically tries authenticated QUIC first and retains a working
+WSS fallback when UDP or the browser API is unavailable. Desktop uses Go's
+native QUIC implementation; WASM uses the browser WebTransport API. Both
+reach the same worker and authority. Transport selection adds no menu options.
+Without a UDP listener the lobby advertises WSS/WS directly, avoiding futile
+QUIC attempts. Standalone servers also support native TCP/TLS addresses.
+
+The room gateway shares one UDP port across all workers. It forwards validated
+binary frames over each worker's private loopback TCP connection without
+decompressing snapshots. Inputs and small acknowledged snapshot deltas use
+datagrams across the Internet; baselines, map changes and other controls remain
+reliable. Each room admits at most 32 gateway connections and a stopping worker
+cancels its connections. Endpoints come only from validated worker readiness.
+
+To serve HTTPS/WSS and room datagrams at the same public origin:
+
+```bash
+go run ./cmd/gdlobby -catalog catalog.json -worker ./gdserver \
+  -public-url https://game.example.com:6670 \
+  -listen :6670 -udp-listen :6670 \
+  -tls-cert server.crt -tls-key server.key \
+  -web-origins https://play.example.com
+```
+
+Both TCP and UDP at that public port must reach these listeners, and the
+certificate must be trusted for the advertised hostname. A TCP reverse proxy
+alone cannot carry WebTransport datagrams. Do not advertise QUIC rooms until
+their UDP route is configured and verified. This example does not change the
+currently deployed gateway described in `wasm-deployment.md`.
+
+An existing `gdserver` UDP listener can also host room routes alongside its
+own `/netplay` session. Add `-udp-proxy-prefix
+/rooms/=http://127.0.0.1:6675/rooms/` to that gateway and `-game-datagrams` to
+the lobby. Keep the existing HTTP/WebSocket `/rooms/` proxy for WSS fallback.
+This reuses the public UDP port and advertised URLs. The gateway opens a native
+binary tunnel to the loopback supervisor; this route rejects non-loopback
+callers and HTTP requests with forwarding headers. Origin checks, room state
+and connection capacity are enforced before reaching the private worker.
+These are operator settings, not player-facing transport choices.
+
+Datagram receive overflow now evicts the oldest queued packet, preserving the
+latest 32 arrivals and reliable control priority. Reliable writes do not hold
+the datagram submission lock. WASM requests 100 ms local queue expiration and
+small browser queues where the API exposes those settings; this does not cap
+network latency. It retains only one outstanding browser datagram write,
+treating further submissions under backpressure as packet loss. Recent input
+history repairs lost bundles, while reliable controls continue independently.
+
+The latency pass changes the server's default broadcast interval from two tics
+to one: 35 world updates per second. This halves the maximum wait for a broadcast
+from about 57 ms to 29 ms; it does not change network RTT, simulation rate,
+prediction input lead, or the existing interpolation buffer. Operators can set
+`-snapshot-interval 2` to restore the prior cadence. Players make no transport or
+update-rate choices. Slow writers still coalesce unsent updates.
+
+Compression can reuse an already confirmed dictionary for up to four snapshot
+IDs instead of rebuilding its match table with every advancing acknowledgment.
+It rotates before the eight-state history limit and checks that both the latest
+acknowledgment and reused state remain cached. An independent recovery baseline,
+epoch change, or dictionary eviction ends reuse. Datagram parsing adopts the
+transport-owned buffer; queued reads avoid allocating deadline timers, and
+blocking reads reuse one timer per connection.
+
+On structured 128/512-KiB stream fixtures, this pass reduced native encode/frame/
+decode/history CPU time by about 56% and WASM under Node by about 32%. A moving-
+actor fixture dropped from about 0.34 ms to 0.16 ms natively, with average
+updates growing from 281 to 296 bytes. These are codec microbenchmarks, not
+Internet latency measurements; the higher broadcast cadence also increases
+capture, client application work, and bandwidth per second.
 
 Create an operator-owned catalog, with paths relative to the JSON file:
 

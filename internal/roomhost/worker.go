@@ -159,6 +159,10 @@ func (m *Manager) runWorker(r *managedRoom, pack ContentPack) {
 	m.mu.Lock()
 	r.room.State = "ready"
 	r.room.Address = "ws" + strings.TrimPrefix(m.config.PublicURL, "http") + "/rooms/" + r.room.ID + "/netplay"
+	if m.config.WebTransport {
+		r.room.Address = m.config.PublicURL + "/rooms/" + r.room.ID + "/netplay"
+	}
+	r.ctx, r.tcpAddress = ctx, ready.TCPAddress
 	r.proxy = roomProxy(ctx, upstream, m.config.Log)
 	close(r.result)
 	announced = true

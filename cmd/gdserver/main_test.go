@@ -25,6 +25,15 @@ func (b *serverOutput) Write(p []byte) (int, error) {
 }
 func (b *serverOutput) value() string { b.mu.Lock(); defer b.mu.Unlock(); return b.Buffer.String() }
 
+func TestRunRejectsInvalidSnapshotInterval(t *testing.T) {
+	for _, value := range []string{"0", "36", "4294967296"} {
+		err := run(context.Background(), []string{"-snapshot-interval", value}, io.Discard, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "snapshot-interval") {
+			t.Fatalf("interval %s: %v", value, err)
+		}
+	}
+}
+
 func TestRunCrossTransportDeathmatchRotationAndShutdown(t *testing.T) {
 	for _, rotation := range []string{"", "E1M1,E1M2"} {
 		name := "default-progression"

@@ -28,6 +28,9 @@ type Config struct {
 	PublicURL  string
 	Packs      []ContentPack
 	WebOrigins []string
+	// WebTransport advertises HTTPS game URLs; the operator must serve UDP at
+	// PublicURL and retain WSS at the same routes for automatic fallback.
+	WebTransport bool
 	// TrustedProxies contains explicit literal loopback addresses of gateways
 	// that replace X-Forwarded-For with the actual client IP.
 	TrustedProxies  []string
@@ -68,12 +71,15 @@ type Manager struct {
 }
 
 type managedRoom struct {
-	room     lobby.Room
-	request  lobby.CreateRequest
-	result   chan struct{}
-	proxy    http.Handler
-	finished time.Time
-	err      error
+	room        lobby.Room
+	request     lobby.CreateRequest
+	result      chan struct{}
+	proxy       http.Handler
+	finished    time.Time
+	err         error
+	ctx         context.Context
+	tcpAddress  string
+	connections chan struct{}
 }
 
 type creationRate struct {
@@ -128,6 +134,9 @@ func New(ctx context.Context, config Config) (*Manager, error) {
 		}
 	}
 	config.PublicURL = public.Scheme + "://" + public.Host
+	if config.WebTransport && public.Scheme != "https" {
+		return nil, errors.New("WebTransport rooms require an HTTPS public URL")
+	}
 	worker, err := exec.LookPath(config.WorkerPath)
 	if err != nil {
 		return nil, fmt.Errorf("worker executable: %w", err)
@@ -289,7 +298,7 @@ func (m *Manager) Create(ctx context.Context, remote string, request lobby.Creat
 		return lobby.Room{}, err
 	}
 	id := hex.EncodeToString(idBytes[:])
-	r := &managedRoom{request: request, result: make(chan struct{}), room: lobby.Room{ID: id, Name: request.Name, State: "starting", Settings: request.Settings, Manifest: manifest, PlayerLimit: request.Settings.PlayerLimit, CreatedAt: now.UTC()}}
+	r := &managedRoom{request: request, result: make(chan struct{}), connections: make(chan struct{}, 32), room: lobby.Room{ID: id, Name: request.Name, State: "starting", Settings: request.Settings, Manifest: manifest, PlayerLimit: request.Settings.PlayerLimit, CreatedAt: now.UTC()}}
 	m.rooms[id], m.requests[request.RequestID] = r, id
 	m.wg.Add(1)
 	go m.runWorker(r, pack)

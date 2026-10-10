@@ -69,6 +69,9 @@ func TestSnapshotCodecFullAndAcknowledgedDelta(t *testing.T) {
 	}
 	// The reader caches a reconstructed delta even if presentation skips it.
 	last := noisySnapshot(3)
+	// Advance past the brief reuse period to exercise the newly reconstructed
+	// and acknowledged state as a fresh compression dictionary.
+	last.ID = 6
 	last.State[444] ^= 1
 	wire, err = encoder.Encode(last, 2)
 	if err != nil {

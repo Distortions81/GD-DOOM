@@ -139,6 +139,52 @@ func TestWebTransportBoundsQueueAndPreservesReliableControl(t *testing.T) {
 	if _, ok := message.(Hello); !ok {
 		t.Fatalf("reliable control evicted/starved: %T", message)
 	}
+	for id := uint32(33); id <= 64; id++ {
+		message, err := transport.ReadMessage()
+		if err != nil || message.(InputBatch).Inputs[0].Sequence != id {
+			t.Fatalf("stale datagram retained: sequence=%d message=%+v error=%v", id, message, err)
+		}
+	}
+}
+
+type blockedWTStream struct {
+	net.Conn
+	writing chan struct{}
+}
+
+func (s *blockedWTStream) Write(data []byte) (int, error) {
+	select {
+	case s.writing <- struct{}{}:
+	default:
+	}
+	return s.Conn.Write(data)
+}
+
+func TestWebTransportDatagramBypassesBlockedReliableWrite(t *testing.T) {
+	local, remote := net.Pipe()
+	stream := &blockedWTStream{Conn: local, writing: make(chan struct{}, 1)}
+	session := &testWTSession{sent: make(chan []byte, 1), receive: make(chan []byte), done: make(chan struct{})}
+	transport := newWebTransportTransport(context.Background(), stream, session, false)
+	t.Cleanup(func() { transport.Close(); remote.Close(); transport.waitClosed() })
+	written := make(chan error, 1)
+	go func() { written <- transport.WriteMessage(Hello{Compatibility: "test", Name: "blocked"}) }()
+	<-stream.writing
+	input := make(chan error, 1)
+	go func() { input <- transport.WriteMessage(InputBatch{Epoch: 1, Inputs: []Input{{Tick: 1, Sequence: 1}}}) }()
+	select {
+	case err := <-input:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("datagram blocked behind reliable write")
+	}
+	if _, err := ReadClientMessage(remote); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestWebTransportRejectsInvalidDatagramDirections(t *testing.T) {
@@ -215,6 +261,9 @@ func TestWebTransportLostBaselineReorderAndEpochRecovery(t *testing.T) {
 	}
 	recovered := noisySnapshot(4)
 	recovered.State[11] ^= 1
+	if _, err := encoder.Encode(recovered, 0); err != nil {
+		t.Fatal(err)
+	}
 	if err := encoder.Commit(recovered); err != nil {
 		t.Fatal(err)
 	}

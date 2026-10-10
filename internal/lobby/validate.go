@@ -172,8 +172,8 @@ func validateRoom(room Room, pack *Pack) error {
 		}
 	} else {
 		u, err := checkedURL(room.Address)
-		if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Path == "" || path.Clean(u.Path) != u.Path {
-			return errors.New("invalid lobby room WebSocket address")
+		if err != nil || (u.Scheme != "ws" && u.Scheme != "wss" && u.Scheme != "https") || u.Path == "" || path.Clean(u.Path) != u.Path {
+			return errors.New("invalid lobby room gameplay address")
 		}
 	}
 	if pack == nil {

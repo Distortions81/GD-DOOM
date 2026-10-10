@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"gddoom/internal/netgame"
 	"gddoom/internal/roomhost"
 )
 
@@ -33,6 +34,8 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fs := flag.NewFlagSet("gdlobby", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	listen := fs.String("listen", "127.0.0.1:6670", "HTTP(S) listen address")
+	udpListen := fs.String("udp-listen", "", "optional QUIC/WebTransport listen address; UDP must reach this listener at public-url's port")
+	gameDatagrams := fs.Bool("game-datagrams", false, "advertise QUIC room URLs served by an external gdserver UDP gateway")
 	public := fs.String("public-url", "", "public HTTP(S) origin for lobby and room URLs")
 	catalog := fs.String("catalog", "", "operator JSON content catalog")
 	worker := fs.String("worker", "gdserver", "authoritative server executable")
@@ -61,11 +64,23 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if (*cert == "") != (*key == "") {
 		return errors.New("-tls-cert and -tls-key must be provided together")
 	}
+	if *udpListen != "" && *cert == "" {
+		return errors.New("-udp-listen requires -tls-cert and -tls-key")
+	}
+	var tlsConfig *tls.Config
+	if *cert != "" {
+		certificate, err := tls.LoadX509KeyPair(*cert, *key)
+		if err != nil {
+			return err
+		}
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12}
+	}
 	packs, redistribution, err := roomhost.LoadCatalogWithPolicy(*catalog)
 	if err != nil {
 		return err
 	}
 	config := roomhost.Config{WorkerPath: *worker, PublicURL: *public, Packs: packs, MaxRooms: *maxRooms, IdleTimeout: *idle, StartupTimeout: *startup, PollInterval: *poll, ShutdownTimeout: *shutdown, UploadDir: *uploadDir, UploadQuota: *uploadQuota, Log: errOut}
+	config.WebTransport = *udpListen != "" || *gameDatagrams
 	config.Redistribution, config.DownloadQuota = redistribution, *downloadQuota
 	config.TrustedProxies = append([]string(nil), trustedProxies...)
 	for _, origin := range strings.Split(*origins, ",") {
@@ -83,16 +98,30 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return err
 	}
 	defer listener.Close()
-	if *cert != "" {
-		certificate, err := tls.LoadX509KeyPair(*cert, *key)
+	if tlsConfig != nil {
+		listener = tls.NewListener(listener, tlsConfig.Clone())
+	}
+	var udpServer *netgame.WebTransportServer
+	var udp net.PacketConn
+	if *udpListen != "" {
+		udp, err = net.ListenPacket("udp", *udpListen)
 		if err != nil {
 			return err
 		}
-		listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12})
+		defer udp.Close()
+		udpServer, err = manager.NewWebTransportServer(tlsConfig)
+		if err != nil {
+			return err
+		}
+		defer udpServer.Close()
 	}
 	server := &http.Server{Handler: manager.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
-	done := make(chan error, 1)
+	done := make(chan error, 2)
 	go func() { done <- server.Serve(listener) }()
+	if udpServer != nil {
+		go func() { done <- udpServer.Serve(udp) }()
+		fmt.Fprintf(out, "room datagrams: %s/rooms/<id>/netplay on UDP %s\n", *public, udp.LocalAddr())
+	}
 	fmt.Fprintf(out, "gdlobby: %s on %s, capacity %d\n", *public, listener.Addr(), *maxRooms)
 	select {
 	case <-ctx.Done():

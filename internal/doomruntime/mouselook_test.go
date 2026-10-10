@@ -1,6 +1,57 @@
 package doomruntime
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+
+	"gddoom/internal/platformcfg"
+)
+
+func TestMouseLookSensitivitySurvivesPresentationChanges(t *testing.T) {
+	previousWASM := platformcfg.ForcedWASMMode()
+	defer platformcfg.SetForcedWASMMode(previousWASM)
+	for _, wasm := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wasm=%t", wasm), func(t *testing.T) {
+			platformcfg.SetForcedWASMMode(wasm)
+			for _, invert := range []bool{false, true} {
+				t.Run(fmt.Sprintf("invert=%t", invert), func(t *testing.T) {
+					g := &game{opts: Options{MouseLook: true, MouseLookSpeed: 0.75, MouseInvert: invert}}
+					sg := &sessionGame{g: g, rt: &layoutCountRuntime{}}
+					// Exercise resizing, mode switching, aspect correction and render
+					// detail on the same input sampler. Layout returns window-sized
+					// coordinates even when the renderer uses a smaller buffer.
+					for _, step := range []struct {
+						modern, noAspect      bool
+						width, height, detail int
+					}{
+						{true, false, 1920, 1080, 0},
+						{false, false, 1920, 1080, 0},
+						{false, true, 1920, 1080, 1},
+						{false, false, 1170, 2532, 2},
+						{false, false, 320, 200, 0},
+						{true, false, 640, 480, 0},
+					} {
+						sg.opts.SourcePortMode = step.modern
+						sg.opts.DisableAspectCorrection = step.noAspect
+						g.opts.SourcePortMode = step.modern
+						g.detailLevel = step.detail
+						w, h := sg.Layout(step.width, step.height)
+						if w != step.width || h != step.height {
+							t.Fatalf("input layout=%dx%d want %dx%d", w, h, step.width, step.height)
+						}
+						g.sampleMouseLookPosition(100)
+						g.clearSampledInput()
+						g.sampleMouseLookPosition(110)
+						want := mouseLookTurnRawWithWidth(10, 0.75, step.width, invert)
+						if got := g.input.mouseTurnRawAccum; got != want {
+							t.Fatalf("modern=%t window=%dx%d detail=%d noAspect=%t turn=%d want=%d", step.modern, w, h, step.detail, step.noAspect, got, want)
+						}
+					}
+				})
+			}
+		})
+	}
+}
 
 func TestMouseLookTurnRawWithWidthIgnoresResolution(t *testing.T) {
 	base := mouseLookTurnRawWithWidth(10, 1.0, doomLogicalW, false)

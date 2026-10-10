@@ -149,7 +149,7 @@ func TestAuthorityBrowserSavedServersPreservePreferences(t *testing.T) {
 func TestAuthorityBrowserPublicRoomsPreservePreferredAndSavedServers(t *testing.T) {
 	public := []runtimecfg.AuthorityServerEntry{
 		{Label: "GD-DOOM Co-op", Address: "https://m45sci.xyz:6672/netplay"},
-		{Label: "GD-DOOM Deathmatch", Address: "wss://m45sci.xyz:6672/deathmatch"},
+		{Label: "GD-DOOM Deathmatch", Address: "https://m45sci.xyz:6672/deathmatch"},
 	}
 	custom := runtimecfg.AuthorityServerEntry{Label: "Default server", Address: "wss://friends.example/netplay"}
 	saved := runtimecfg.AuthorityServerEntry{Label: "Weekend game", Address: "localhost:6670"}

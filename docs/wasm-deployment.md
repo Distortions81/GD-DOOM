@@ -37,6 +37,21 @@ HTTPS listener forwards `/api/v1/` and `/rooms/` to it; `/netplay`, `/deathmatch
 and the co-op WebTransport listener retain their existing endpoints. This
 requires no additional public ports or nginx changes.
 
+The networking deployment enables QUIC room routing on the same public port.
+The co-op gateway includes `-udp-proxy-prefix
+/rooms/=http://127.0.0.1:6675/rooms/` and
+`-udp-proxy /deathmatch=tcp://127.0.0.1:6673` in `gd-doom-coop.service`, and the lobby includes
+`-game-datagrams` in `gd-doom-lobby.service`. Retain both existing HTTP prefix
+proxies and the lobby's trusted-proxy settings. The lobby keeps its private
+plain HTTP listener; it needs no certificate copy or new listener. Co-op's
+existing TLS certificate authenticates both `/netplay` and room QUIC sessions.
+Verify a newly created co-op and deathmatch room over QUIC, then WSS fallback,
+before publishing the browser build. Older clients that reject HTTPS room URLs
+must update/reload; GDMP and the authoritative simulation revision are unchanged.
+Servers send fresh world state every tic (35 updates/second), with bounded
+compression dictionary reuse and datagram queues that preserve recent updates.
+The browser build also corrects Faithful-mode mouse sensitivity to match Modern.
+
 The default authoritative co-op server was installed on 2026-10-10 UTC:
 
 | Item | Value |
@@ -115,7 +130,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/gd-doom
-ExecStart=%h/.local/bin/gdserver -wad DOOM1.WAD -map E1M1 -mode coop -skill 3 -players 4 -listen 127.0.0.1:6671 -web-listen :6672 -udp-listen :6672 -tls-cert /etc/letsencrypt/live/m45sci.xyz-0003/fullchain.pem -tls-key /etc/letsencrypt/live/m45sci.xyz-0003/privkey.pem -web-origins https://m45sci.xyz -web-proxy /deathmatch=http://127.0.0.1:6674/netplay -web-proxy-prefix /api/v1/=http://127.0.0.1:6675/api/v1/ -web-proxy-prefix /rooms/=http://127.0.0.1:6675/rooms/
+ExecStart=%h/.local/bin/gdserver -wad DOOM1.WAD -map E1M1 -mode coop -skill 3 -players 4 -listen 127.0.0.1:6671 -web-listen :6672 -udp-listen :6672 -tls-cert /etc/letsencrypt/live/m45sci.xyz-0003/fullchain.pem -tls-key /etc/letsencrypt/live/m45sci.xyz-0003/privkey.pem -web-origins https://m45sci.xyz -web-proxy /deathmatch=http://127.0.0.1:6674/netplay -web-proxy-prefix /api/v1/=http://127.0.0.1:6675/api/v1/ -web-proxy-prefix /rooms/=http://127.0.0.1:6675/rooms/ -udp-proxy-prefix /rooms/=http://127.0.0.1:6675/rooms/ -udp-proxy /deathmatch=tcp://127.0.0.1:6673
 Restart=always
 RestartSec=3
 TimeoutStopSec=10
@@ -152,12 +167,13 @@ WantedBy=default.target
 
 Run `systemctl --user daemon-reload` after changing units and
 `systemctl --user enable --now gd-doom-deathmatch.service` for first install.
-The public deathmatch address is `wss://m45sci.xyz:6672/deathmatch`. The co-op
+The public deathmatch address is `https://m45sci.xyz:6672/deathmatch`, with
+automatic WSS fallback at `wss://m45sci.xyz:6672/deathmatch`. The co-op
 process terminates TLS and forwards this exact WebSocket route to the isolated
 loopback deathmatch process. The upstream retains the browser Origin check.
 Both loopback deathmatch listeners use plaintext only on the host; no additional
 public ports or certificate copies are required. Co-op retains WebTransport and
-WSS; the deathmatch route currently provides WSS only. Restarting co-op briefly
+WSS; deathmatch also uses QUIC through the same gateway. Restarting co-op briefly
 interrupts both public routes; deathmatch retains its process and reconnect grace.
 
 The `-web-proxy` option is repeatable, requires `-web-listen`, and accepts only
@@ -236,7 +252,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/gd-doom
-ExecStart=%h/.local/bin/gdlobby -listen 127.0.0.1:6675 -public-url https://m45sci.xyz:6672 -worker %h/.local/bin/gdserver -catalog %h/.local/share/gd-doom/lobby/catalog.json -upload-dir %h/.local/share/gd-doom/lobby/uploads -web-origins https://m45sci.xyz -trusted-proxies 127.0.0.1 -max-rooms 8 -idle-timeout 10m -upload-quota 536870912 -download-quota 536870912
+ExecStart=%h/.local/bin/gdlobby -listen 127.0.0.1:6675 -public-url https://m45sci.xyz:6672 -worker %h/.local/bin/gdserver -catalog %h/.local/share/gd-doom/lobby/catalog.json -upload-dir %h/.local/share/gd-doom/lobby/uploads -web-origins https://m45sci.xyz -trusted-proxies 127.0.0.1 -max-rooms 8 -idle-timeout 10m -upload-quota 536870912 -download-quota 536870912 -game-datagrams
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=15

@@ -44,6 +44,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	webListen := fs.String("web-listen", "", "optional HTTP/WebSocket listen address; game route /netplay")
 	readyFile := fs.String("ready-file", "", "optional private JSON file describing bound worker endpoints")
 	var webProxies webProxyFlags
+	var udpProxies webProxyFlags
+	fs.Var(udpNativeProxyFlags{routes: &udpProxies}, "udp-proxy", "QUIC route=tcp://loopback:port; repeatable, e.g. /deathmatch=tcp://127.0.0.1:6673")
+	fs.Var(webProxyPrefixFlags{routes: &udpProxies}, "udp-proxy-prefix", "QUIC room prefix/=loopback lobby HTTP base/; repeatable, e.g. /rooms/=http://127.0.0.1:6675/rooms/")
 	fs.Var(&webProxies, "web-proxy", "additional exact WebSocket route=loopback HTTP URL; repeatable, e.g. /deathmatch=http://127.0.0.1:6674/netplay")
 	fs.Var(webProxyPrefixFlags{routes: &webProxies}, "web-proxy-prefix", "additional HTTP/WebSocket prefix/=loopback HTTP base/ preserving suffixes; repeatable, e.g. /api/v1/=http://127.0.0.1:6675/api/v1/")
 	webOrigins := fs.String("web-origins", "", "comma-separated permitted browser origins; same host allowed by default")
@@ -61,6 +64,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	fragLimit := fs.Int("frag-limit", 20, "deathmatch frag limit, 0 disables")
 	timeLimit := fs.Uint("time-limit", 0, "deathmatch time limit in seconds, 0 disables")
 	players := fs.Int("players", 4, "maximum active players, 1..4")
+	snapshotInterval := fs.Uint("snapshot-interval", 1, "server ticks between world updates, 1..35; default sends every tick for lower latency")
 	rotationFlag := fs.String("rotation", "", "explicit comma-separated deathmatch map rotation; otherwise follows normal/secret map progression")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -71,8 +75,14 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if fs.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %v", fs.Args())
 	}
+	if *snapshotInterval < 1 || *snapshotInterval > netgame.TickRate {
+		return fmt.Errorf("-snapshot-interval must be 1..%d", netgame.TickRate)
+	}
 	if len(webProxies) != 0 && *webListen == "" {
 		return fmt.Errorf("-web-proxy or -web-proxy-prefix requires -web-listen")
+	}
+	if len(udpProxies) != 0 && *udpListen == "" {
+		return fmt.Errorf("-udp-proxy or -udp-proxy-prefix requires -udp-listen")
 	}
 	if *timeLimit > uint(^uint32(0))/netgame.TickRate {
 		return fmt.Errorf("time limit too large")
@@ -141,7 +151,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if epoch == 0 {
 		epoch = 1
 	}
-	match, err := netgame.NewMatch(authority, authority, netgame.MatchConfig{Epoch: epoch, Compatibility: compat, Manifest: &manifest, ResumeGraceTicks: 30 * netgame.TickRate, PlayerLimit: *players, InputLead: 3, FutureTicks: 35, HoldTicks: 2, DisconnectTicks: netgame.TickRate * 10, SnapshotInterval: 2})
+	match, err := netgame.NewMatch(authority, authority, netgame.MatchConfig{Epoch: epoch, Compatibility: compat, Manifest: &manifest, ResumeGraceTicks: 30 * netgame.TickRate, PlayerLimit: *players, InputLead: 3, FutureTicks: 35, HoldTicks: 2, DisconnectTicks: netgame.TickRate * 10, SnapshotInterval: uint32(*snapshotInterval)})
 	if err != nil {
 		return err
 	}
@@ -227,6 +237,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return err
 		}
 		defer udpServer.Close()
+		for _, proxy := range udpProxies {
+			udpServer.Handle(proxy.route, udpServer.ProxyHandler(ctx, proxy.upstream, proxy.route))
+		}
 	}
 	var httpServer *http.Server
 	var webListener net.Listener

@@ -16,7 +16,7 @@ import (
 const (
 	maxSavedAuthorityServers    = 32
 	defaultAuthorityCoopAddress = "https://m45sci.xyz:6672/netplay"
-	defaultAuthorityDMAddress   = "wss://m45sci.xyz:6672/deathmatch"
+	defaultAuthorityDMAddress   = "https://m45sci.xyz:6672/deathmatch"
 )
 
 func cleanAuthorityServers(entries []runtimecfg.AuthorityServerEntry) []runtimecfg.AuthorityServerEntry {

@@ -65,6 +65,23 @@ func openBrowserWebTransport(ctx context.Context, rawURL string, options js.Valu
 		}
 		return fail(fmt.Errorf("browser WebTransport handshake: %w", err))
 	}
+	// Bound the browser's own queues as well as the Go receive queue. These
+	// settings concern time spent queued locally, not time spent on the wire.
+	datagrams := transport.Get("datagrams")
+	for _, setting := range []struct {
+		name  string
+		value int
+	}{
+		{"incomingMaxAge", 100}, {"outgoingMaxAge", 100},
+		{"incomingMaxBufferedDatagrams", 4}, {"outgoingMaxBufferedDatagrams", 1},
+		{"incomingHighWaterMark", 4}, {"outgoingHighWaterMark", 1},
+	} {
+		if !datagrams.Get(setting.name).IsUndefined() {
+			if _, err := wtJSValue(func() js.Value { datagrams.Set(setting.name, setting.value); return js.Undefined() }); err != nil {
+				return fail(err)
+			}
+		}
+	}
 	streamPromise, err := wtJSValue(func() js.Value { return transport.Call("createBidirectionalStream") })
 	if err != nil {
 		return fail(err)
@@ -102,6 +119,7 @@ type browserWTSession struct {
 	closeOnce                                 sync.Once
 	errMu                                     sync.Mutex
 	closedErr                                 error
+	datagramPending                           bool
 }
 
 func (s *browserWTSession) Close() error {
@@ -115,6 +133,9 @@ func (s *browserWTSession) SendDatagram(data []byte) error {
 	if err := s.ctx.Err(); err != nil {
 		return err
 	}
+	if s.datagramPending {
+		return nil // Treat browser backpressure as loss; future bundles repair it.
+	}
 	maximum := s.transport.Get("datagrams").Get("maxDatagramSize")
 	if maximum.Type() == js.TypeNumber && len(data) > maximum.Int() {
 		return nil
@@ -125,13 +146,21 @@ func (s *browserWTSession) SendDatagram(data []byte) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
-	defer cancel()
-	_, err = awaitWTPromise(ctx, promise)
-	if err != nil {
-		s.Close()
-	}
-	return err
+	s.datagramPending = true
+	// The browser may defer a write under congestion. Never hold the client's
+	// control writer behind it; retain at most one outstanding datagram Promise.
+	go func() {
+		ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
+		defer cancel()
+		_, err := awaitWTPromise(ctx, promise)
+		s.writeMu.Lock()
+		s.datagramPending = false
+		s.writeMu.Unlock()
+		if err != nil {
+			s.Close()
+		}
+	}()
+	return nil
 }
 
 func (s *browserWTSession) ReceiveDatagram(ctx context.Context) ([]byte, error) {

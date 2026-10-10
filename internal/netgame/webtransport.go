@@ -1,8 +1,8 @@
 package netgame
 
 import (
-	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +18,7 @@ const webTransportDrainTimeout = 2 * time.Second
 
 type webTransportSession interface {
 	SendDatagram([]byte) error
+	// The caller owns the received buffer; future receives must not mutate it.
 	ReceiveDatagram(context.Context) ([]byte, error)
 	Close() error
 }
@@ -43,6 +44,8 @@ type webTransportTransport struct {
 	cancel       context.CancelFunc
 	once         sync.Once
 	writeMu      sync.Mutex
+	readMu       sync.Mutex
+	readTimer    *time.Timer
 	deadlineMu   sync.Mutex
 	readDeadline time.Time
 	readChanged  chan struct{}
@@ -107,23 +110,29 @@ func (t *webTransportTransport) readReliable() {
 }
 
 func decodeGameDatagram(data []byte, serverSide bool) (any, error) {
-	if len(data) > MaxGameDatagramBytes {
+	if len(data) < messageHeaderBytes || len(data) > MaxGameDatagramBytes ||
+		string(data[:4]) != "GDMP" || data[4] != ProtocolVersion ||
+		binary.LittleEndian.Uint32(data[6:10]) != uint32(len(data)-messageHeaderBytes) {
 		return nil, ErrProtocol
 	}
-	reader := bytes.NewReader(data)
-	message, err := readMessage(reader, serverSide)
-	if err != nil || reader.Len() != 0 {
-		return nil, ErrProtocol
-	}
+	// Decode the owned datagram directly. Stream parsing would allocate and
+	// copy another body even though this complete frame is already in memory.
 	if serverSide {
-		if _, ok := message.(InputBatch); !ok {
+		if MessageKind(data[5]) != KindInput {
 			return nil, ErrProtocol
 		}
-	} else {
-		snapshot, ok := message.(Snapshot)
-		if !ok || snapshot.Encoding != SnapshotDeltaZstd || snapshot.BaselineID == 0 {
-			return nil, ErrProtocol
-		}
+		return decodeInput(data[messageHeaderBytes:])
+	}
+	if MessageKind(data[5]) != KindSnapshot {
+		return nil, ErrProtocol
+	}
+	message, err := decodeSnapshot(data[messageHeaderBytes:])
+	if err != nil {
+		return nil, ErrProtocol
+	}
+	snapshot := message.(Snapshot)
+	if snapshot.Encoding != SnapshotDeltaZstd || snapshot.BaselineID == 0 {
+		return nil, ErrProtocol
 	}
 	return message, nil
 }
@@ -145,11 +154,23 @@ func (t *webTransportTransport) readDatagrams(ctx context.Context) {
 		select {
 		case t.datagrams <- message:
 		default:
+			// Replace the oldest queued update, rather than retaining stale
+			// movement while discarding every newer packet during a stall.
+			select {
+			case <-t.datagrams:
+			default:
+			}
+			select {
+			case t.datagrams <- message:
+			default:
+			}
 		} // Reliable control can never be evicted.
 	}
 }
 
 func (t *webTransportTransport) ReadMessage() (any, error) {
+	t.readMu.Lock()
+	defer t.readMu.Unlock()
 	for {
 		// Process already-arrived epoch/terminal controls before replaceable traffic.
 		select {
@@ -160,15 +181,26 @@ func (t *webTransportTransport) ReadMessage() (any, error) {
 		t.deadlineMu.Lock()
 		deadline, changed := t.readDeadline, t.readChanged
 		t.deadlineMu.Unlock()
-		var timer *time.Timer
 		var timeout <-chan time.Time
+		var remaining time.Duration
 		if !deadline.IsZero() {
-			remaining := time.Until(deadline)
+			remaining = time.Until(deadline)
 			if remaining <= 0 {
 				return nil, os.ErrDeadlineExceeded
 			}
-			timer = time.NewTimer(remaining)
-			timeout = timer.C
+		}
+		select {
+		case message := <-t.datagrams:
+			return message, nil
+		default:
+		}
+		if !deadline.IsZero() {
+			if t.readTimer == nil {
+				t.readTimer = time.NewTimer(remaining)
+			} else {
+				t.readTimer.Reset(remaining)
+			}
+			timeout = t.readTimer.C
 		}
 		var read transportRead
 		var retry bool
@@ -185,8 +217,8 @@ func (t *webTransportTransport) ReadMessage() (any, error) {
 		case <-changed:
 			retry = true
 		}
-		if timer != nil {
-			timer.Stop()
+		if t.readTimer != nil {
+			t.readTimer.Stop()
 		}
 		if retry {
 			continue
@@ -214,8 +246,6 @@ func (t *webTransportTransport) WriteMessage(message any) error {
 	if err != nil {
 		return err
 	}
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
 	select {
 	case <-t.done:
 		return net.ErrClosed
@@ -226,6 +256,9 @@ func (t *webTransportTransport) WriteMessage(message any) error {
 		// expired input behind a large reliable snapshot. Future bundles repair it.
 		return t.session.SendDatagram(data)
 	}
+	// Datagram submission must not wait behind a large reliable baseline.
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
 	_ = t.stream.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	for len(data) > 0 {
 		n, err := t.stream.Write(data)

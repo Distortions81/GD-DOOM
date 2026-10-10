@@ -27,6 +27,35 @@ type webProxyRoute struct {
 
 type webProxyFlags []webProxyRoute
 
+// Native QUIC routes and room prefixes share overlap checks, but expose only
+// fixed loopback destinations chosen by the operator.
+type udpNativeProxyFlags struct{ routes *webProxyFlags }
+
+func (f udpNativeProxyFlags) String() string { return f.routes.String() }
+func (f udpNativeProxyFlags) Set(value string) error {
+	route, address, found := strings.Cut(value, "=")
+	if !found || route == "/" || route == "/netplay" || strings.HasPrefix(route, "/netplay/") || !cleanProxyPath(route, false) {
+		return fmt.Errorf("UDP proxy requires an exact non-reserved route=tcp://loopback:port")
+	}
+	u, err := url.Parse(address)
+	if err != nil {
+		return err
+	}
+	port, err := strconv.Atoi(u.Port())
+	ip := net.ParseIP(u.Hostname())
+	if u.Scheme != "tcp" || ip == nil || !ip.IsLoopback() || err != nil || port < 1 || port > 65535 || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return fmt.Errorf("UDP proxy upstream requires a literal loopback TCP endpoint without path or credentials")
+	}
+	entry := webProxyRoute{route: route, upstream: u}
+	for _, existing := range *f.routes {
+		if proxyRoutesOverlap(existing, entry) {
+			return fmt.Errorf("overlapping UDP proxy route %q", route)
+		}
+	}
+	*f.routes = append(*f.routes, entry)
+	return nil
+}
+
 func (flags *webProxyFlags) String() string {
 	var entries []string
 	for _, proxy := range *flags {

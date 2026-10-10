@@ -25,6 +25,10 @@ const (
 	// Once a delta is tiny, recompressing the entire world can save at most
 	// this many wire bytes. Prefer bounded CPU work over that small difference.
 	tinySnapshotDeltaBytes = 2 << 10
+	// Reusing a confirmed dictionary avoids rebuilding its match table for
+	// every acknowledgment. Rotate well before the receiver's eight-state
+	// history limit; ID distance also bounds reuse when broadcasts are skipped.
+	snapshotDictionaryReuseIDs = 4
 )
 
 var (
@@ -127,9 +131,20 @@ func (encoder *SnapshotEncoder) Encode(full Snapshot, acknowledgedID uint32) (Sn
 		return Snapshot{}, ErrProtocol
 	}
 	encoder.resetEpoch(full.Epoch)
+	if acknowledgedID == 0 {
+		// A resync baseline must end dictionary reuse, so the next update can
+		// depend solely on the newly confirmed state.
+		encoder.dictionaryEpoch, encoder.dictionaryID = 0, 0
+	}
 	result := full
 	if acknowledgedID > 0 && acknowledgedID < full.ID {
 		if baseline := encoder.history.get(acknowledgedID); baseline != nil {
+			if encoder.dictionaryEpoch == full.Epoch && encoder.dictionaryID > 0 &&
+				encoder.dictionaryID <= acknowledgedID && full.ID-encoder.dictionaryID <= snapshotDictionaryReuseIDs {
+				if cached := encoder.history.get(encoder.dictionaryID); cached != nil {
+					acknowledgedID, baseline = encoder.dictionaryID, cached
+				}
+			}
 			if encoder.dictionaryEpoch != full.Epoch || encoder.dictionaryID != acknowledgedID {
 				if err := encoder.delta.ResetWithOptions(nil, zstd.WithEncoderDictRaw(snapshotDictionaryID, baseline)); err != nil {
 					return Snapshot{}, err
