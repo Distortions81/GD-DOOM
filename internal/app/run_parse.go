@@ -31,6 +31,7 @@ import (
 	"gddoom/internal/netplay"
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/doomtex"
+	"gddoom/internal/render/menufont"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/session"
 	"gddoom/internal/sessionvoice"
@@ -636,6 +637,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
 	connectAddr := fs.String("connect", "", "join an authoritative server: host:port, HTTPS/WebTransport, or WebSocket URL")
 	multiplayerServer := fs.String("multiplayer-server", "", "prefill the in-game Multiplayer server address without joining")
+	multiplayerLobby := fs.String("multiplayer-lobby", "", "HTTP(S) lobby URL for browsing rooms and creating games")
 	netName := fs.String("player-name", "Player", "multiplayer display name")
 	netSpectator := fs.Bool("spectate", false, "join authoritative multiplayer as a spectator (F12 changes view)")
 	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
@@ -668,6 +670,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	watchFlagSet := flagProvided(normalizedArgs, "watch")
 	connectActive := strings.TrimSpace(*connectAddr) != ""
 	joinDefaults := runtimecfg.AuthorityJoinRequest{Address: strings.TrimSpace(*multiplayerServer), Name: *netName, Spectator: *netSpectator}
+	lobbyURL, lobbyErr := resolveAuthorityLobbyURL(*multiplayerLobby)
+	if lobbyErr != nil {
+		fmt.Fprintf(stderr, "multiplayer lobby: %v\n", lobbyErr)
+		return 2
+	}
 	if connectActive {
 		joinDefaults.Address = strings.TrimSpace(*connectAddr)
 	}
@@ -894,6 +901,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if !networkActive && shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
 		buildCfg := renderBuildConfig{
 			authorityJoinDefaults:      joinDefaults,
+			authorityLobbyURL:          lobbyURL,
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
 			mapExplicit:                mapExplicit,
 			width:                      *width,
@@ -1453,6 +1461,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			opts.AuthorityJoin = authorityJoiner(wadPaths, wf)
 			opts.AuthorityJoinDefaults = joinDefaults
 			configureAuthorityBrowser(&opts, wadPaths, configPath)
+			if err := configureAuthorityLobby(&opts, wadPaths, lobbyURL); err != nil {
+				fmt.Fprintf(stderr, "multiplayer lobby: %v\n", err)
+				return 1
+			}
 		}
 		if connectActive {
 			client, joinedMap, cerr := connectAuthority(context.Background(), authorityLaunch{Address: *connectAddr, Name: *netName, Spectator: *netSpectator}, wadPaths, wf, &opts)
@@ -1834,6 +1846,7 @@ type knownIWADChoice = launchcatalog.KnownIWADChoice
 
 type renderBuildConfig struct {
 	authorityJoinDefaults      runtimecfg.AuthorityJoinRequest
+	authorityLobbyURL          string
 	selectedMap                string
 	mapExplicit                bool
 	width                      int
@@ -2076,6 +2089,12 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		pcSpeakerBank = buildPCSpeakerBank(dpr)
 	}
 	sharedPCSpeaker := buildSharedPCSpeakerPlayer(cfg.musicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant), audiofx.ParsePCSpeakerOutput("emulated"), cfg.pcSpeakerVolume, stderr)
+	keepPCSpeaker := false
+	defer func() {
+		if !keepPCSpeaker && sharedPCSpeaker != nil {
+			sharedPCSpeaker.Close()
+		}
+	}()
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -2319,7 +2338,11 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		opts.AuthorityJoin = authorityJoiner(wadPaths, wf)
 		opts.AuthorityJoinDefaults = cfg.authorityJoinDefaults
 		configureAuthorityBrowser(&opts, wadPaths, cfg.configPath)
+		if err := configureAuthorityLobby(&opts, wadPaths, cfg.authorityLobbyURL); err != nil {
+			return nil, fmt.Errorf("multiplayer lobby: %w", err)
+		}
 	}
+	keepPCSpeaker = true
 	return &renderBundle{m: m, opts: opts, nextMap: nextMap}, nil
 }
 
@@ -3882,7 +3905,7 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 		return nil
 	}
 	names := []string{
-		"M_DOOM", "M_NGAME", "M_OPTION", "M_LOADG", "M_SAVEG", "M_RDTHIS", "M_QUITG",
+		"M_DOOM", "M_NGAME", "M_OPTION", "M_LOADG", "M_SAVEG", "M_RDTHIS", "M_QUITG", "M_MULTI",
 		"M_SKULL1", "M_SKULL2",
 		"M_PAUSE",
 		"M_NEWG", "M_SKILL", "M_JKILL", "M_ROUGH", "M_HURT", "M_ULTRA", "M_NMARE",
@@ -3913,6 +3936,12 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 			OffsetX: ox,
 			OffsetY: oy,
 		})
+	}
+	// Authored menu artwork takes precedence over the reusable generated font.
+	if _, exists := out["M_MULTI"]; !exists {
+		if patch, ok := menufont.New(out).Compose("Multiplayer"); ok {
+			out["M_MULTI"] = prepareOpaquePatchTexture(patch)
+		}
 	}
 	if len(out) == 0 {
 		return nil

@@ -282,9 +282,12 @@
         if (!launchParams.has("multiplayer-server") && typeof window.__gddoomMultiplayerServer === "string" && window.__gddoomMultiplayerServer) {
           go.argv.push(`-multiplayer-server=${window.__gddoomMultiplayerServer}`);
         }
+        if (!launchParams.has("multiplayer-lobby") && typeof window.__gddoomMultiplayerLobby === "string" && window.__gddoomMultiplayerLobby) {
+          go.argv.push(`-multiplayer-lobby=${window.__gddoomMultiplayerLobby}`);
+        }
         // Accept named launch options, never an arbitrary shell/argument string.
         // Go validates addresses, rule bounds, local content, and compatibility.
-        for (const name of ["connect", "multiplayer-server", "player-name", "spectate", "map", "skill", "no-monsters", "wad", "file"]) {
+        for (const name of ["connect", "multiplayer-server", "multiplayer-lobby", "player-name", "spectate", "map", "skill", "no-monsters", "wad", "file"]) {
           if (launchParams.has(name)) go.argv.push(`-${name}=${launchParams.get(name)}`);
         }
         return instantiateGame(go).then((result) => {

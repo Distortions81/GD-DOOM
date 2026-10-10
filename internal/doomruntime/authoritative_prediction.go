@@ -37,6 +37,7 @@ type ClientPrediction struct {
 	lastInput        netgame.Input
 	hasInput         bool
 	renderCorrection predictionRenderCorrection
+	renderEyeOffset  float64
 }
 
 const predictionCorrectionDuration = 100 * time.Millisecond
@@ -44,8 +45,8 @@ const predictionCorrectionDuration = 100 * time.Millisecond
 // Reconciliation changes collision immediately. This short, bounded offset
 // lets the camera absorb small corrections without also delaying new input.
 type predictionRenderCorrection struct {
-	x, y, angle float64
-	started     time.Time
+	x, y, z, angle float64
+	started        time.Time
 }
 
 type predictionRenderHistory struct {
@@ -55,6 +56,7 @@ type predictionRenderHistory struct {
 	prevAngle, prevPrevAngle uint32
 	renderX, renderY         float64
 	renderAngle              uint32
+	eyeZ                     float64
 	alpha                    float64
 	updated                  time.Time
 }
@@ -63,21 +65,22 @@ func (p *ClientPrediction) captureRenderHistory() predictionRenderHistory {
 	g := p.g
 	return predictionRenderHistory{g.p, g.State, g.prevPX, g.prevPY,
 		g.prevAngle, g.prevPrevAngle, g.renderPX, g.renderPY, g.renderAngle,
-		g.renderAlpha, g.lastUpdate}
+		g.playerBaseEyeZ(), g.renderAlpha, g.lastUpdate}
 }
 
-func (p *ClientPrediction) correctionAt(now time.Time) (x, y, angle float64) {
+func (p *ClientPrediction) correctionAt(now time.Time) (x, y, z, angle float64) {
 	c := p.renderCorrection
 	if c.started.IsZero() {
-		return 0, 0, 0
+		return 0, 0, 0, 0
 	}
 	remaining := 1 - float64(now.Sub(c.started))/float64(predictionCorrectionDuration)
 	remaining = math.Max(0, math.Min(1, remaining))
-	return c.x * remaining, c.y * remaining, c.angle * remaining
+	return c.x * remaining, c.y * remaining, c.z * remaining, c.angle * remaining
 }
 
 func (p *ClientPrediction) prepareRenderCorrection(now time.Time) {
-	x, y, angle := p.correctionAt(now)
+	x, y, z, angle := p.correctionAt(now)
+	p.renderEyeOffset = z
 	g := p.g
 	g.renderPX += x
 	g.renderPY += y
@@ -89,6 +92,7 @@ func (p *ClientPrediction) prepareRenderCorrection(now time.Time) {
 func (p *ClientPrediction) restoreRenderHistory(from predictionRenderHistory, now time.Time) {
 	g := p.g
 	dx, dy := g.p.x-from.body.x, g.p.y-from.body.y
+	dz := g.playerBaseEyeZ() - from.eyeZ
 	da := g.p.angle - from.body.angle
 	// Preserve the current interpolation phase and velocity, translating its
 	// endpoints onto the corrected timeline instead of restarting it on receipt.
@@ -105,19 +109,21 @@ func (p *ClientPrediction) restoreRenderHistory(from predictionRenderHistory, no
 	g.State.RenderCamY += y
 	g.renderPX, g.renderPY = from.renderX+x, from.renderY+y
 	g.renderAngle = from.renderAngle + da
-	if dx == 0 && dy == 0 && da == 0 {
+	if dx == 0 && dy == 0 && dz == 0 && da == 0 {
 		// An accurate snapshot must not prolong an earlier correction.
 		return
 	}
-	cx, cy, ca := p.correctionAt(now)
-	cx, cy, ca = cx-x, cy-y, ca-float64(int32(da))
-	if math.Abs(cx) > 32 || math.Abs(cy) > 32 || math.Abs(ca) > float64(doomAng90) {
+	cx, cy, cz, ca := p.correctionAt(now)
+	cx, cy, cz, ca = cx-x, cy-y, cz-dz, ca-float64(int32(da))
+	if math.Abs(cx) > 32 || math.Abs(cy) > 32 || math.Abs(cz) > 32 || math.Abs(ca) > float64(doomAng90) {
 		p.renderCorrection = predictionRenderCorrection{}
+		p.renderEyeOffset = 0
 		g.syncRenderState()
 		g.markSimUpdate(now)
 		return
 	}
-	p.renderCorrection = predictionRenderCorrection{cx, cy, ca, now}
+	p.renderCorrection = predictionRenderCorrection{cx, cy, cz, ca, now}
+	p.renderEyeOffset = cz
 }
 
 // newClientPrediction binds an existing renderable game to a server welcome.
@@ -255,10 +261,12 @@ func (p *ClientPrediction) reconcileAt(snapshot netgame.Snapshot, now time.Time)
 	p.g.syncRenderState()
 	if wasReady && !discontinuity && wasDead == p.g.isDead && previousTic == p.predictedTic &&
 		abs(p.g.p.x-localRenderFrom.body.x) <= 32*fracUnit && abs(p.g.p.y-localRenderFrom.body.y) <= 32*fracUnit &&
-		abs(p.g.p.z-localRenderFrom.body.z) <= 32*fracUnit && abs(int64(int32(p.g.p.angle-localRenderFrom.body.angle))) <= int64(doomAng90) {
+		abs(p.g.p.z-localRenderFrom.body.z) <= 32*fracUnit && math.Abs(p.g.playerBaseEyeZ()-localRenderFrom.eyeZ) <= 32 &&
+		abs(int64(int32(p.g.p.angle-localRenderFrom.body.angle))) <= int64(doomAng90) {
 		p.restoreRenderHistory(localRenderFrom, now)
 	} else {
 		p.renderCorrection = predictionRenderCorrection{}
+		p.renderEyeOffset = 0
 		p.g.markSimUpdate(now)
 	}
 	p.applyAuthoritySounds(r, wasReady)

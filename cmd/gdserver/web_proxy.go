@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 type webProxyRoute struct {
 	route    string
 	upstream *url.URL
+	prefix   bool
 }
 
 type webProxyFlags []webProxyRoute
@@ -28,19 +30,59 @@ type webProxyFlags []webProxyRoute
 func (flags *webProxyFlags) String() string {
 	var entries []string
 	for _, proxy := range *flags {
-		entries = append(entries, proxy.route+"="+proxy.upstream.String())
+		if !proxy.prefix {
+			entries = append(entries, proxy.route+"="+proxy.upstream.String())
+		}
 	}
 	return strings.Join(entries, ",")
 }
 
 func (flags *webProxyFlags) Set(value string) error {
-	route, address, found := strings.Cut(value, "=")
-	if !found || route == "/" || route == "/netplay" || !strings.HasPrefix(route, "/") || strings.HasSuffix(route, "/") || path.Clean(route) != route || strings.ContainsAny(route, "{}%?# \t\r\n\\") {
-		return fmt.Errorf("web proxy requires an exact non-reserved /route=upstream URL")
+	return flags.add(value, false)
+}
+
+// Prefix and exact flags share one registry so ambiguous routes are rejected
+// regardless of which flag was supplied first.
+type webProxyPrefixFlags struct{ routes *webProxyFlags }
+
+func (flags webProxyPrefixFlags) String() string {
+	var entries []string
+	if flags.routes != nil {
+		for _, proxy := range *flags.routes {
+			if proxy.prefix {
+				entries = append(entries, proxy.route+"="+proxy.upstream.String())
+			}
+		}
 	}
+	return strings.Join(entries, ",")
+}
+
+func (flags webProxyPrefixFlags) Set(value string) error { return flags.routes.add(value, true) }
+
+func cleanProxyPath(value string, prefix bool) bool {
+	if value == "" || !strings.HasPrefix(value, "/") || strings.ContainsAny(value, "{}%?# \t\r\n\\") {
+		return false
+	}
+	if prefix {
+		return value == "/" || (strings.HasSuffix(value, "/") && path.Clean(value)+"/" == value)
+	}
+	return !strings.HasSuffix(value, "/") && path.Clean(value) == value
+}
+
+func proxyRoutesOverlap(a, b webProxyRoute) bool {
+	return strings.TrimSuffix(a.route, "/") == strings.TrimSuffix(b.route, "/") ||
+		(a.prefix && strings.HasPrefix(b.route, a.route)) || (b.prefix && strings.HasPrefix(a.route, b.route))
+}
+
+func (flags *webProxyFlags) add(value string, prefix bool) error {
+	route, address, found := strings.Cut(value, "=")
+	if !found || route == "/" || route == "/netplay" || strings.HasPrefix(route, "/netplay/") || !cleanProxyPath(route, prefix) {
+		return fmt.Errorf("web proxy requires a clean non-reserved route=upstream URL; prefix routes must end in /")
+	}
+	entry := webProxyRoute{route: route, prefix: prefix}
 	for _, proxy := range *flags {
-		if proxy.route == route {
-			return fmt.Errorf("duplicate web proxy route %q", route)
+		if proxyRoutesOverlap(proxy, entry) {
+			return fmt.Errorf("overlapping web proxy route %q", route)
 		}
 	}
 	upstream, err := url.Parse(address)
@@ -48,13 +90,15 @@ func (flags *webProxyFlags) Set(value string) error {
 		return fmt.Errorf("invalid web proxy upstream: %w", err)
 	}
 	port, err := strconv.Atoi(upstream.Port())
-	if upstream.Scheme != "http" || upstream.Opaque != "" || upstream.User != nil || upstream.RawQuery != "" || upstream.ForceQuery || upstream.Fragment != "" || upstream.RawPath != "" || upstream.Path == "" || path.Clean(upstream.Path) != upstream.Path || !strings.HasPrefix(upstream.Path, "/") || err != nil || port < 1 || port > 65535 {
+	cleanUpstream := cleanProxyPath(upstream.Path, prefix) || (!prefix && upstream.Path == "/")
+	if upstream.Scheme != "http" || upstream.Opaque != "" || upstream.User != nil || upstream.RawQuery != "" || upstream.ForceQuery || upstream.Fragment != "" || upstream.RawPath != "" || !cleanUpstream || err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("web proxy upstream must be an HTTP loopback URL with an explicit port and clean path, without credentials, query, or fragment")
 	}
 	if ip := net.ParseIP(upstream.Hostname()); ip == nil || !ip.IsLoopback() {
 		return fmt.Errorf("web proxy upstream must use a literal loopback IP address")
 	}
-	*flags = append(*flags, webProxyRoute{route: route, upstream: upstream})
+	entry.upstream = upstream
+	*flags = append(*flags, entry)
 	return nil
 }
 
@@ -65,6 +109,9 @@ func (route webProxyRoute) handler(lifetime context.Context, errOut io.Writer) h
 	transport.Proxy = nil
 	transport.DialContext = (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	transport.ResponseHeaderTimeout = 5 * time.Second
+	if route.prefix {
+		transport.ResponseHeaderTimeout = 3 * time.Minute
+	}
 	proxy := &httputil.ReverseProxy{
 		Transport: transport,
 		ErrorLog:  log.New(errOut, "gdserver web proxy: ", 0),
@@ -72,14 +119,31 @@ func (route webProxyRoute) handler(lifetime context.Context, errOut io.Writer) h
 			// Keep Origin and the WebSocket subprotocol intact. The backend's
 			// normal WebSocket handler enforces its own browser origin policy.
 			upstream := *route.upstream
+			if route.prefix {
+				upstream.Path += strings.TrimPrefix(request.In.URL.Path, route.route)
+				// ReverseProxy removes inbound forwarding headers before Rewrite;
+				// SetXForwarded uses the actual socket peer, never a claimed chain.
+				request.SetXForwarded()
+			}
 			request.Out.URL = &upstream
 			request.Out.Host = route.upstream.Host
 		},
 	}
 	context.AfterFunc(lifetime, transport.CloseIdleConnections)
-	slots := make(chan struct{}, 32)
+	capacity := 32
+	if route.prefix {
+		capacity = 256
+	}
+	slots := make(chan struct{}, capacity)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != route.route || request.URL.RawPath != "" {
+		valid := request.URL.Path == route.route
+		if route.prefix {
+			valid = strings.HasPrefix(request.URL.Path, route.route) &&
+				(path.Clean(request.URL.Path) == request.URL.Path || request.URL.Path == route.route) &&
+				!strings.ContainsAny(request.URL.Path, "{}%?# \t\r\n\\") && request.URL.EscapedPath() == request.URL.Path &&
+				request.URL.RawQuery == "" && !request.URL.ForceQuery
+		}
+		if !valid || request.URL.RawPath != "" {
 			http.NotFound(writer, request)
 			return
 		}
@@ -94,8 +158,44 @@ func (route webProxyRoute) handler(lifetime context.Context, errOut io.Writer) h
 		stop := context.AfterFunc(lifetime, cancel)
 		defer stop()
 		defer cancel()
+		if route.prefix {
+			controller := http.NewResponseController(writer)
+			deadline := time.Now().Add(3 * time.Minute)
+			_ = controller.SetReadDeadline(deadline)
+			_ = controller.SetWriteDeadline(deadline)
+			stopped := make(chan struct{})
+			stopIO := context.AfterFunc(ctx, func() {
+				_ = controller.SetReadDeadline(time.Now())
+				_ = controller.SetWriteDeadline(time.Now())
+				close(stopped)
+			})
+			defer func() {
+				if !stopIO() {
+					<-stopped
+				}
+				_ = controller.SetReadDeadline(time.Time{})
+				_ = controller.SetWriteDeadline(time.Time{})
+			}()
+			writer = prefixProxyWriter{writer}
+		}
 		// ReverseProxy closes both hijacked WebSocket sockets when this context
 		// ends. http.Server.Close alone cannot close hijacked connections.
 		proxy.ServeHTTP(writer, request.WithContext(ctx))
 	})
+}
+
+// Only ordinary HTTP transfers have a three-minute deadline. A successful
+// WebSocket upgrade transfers the connection to the match lifecycle instead.
+type prefixProxyWriter struct{ http.ResponseWriter }
+
+func (w prefixProxyWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w prefixProxyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	connection, buffer, err := http.NewResponseController(w.ResponseWriter).Hijack()
+	if err == nil {
+		err = connection.SetDeadline(time.Time{})
+		if err != nil {
+			_ = connection.Close()
+		}
+	}
+	return connection, buffer, err
 }

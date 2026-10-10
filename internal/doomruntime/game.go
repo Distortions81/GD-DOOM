@@ -13426,6 +13426,16 @@ func normalizeDeg360(deg float64) float64 {
 }
 
 func (g *game) playerEyeZ() float64 {
+	z := g.playerBaseEyeZ()
+	if g.clientPrediction != nil {
+		z += g.clientPrediction.renderEyeOffset
+	}
+	return z
+}
+
+// The body/view height changes immediately on authoritative reconciliation.
+// The separate render offset above must never alter collision or view physics.
+func (g *game) playerBaseEyeZ() float64 {
 	if g.playerViewZ == 0 {
 		return float64(g.p.z)/fracUnit + 41.0
 	}
@@ -19619,6 +19629,9 @@ func (g *game) markSimUpdate(now time.Time) {
 }
 
 func (g *game) expectedSimStepSeconds() float64 {
+	if g != nil && g.clientPrediction != nil && g.clientUpdate.step > 0 && g.clientUpdate.step != time.Second/doomTicsPerSecond {
+		return g.clientUpdate.step.Seconds()
+	}
 	ticRate := float64(doomTicsPerSecond)
 	if g != nil && g.simTickScale > 0 {
 		ticRate *= g.simTickScale

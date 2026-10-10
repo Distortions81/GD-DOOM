@@ -95,6 +95,9 @@ func TestMultiplayerMenuJoinLeaveRestoresRulesAndKeepsLiveSettings(t *testing.T)
 	if sg.opts.AuthorityClient != nil || sg.g.opts.AuthorityClient != nil || sg.opts.AuthorityMapLoader != nil || sg.g.clientPrediction != nil || !sg.frontend.Active || !sg.frontend.MenuActive || sg.frontend.InGame || sg.current != sg.bootMap.Name {
 		t.Fatal("leave did not return to a clean local title")
 	}
+	if sg.frontend.ItemOn != frontendMultiplayerMenuItem || sg.frontendMainMenuRow(sg.frontend.ItemOn) != 1 {
+		t.Fatal("leave did not select Multiplayer in its new title-menu row")
+	}
 	if sg.opts.GameMode != gameModeSingle || sg.opts.SkillLevel != 2 || sg.opts.WADHash != "local-hash" || !sg.opts.AllCheats || !sg.opts.ShowAllItems || !sg.opts.Invulnerable {
 		t.Fatal("leave failed to restore original local rules")
 	}
@@ -178,7 +181,7 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	sg.opts.AuthorityJoin = func(context.Context, runtimecfg.AuthorityJoinRequest) (runtimecfg.AuthorityJoinResult, error) {
 		return runtimecfg.AuthorityJoinResult{}, errors.New("server unavailable")
 	}
-	sg.frontend.ItemOn = len(frontendMainMenuNames)
+	sg.frontend.ItemOn = frontendMultiplayerMenuItem
 	menuKey(sg, ebiten.KeyEnter)
 	if err := sg.tickFrontend(); err != nil {
 		t.Fatal(err)
@@ -254,6 +257,9 @@ func TestMultiplayerMenuCLILeaveUsesOriginalLocalRules(t *testing.T) {
 	sg.leaveAuthorityMatch()
 	if sg.opts.GameMode != gameModeSingle || sg.opts.SkillLevel != 5 || sg.opts.WADHash != "original-cli-hash" || !sg.opts.ShowNoSkillItems {
 		t.Fatal("CLI network launch lost original local rules")
+	}
+	if sg.frontend.ItemOn != 0 {
+		t.Fatal("CLI leave selected a nonexistent multiplayer row without a join callback")
 	}
 	select {
 	case <-client.left:

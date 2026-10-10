@@ -376,14 +376,15 @@ func TestPredictionCorrectionChangesCollisionImmediatelyAndCameraContinuously(t 
 }
 
 func TestPredictionDiscontinuitiesSnapAndClearCameraCorrection(t *testing.T) {
-	for _, kind := range []string{"teleport", "respawn", "death", "large-position", "large-yaw", "accumulated-position", "accumulated-yaw", "newer-timeline"} {
+	for _, kind := range []string{"teleport", "respawn", "death", "large-position", "large-body-z", "large-eye-height", "large-yaw", "accumulated-position", "accumulated-eye-height", "accumulated-yaw", "newer-timeline"} {
 		t.Run(kind, func(t *testing.T) {
 			a, p := predictionTestWorld(t)
 			g := p.g
 			g.clientPrediction = p
 			g.opts.SourcePortMode = true
 			now := time.Unix(300, 0)
-			p.renderCorrection = predictionRenderCorrection{3, -1, float64(doomAng5), now}
+			p.renderCorrection = predictionRenderCorrection{x: 3, y: -1, z: 2, angle: float64(doomAng5), started: now}
+			g.prepareRenderStateAt(now)
 			switch kind {
 			case "teleport":
 				a.g.authorityRules.Scores[1].MovementEpoch++
@@ -393,10 +394,16 @@ func TestPredictionDiscontinuitiesSnapAndClearCameraCorrection(t *testing.T) {
 				a.players[1].isDead, a.players[1].stats.Health = true, 0
 			case "large-position":
 				a.players[1].p.x += 64 * fracUnit
+			case "large-body-z":
+				a.players[1].p.z += 64 * fracUnit
+			case "large-eye-height":
+				a.players[1].playerViewZ += 64 * fracUnit
 			case "large-yaw":
 				a.players[1].p.angle += doomAng180
 			case "accumulated-position":
 				a.players[1].p.x -= 31 * fracUnit
+			case "accumulated-eye-height":
+				a.players[1].playerViewZ -= 31 * fracUnit
 			case "accumulated-yaw":
 				a.players[1].p.angle -= doomAng90
 			case "newer-timeline":
@@ -410,9 +417,90 @@ func TestPredictionDiscontinuitiesSnapAndClearCameraCorrection(t *testing.T) {
 			if p.renderCorrection != (predictionRenderCorrection{}) || g.lastUpdate != now || g.prevPX != g.p.x || g.prevPY != g.p.y {
 				t.Fatal("discontinuity retained local interpolation or a correction")
 			}
+			if p.renderEyeOffset != 0 || g.playerEyeZ() != g.playerBaseEyeZ() {
+				t.Fatal("discontinuity retained vertical camera correction")
+			}
 			got := capturePredictionCamera(g, now)
 			want := predictionCameraSample{float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, g.p.angle}
 			assertPredictionCameraNear(t, got, want)
 		})
+	}
+}
+
+func TestPredictionVerticalCorrectionsPreserveCameraAndCanonicalHeight(t *testing.T) {
+	for _, bodyMoves := range []bool{false, true} {
+		t.Run(map[bool]string{false: "eye-height-only", true: "body-and-eye-height"}[bodyMoves], func(t *testing.T) {
+			a, p := predictionTestWorld(t)
+			g := p.g
+			g.clientPrediction = p
+			g.opts.SourcePortMode = true
+			now := time.Unix(400, 0)
+			g.prepareRenderStateAt(now)
+			before := g.playerEyeZ()
+			// Lifts, steps and ceiling clipping can correct the eye separately
+			// from the body's XY/yaw. Both cases must enter the render smoother.
+			a.players[1].playerViewZ += 8 * fracUnit
+			if bodyMoves {
+				a.players[1].p.z += 8 * fracUnit
+			}
+			if _, err := p.reconcileAt(predictionSnapshot(t, a, 2, netgame.InputAck{}), now); err != nil {
+				t.Fatal(err)
+			}
+			canonicalBody, canonicalView, canonicalTic := g.p, g.playerViewZ, g.worldTic
+			if canonicalBody != a.players[1].p || canonicalView != a.players[1].playerViewZ || g.playerBaseEyeZ() != before+8 {
+				t.Fatal("smoothing delayed authoritative body/view-height correction")
+			}
+			g.prepareRenderStateAt(now)
+			if g.playerEyeZ() != before {
+				t.Fatalf("vertical correction jumped from %v to %v", before, g.playerEyeZ())
+			}
+			g.prepareRenderStateAt(now.Add(predictionCorrectionDuration / 2))
+			if math.Abs(g.playerEyeZ()-(before+4)) > 1e-9 {
+				t.Fatalf("vertical correction did not decay: %v", g.playerEyeZ())
+			}
+			correction := p.renderCorrection
+			if _, err := p.reconcileAt(predictionSnapshot(t, a, 3, netgame.InputAck{}), now.Add(predictionCorrectionDuration/2)); err != nil {
+				t.Fatal(err)
+			}
+			if p.renderCorrection != correction {
+				t.Fatal("matching snapshot prolonged vertical correction")
+			}
+			g.prepareRenderStateAt(now.Add(predictionCorrectionDuration))
+			if g.playerEyeZ() != before+8 || g.p != canonicalBody || g.playerViewZ != canonicalView || g.worldTic != canonicalTic {
+				t.Fatal("vertical rendering did not converge without changing canonical state")
+			}
+		})
+	}
+}
+
+func TestPredictionRepeatedVerticalCorrectionsStartAtCurrentCamera(t *testing.T) {
+	a, p := predictionTestWorld(t)
+	g := p.g
+	g.clientPrediction = p
+	g.opts.SourcePortMode = true
+	now := time.Unix(500, 0)
+	g.prepareRenderStateAt(now)
+	before := g.playerEyeZ()
+	a.players[1].playerViewZ += 6 * fracUnit
+	if _, err := p.reconcileAt(predictionSnapshot(t, a, 2, netgame.InputAck{}), now); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(40 * time.Millisecond)
+	g.prepareRenderStateAt(now)
+	current := g.playerEyeZ()
+	if current <= before || current >= before+6 {
+		t.Fatalf("first correction did not interpolate: %v", current)
+	}
+	a.players[1].playerViewZ += 3 * fracUnit
+	if _, err := p.reconcileAt(predictionSnapshot(t, a, 3, netgame.InputAck{}), now); err != nil {
+		t.Fatal(err)
+	}
+	g.prepareRenderStateAt(now)
+	if math.Abs(g.playerEyeZ()-current) > 1e-9 {
+		t.Fatalf("overlapping vertical correction jumped: got %v want %v", g.playerEyeZ(), current)
+	}
+	g.prepareRenderStateAt(now.Add(predictionCorrectionDuration))
+	if g.playerEyeZ() != before+9 || g.playerViewZ != a.players[1].playerViewZ {
+		t.Fatal("overlapping correction failed to converge")
 	}
 }

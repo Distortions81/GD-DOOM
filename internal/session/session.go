@@ -18,6 +18,12 @@ type hostFrameSampler interface {
 	SampleInput()
 }
 
+// hostFrameUpdater keeps asynchronous clients responsive between fixed game
+// tics. It must not advance the ordinary simulation or fixed-rate menu timers.
+type hostFrameUpdater interface {
+	UpdateHostFrame() error
+}
+
 type finalScreenDrawer interface {
 	DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM)
 }
@@ -51,6 +57,9 @@ func (g *Game) Update() error {
 	}
 	g.hostUpdateRemainder++
 	if g.hostUpdateRemainder < hostUpdatesPerTick {
+		if updater, ok := g.runtime.(hostFrameUpdater); ok {
+			return updater.UpdateHostFrame()
+		}
 		return nil
 	}
 	g.hostUpdateRemainder = 0

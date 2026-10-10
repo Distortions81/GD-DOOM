@@ -49,7 +49,7 @@ Expose map initialization, player lifecycle, fixed-tic stepping, snapshots and
 restore independently of input polling, drawing and sound playback. Keep the
 single-player/demo ordering intact and retain its parity regression tests.
 Package-global gameplay RNG must not be shared unsafely between concurrent
-matches; initially one match per server process is acceptable and explicit.
+matches; one match per server process keeps independent rooms isolated.
 
 ## Inputs, snapshots and prediction
 
@@ -149,7 +149,8 @@ client deduplication. Menus keep receiving chat and snapshots while gameplay
 controls are neutral; opening chat never pauses the match.
 Hold F6 to view the current roster, frags and deaths.
 
-The desktop and WASM title/pause menus include **Multiplayer**. Select a server
+The desktop and WASM title/pause menus place **Multiplayer** directly below
+**New Game**. Select a server
 and press Enter or tap the touch **Use** button to join immediately. The selected
 row says **Join** and shows the server name; nearby details show map, mode,
 occupancy and whether the loaded game files match. **Player** changes your name.
@@ -186,6 +187,138 @@ The `-multiplayer-server` option selects the default list entry; `-connect` stil
 joins immediately. `MULTIPLAYER_SERVER` supplies the default browser address
 when running `scripts/build_wasm.sh`.
 
+## Multi-room lobby and custom WADs
+
+`cmd/gdlobby` is the HTTP control plane and WebSocket gateway for user-created
+games. It launches one `gdserver` child process for each room, with private
+loopback listeners. Each process owns its world, RNG, clocks, players and rules.
+A room appears as ready only after the supervisor queries the running worker
+and verifies its actual content/rules manifest. Room creation has a stable
+request ID: a retry after a lost HTTP response does not start a second match.
+
+The default capacity is eight rooms (maximum 32). Empty rooms expire after ten
+minutes; reconnect reservations and spectators keep a room occupied. Failed
+children are reaped, and stopping the lobby stops its children and upgraded
+WebSocket connections. Startup, logs, creation rate and retained room records
+are bounded. Rooms use WSS through `/rooms/<id>/netplay` on the public gateway;
+the existing direct servers can still use WebTransport or native TCP.
+
+Create an operator-owned catalog, with paths relative to the JSON file:
+
+```json
+{
+  "packs": [
+    {"id": "doom-shareware", "name": "DOOM Shareware", "wads": ["DOOM1.WAD"]},
+    {"id": "custom-mapset", "name": "Custom mapset", "wads": ["DOOM2.WAD", "maps.wad"]}
+  ],
+  "redistribution": [
+    {
+      "sha256": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+      "name": "DOOM1.WAD",
+      "allow": true,
+      "license": "Original shareware redistribution terms",
+      "source": "Repository DOOM1.WAD"
+    }
+  ]
+}
+```
+
+Only list files actually installed on the host. Overlay order matters. The
+lobby hashes the files and validates available maps before advertising them.
+The example approval identifies the repository's exact `DOOM1.WAD`; verify
+your own file's digest and redistribution terms before adding an approval.
+`redistribution` is optional. Each entry is an explicit operator permission for
+one SHA-256, with a display filename and optional license/source information.
+The host never infers permission from a filename, shareware label, uploader
+claim, or whether a WAD is described as noncommercial. Unknown files and
+`allow: false` entries stay private, including files in custom uploaded stacks.
+An uploader cannot opt a file into public sharing.
+
+An approval applies to that exact file wherever it appears: in an installed
+pack, a later upload, or a previously stored upload after restart. Add the
+verified overlay hash to approve a mapset while keeping its commercial base
+private. Restart the lobby after changing policy; removing an approval stops
+new origin downloads but cannot retract copies already downloaded or cached.
+For a local browser preview, build the two executables and run:
+
+```bash
+CGO_ENABLED=0 go build -o /tmp/gdserver ./cmd/gdserver
+CGO_ENABLED=0 go build -o /tmp/gdlobby ./cmd/gdlobby
+/tmp/gdlobby -listen 127.0.0.1:6670 -public-url http://127.0.0.1:6670 \
+  -worker /tmp/gdserver -catalog /path/to/catalog.json \
+  -web-origins http://127.0.0.1:8080 -upload-dir /path/to/lobby-uploads
+MULTIPLAYER_LOBBY=http://127.0.0.1:6670 ./scripts/build_wasm.sh
+go run ./cmd/wasmserve
+```
+
+For public hosting, use an HTTPS public URL and TLS termination that forwards
+WebSocket upgrades and the HTTP API to the lobby. Allow the frontend's exact
+origin with `-web-origins`. Configure the proxy's upload body limit and timeout
+to accommodate WAD uploads. Worker ports stay private. The browser accepts
+`?multiplayer-lobby=<HTTP(S) base URL>`; native clients accept
+`-multiplayer-lobby=<URL>`. **Direct Servers** retains the saved server browser.
+The room list is transient and is not added to saved favorites.
+
+**Create Game** selects name, WAD, starting map, difficulty and mode; **Rules**
+contains player count, monster behavior, friendly fire, frag and time limits.
+With `-upload-dir` configured, **Upload Loaded WADs** uploads the entire ordered
+stack currently loaded by the client, including browser-local files selected
+in the launcher. **Load WAD Files** lets browser players choose their base IWAD,
+enable custom PWADs and reorder overlays before starting. Uploads are disabled
+when this flag is omitted. The upload
+API accepts at most 16 files, 64 MiB per file and 128 MiB per stack, with a
+default storage quota of 512 MiB. The server checks lengths, SHA-256 identities,
+WAD structure and playable maps before publishing immutable content. Repeating
+an identical stack reuses its pack; original filenames never choose host paths.
+Uploaded maps also have geometry and expanded allocation limits, including
+8,192 sectors and 65,536 BLOCKMAP cells per map. This bounds validation before
+the ordinary loader can synthesize a large REJECT table or expand repeated
+BLOCKMAP lists. Exceptionally large custom maps can be rejected even when their
+WAD file fits the byte limit. Only one lobby may own an upload directory.
+
+On join, the client assembles the room's exact ordered WAD stack. It reuses
+matching files already loaded locally and downloads only missing files marked
+as approved by the host. A player with a locally loaded commercial base can
+therefore join a room using an approved custom overlay without downloading the
+base. Missing private files still require local loading; direct servers without
+lobby content metadata also require the matching local stack.
+
+Each download comes from the lobby's fixed same-origin
+`/api/v1/content/<sha256>` endpoint. The client verifies the declared byte count
+and SHA-256 before rebuilding the map, textures, sprites, palettes and audio,
+then the gameplay handshake verifies the resulting content manifest again.
+Automatic preparation accepts at most 16 files, 64 MiB per file and 128 MiB for
+the complete target stack. Downloads use a two-minute timeout and do not follow
+redirects to another source. There is no persistent client download cache:
+prepared content remains in memory, and leaving a match keeps that WAD stack
+loaded for local play and later joins.
+
+The supervisor copies approved files into a private, immutable download cache
+and verifies their lengths and hashes before exposing an endpoint. Workers use
+the same copied bytes, so editing an original file cannot change an active
+download or approved worker source. The cache defaults to 512 MiB, controlled
+by `-download-quota` in bytes; repeated hashes share one copy. Four transfers
+can run concurrently, each with a two-minute deadline, and shutdown interrupts
+stalled readers and removes the cache. Even a correctly guessed private hash
+has no download route. Browser requests use the same origin allowlist as the
+lobby API.
+
+Uploaded packs persist in `-upload-dir`, independently of the temporary download
+cache. There is no automatic uploaded-content eviction in this version, so a
+full upload quota returns an error. Room processes still expire independently
+of stored content.
+
+Control API: `GET /api/v1/lobby` returns packs, rooms and capacity;
+`POST /api/v1/rooms` creates a room and waits for verified readiness;
+`POST /api/v1/packs` accepts an ordered multipart upload and returns its pack;
+`GET` or `HEAD /api/v1/content/<sha256>` serves only approved immutable files.
+Pack metadata includes ordered filenames, sizes, SHA-256 hashes and download
+permissions, plus operator-supplied license/source information when approved.
+Uploading content and creating a room are separate requests from gameplay, so
+an upload does not occupy a player's game transport.
+
+## Multiplayer controls and movement timing
+
 Mouse look turns the player left and right with the same sensitivity and
 inversion settings as local play; vertical pitch is not implemented. In source
 port mode, Backslash toggles mouse look. Browser players click the game to
@@ -196,12 +329,22 @@ no gameplay input as appropriate. Regression tests cover startup suppression,
 repeated host samples, catch-up commands, sensitivity, inversion and correction
 without duplicate turning.
 
-Client rendering keeps its 35 Hz movement clock and interpolation endpoints
-across matching snapshots. Receiving a baseline does not restart camera
-interpolation; host updates retain the elapsed fraction of the current tic.
-Small position/yaw corrections use a presentation-only offset that fades over
+Multiplayer input and snapshots are pumped on every 140 Hz host update; the
+classic 35 Hz session/menu gate must not gate the network movement clock again.
+The server remains fixed at 35 Hz. The client's command clock adjusts by at most
+5% to recover latency lead, with contiguous input tics during ordinary play.
+It preserves fractional interpolation phase when the rate changes, and delayed
+snapshots cannot rewind its server-clock estimate. A new baseline can re-anchor
+the schedule after a stall overtakes prediction.
+
+Client rendering keeps its movement clock and interpolation endpoints across
+matching snapshots. Receiving a baseline does not restart camera interpolation;
+host updates retain the elapsed fraction of the current tic. Small position,
+eye-height and yaw corrections use a presentation-only offset that fades over
 100 ms, while new input and collision take effect immediately. Teleports,
-respawns, death transitions and large corrections reset that offset.
+respawns, death transitions and large corrections reset that offset. Regression
+tests exercise the outer host gate as well as a moving server with repeated
+latency changes, uneven snapshot delivery and the server's held-input policy.
 
 Remote players, monsters, projectiles and spectator camera motion interpolate
 raw snapshots on a monotonic server-tic timeline rather than starting another

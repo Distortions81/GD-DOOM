@@ -317,7 +317,7 @@ func (sg *sessionGame) queueTransition(kind transitionKind, holdTics int) {
 }
 
 func (sg *sessionGame) shouldShowBootSplash() bool {
-	if sg.opts.AuthorityClient != nil {
+	if sg.opts.AuthorityClient != nil || sg.opts.AuthorityAutoJoin {
 		return false
 	}
 	if sg.opts.DemoScript != nil {

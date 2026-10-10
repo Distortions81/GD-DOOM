@@ -18,8 +18,11 @@ const (
 )
 
 func Open(path string) (*File, error) {
-	if data, ok := embeddedDataForPath(path); ok {
+	if data, ok := EmbeddedDataForPath(path); ok {
 		return openData(path, data)
+	}
+	if isMemoryWADPath(path) {
+		return nil, &os.PathError{Op: "open", Path: path, Err: os.ErrNotExist}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -87,6 +90,12 @@ func openData(path string, data []byte) (*File, error) {
 }
 
 func EmbeddedDataForPath(path string) ([]byte, bool) {
+	if data, ok := memoryDataForPath(path); ok {
+		return data, true
+	}
+	if isMemoryWADPath(path) {
+		return nil, false
+	}
 	return embeddedDataForPath(path)
 }
 

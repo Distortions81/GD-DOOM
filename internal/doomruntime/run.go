@@ -106,11 +106,18 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 		},
 		Start: func(sg *sessionGame) {
 			sg.initSession()
+			if sg.opts.AuthorityAutoJoin {
+				sg.opts.AuthorityAutoJoin = false
+				sg.beginAuthorityAutoJoin()
+			}
 		},
 	})
 	return runtimehost.NewGame(sg, runtimehost.Accessors{
 		Close: func() {
 			sg.closeAuthorityMultiplayer()
+			if sg.rt != nil {
+				sg.rt.clearPendingSoundState()
+			}
 			if sg.menuSfx != nil {
 				sg.menuSfx.Close()
 			}
@@ -118,6 +125,10 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			if sg.opts.SharedPCSpeaker != nil {
 				_ = sg.opts.SharedPCSpeaker.Close()
 				sg.opts.SharedPCSpeaker = nil
+			}
+			if sg.opts.AuthorityContentCleanup != nil {
+				sg.opts.AuthorityContentCleanup()
+				sg.opts.AuthorityContentCleanup = nil
 			}
 		},
 		Err: func() error {
@@ -574,7 +585,9 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 	}
 	inGame := !sig.DemoActive
 	itemOn := 0
-	if (inGame && sg.frontendWatchMode()) || sg.opts.AuthorityClient != nil {
+	if sg.opts.AuthorityClient != nil && sg.multiplayerMenuAvailable() {
+		itemOn = frontendMultiplayerMenuItem
+	} else if inGame && sg.frontendWatchMode() {
 		itemOn = frontendWatchMenuSelectableRows[0]
 	}
 	sg.frontend = frontendState{

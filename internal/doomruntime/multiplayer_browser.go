@@ -348,7 +348,9 @@ func (sg *sessionGame) drawAuthorityBrowser(text func(string, int, int)) {
 	if m.attempt != nil {
 		text("JOINING GAME...", 32, 56)
 		label := m.request.Address
-		if m.selected < len(m.servers) {
+		if m.joinLabel != "" {
+			label = m.joinLabel
+		} else if m.selected < len(m.servers) {
 			label = authorityServerLabel(m.servers[m.selected])
 		}
 		text(fit(label, 256), 32, 82)
@@ -367,6 +369,9 @@ func (sg *sessionGame) drawAuthorityBrowser(text func(string, int, int)) {
 		}
 		if m.editName {
 			title, value = "PLAYER NAME", m.request.Name
+		}
+		if m.lobby.editRoomName {
+			title, value = "GAME NAME", m.lobby.request.Name
 		}
 		text(title, 24, 48)
 		if m.replace {

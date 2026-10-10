@@ -6,12 +6,38 @@ import (
 	"gddoom/internal/demo"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
+	"gddoom/internal/session"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 type stubRuntime struct {
 	update func() error
+}
+
+type stubHostRuntime struct {
+	stubRuntime
+	samples, pumps int
+}
+
+func (s *stubHostRuntime) SampleInput() { s.samples++ }
+func (s *stubHostRuntime) UpdateHostFrame() error {
+	s.pumps++
+	return nil
+}
+
+func TestSessionForwardsHostFramePumpAtFixedSessionCadence(t *testing.T) {
+	updates := 0
+	runtime := &stubHostRuntime{stubRuntime: stubRuntime{update: func() error { updates++; return nil }}}
+	host := session.New(&Session{game: runtime})
+	for range 140 {
+		if err := host.Update(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if runtime.samples != 140 || runtime.pumps != 105 || updates != 35 {
+		t.Fatalf("forwarded samples=%d pumps=%d updates=%d; want140/105/35", runtime.samples, runtime.pumps, updates)
+	}
 }
 
 func (s *stubRuntime) Update() error {

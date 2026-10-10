@@ -19,3 +19,9 @@ ebitenutil/text.png, generated with github.com/hajimehoshi/bitmapfont.
 Copyright 2014 Hajime Hoshi; Copyright 2022 The Ebitengine Authors.
 The upstream Apache 2.0 license and font attribution/license notices are retained
 in internal/render/raymesh/assets/EBITENGINE-LICENSE and BITMAPFONT-NOTICE.md.
+
+The Doom BIGUPPER menu font atlas and glyph metrics in
+internal/render/menufont/assets are Doom-derived game artwork from UZDoom and
+Eevee's Doom Text Generator. Credits and the separate upstream game-content
+terms are retained in that directory's NOTICE.md and UPSTREAM-LICENSE.md.
+These artwork files are not covered by this repository's GPL source-code license.

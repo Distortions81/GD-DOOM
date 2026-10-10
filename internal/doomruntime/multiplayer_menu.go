@@ -41,6 +41,10 @@ type authorityMenuState struct {
 	editName         bool
 	editNew          bool
 	moreOptions      bool
+	lobby            authorityLobbyMenu
+	joinLabel        string
+	content          *authorityContentAttempt
+	replacement      *authorityContentReplacement
 	sessionCancel    context.CancelFunc
 	localRules       *runtimecfg.AuthorityLocalRules
 	localMap         *mapdata.Map
@@ -49,6 +53,24 @@ type authorityMenuState struct {
 func (sg *sessionGame) multiplayerMenuAvailable() bool {
 	return sg != nil && sg.nativePatches == nil && (sg.opts.AuthorityJoin != nil || sg.opts.AuthorityClient != nil)
 }
+
+// Keep the shared frontend's stock action IDs stable while placing Multiplayer
+// immediately below New Game in the menu's visual and keyboard order.
+const frontendMultiplayerMenuItem = len(frontendMainMenuNames)
+
+var frontendMultiplayerMenuOrder = [...]int{0, frontendMultiplayerMenuItem, 1, 2, 3, 4, 5}
+
+func (sg *sessionGame) frontendMainMenuRow(item int) int {
+	if sg.multiplayerMenuAvailable() {
+		for row, candidate := range frontendMultiplayerMenuOrder {
+			if candidate == item {
+				return row
+			}
+		}
+	}
+	return item
+}
+
 func (sg *sessionGame) frontendMainMenuCount() int {
 	count := len(frontendMainMenuNames)
 	if sg.multiplayerMenuAvailable() {
@@ -70,10 +92,15 @@ func (sg *sessionGame) openFrontendMultiplayer() {
 	menu.editing = false
 	if sg.opts.AuthorityClient != nil {
 		menu.row = 0
+		menu.lobby.page = authorityLobbyPageNone
 	}
 	sg.frontend.Mode, sg.frontend.MenuActive = frontendModeMultiplayer, true
 	if sg.opts.AuthorityClient == nil {
-		sg.refreshAuthorityServers()
+		if sg.authorityLobbyAvailable() {
+			sg.openAuthorityLobby()
+		} else {
+			sg.refreshAuthorityServers()
+		}
 	}
 }
 
@@ -81,12 +108,44 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 	menu := &sg.multiplayer
 	sg.frontend.Tic++
 	sg.pollAuthorityServers()
+	sg.pollAuthorityLobby()
+	sg.pollAuthorityCreate()
+	sg.pollAuthorityUpload()
 	escape := sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack)
 	selectPressed := sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) || sg.touchJustPressed(touchActionUseEnter)
+	if menu.content != nil {
+		if escape {
+			sg.cancelAuthorityContent()
+			menu.status = "WAD DOWNLOAD CANCELED"
+			sg.playMenuBackSound()
+		} else {
+			sg.pollAuthorityContent()
+		}
+		return nil
+	}
+	if menu.replacement != nil {
+		return nil
+	}
 	if menu.attempt != nil {
 		if escape {
 			sg.cancelAuthorityJoin()
 			menu.status = "JOIN CANCELED"
+			sg.playMenuBackSound()
+		}
+		return nil
+	}
+	if menu.lobby.creating != nil {
+		if escape {
+			sg.cancelAuthorityCreate()
+			menu.status = "CREATION CANCELED - RETRY TO CHECK RESULT"
+			sg.playMenuBackSound()
+		}
+		return nil
+	}
+	if menu.lobby.uploading != nil {
+		if escape {
+			sg.cancelAuthorityUpload()
+			menu.status = "UPLOAD CANCELED - SAFE TO RETRY"
 			sg.playMenuBackSound()
 		}
 		return nil
@@ -97,18 +156,13 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 		if menu.editName {
 			value, limit = &menu.request.Name, 64
 		}
+		if menu.lobby.editRoomName {
+			value, limit = &menu.lobby.request.Name, 64
+		}
 		if escape {
 			*value, menu.editing = menu.editOriginal, false
+			menu.lobby.editRoomName = false
 			sg.playMenuBackSound()
-			return nil
-		}
-		if selectPressed {
-			*value = strings.TrimSpace(*value)
-			if !menu.editName && !sg.commitAuthorityServerEdit() {
-				return nil
-			}
-			menu.editing = false
-			sg.playMenuConfirmSound()
 			return nil
 		}
 		if sg.input.controlHeld && sg.keyJustPressed(ebiten.KeyA) {
@@ -137,7 +191,26 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 			}
 		}
 		sg.input.inputChars = nil
+		// Host frames can collect text and Enter before the next menu tic.
+		// Apply that text before committing the field.
+		if selectPressed {
+			*value = strings.TrimSpace(*value)
+			if !menu.editName && !sg.commitAuthorityServerEdit() {
+				return nil
+			}
+			menu.editing = false
+			if menu.lobby.editRoomName {
+				if *value != menu.editOriginal {
+					menu.lobby.request.RequestID = ""
+				}
+				menu.lobby.editRoomName = false
+			}
+			sg.playMenuConfirmSound()
+		}
 		return nil
+	}
+	if menu.lobby.page != authorityLobbyPageNone && sg.opts.AuthorityClient == nil {
+		return sg.tickAuthorityLobby(escape, selectPressed)
 	}
 	if escape {
 		if menu.moreOptions {
@@ -145,8 +218,13 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 			sg.playMenuBackSound()
 			return nil
 		}
+		if sg.authorityLobbyAvailable() && sg.opts.AuthorityClient == nil {
+			sg.openAuthorityLobby()
+			sg.playMenuBackSound()
+			return nil
+		}
 		sg.cancelAuthorityServerRefresh()
-		sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, len(frontendMainMenuNames)
+		sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, frontendMultiplayerMenuItem
 		sg.playMenuBackSound()
 		return nil
 	}
@@ -222,7 +300,11 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 			menu.showServers()
 		} else {
 			sg.cancelAuthorityServerRefresh()
-			sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, len(frontendMainMenuNames)
+			if sg.authorityLobbyAvailable() {
+				sg.openAuthorityLobby()
+			} else {
+				sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, frontendMultiplayerMenuItem
+			}
 		}
 	}
 	return nil
@@ -283,6 +365,9 @@ func (sg *sessionGame) cancelAuthorityJoin() {
 }
 func (sg *sessionGame) beginAuthorityJoin() {
 	menu := &sg.multiplayer
+	if menu.lobby.page == authorityLobbyPageNone {
+		menu.joinLabel = ""
+	}
 	if menu.attempt != nil || sg.opts.AuthorityClient != nil {
 		return
 	}
@@ -419,7 +504,10 @@ func (sg *sessionGame) leaveAuthorityMatch() {
 	}
 	sg.multiplayer.localRules, sg.multiplayer.localMap = nil, nil
 	sg.startFrontend()
-	sg.frontend.MenuActive, sg.frontend.ItemOn = true, len(frontendMainMenuNames)
+	sg.frontend.MenuActive, sg.frontend.ItemOn = true, 0
+	if sg.multiplayerMenuAvailable() {
+		sg.frontend.ItemOn = frontendMultiplayerMenuItem
+	}
 	sg.frontendStatus("LEFT MULTIPLAYER MATCH", 105)
 	sg.multiplayer.status = ""
 	sg.clearSampledInput()
@@ -428,6 +516,10 @@ func (sg *sessionGame) leaveAuthorityMatch() {
 func (sg *sessionGame) closeAuthorityMultiplayer() {
 	sg.cancelAuthorityJoin()
 	sg.cancelAuthorityServerRefresh()
+	sg.cancelAuthorityLobbyRefresh()
+	sg.cancelAuthorityCreate()
+	sg.cancelAuthorityUpload()
+	sg.cancelAuthorityContent()
 	client, cancel := sg.opts.AuthorityClient, sg.multiplayer.sessionCancel
 	sg.opts.AuthorityClient, sg.opts.AuthorityMapLoader, sg.multiplayer.sessionCancel = nil, nil, nil
 	leaveAuthorityConnection(client, cancel)
@@ -445,6 +537,10 @@ func (sg *sessionGame) drawFrontendMultiplayer(screen *ebiten.Image, scale, ox, 
 	}
 	text("MULTIPLAYER", 32, 16)
 	text("BACK: ESC", 240, 16)
+	if menu.content != nil {
+		sg.drawAuthorityContent(text)
+		return
+	}
 	if sg.opts.AuthorityClient != nil {
 		text("IN A MULTIPLAYER MATCH", 32, 46)
 		mode := strings.ToUpper(sg.opts.GameMode)
@@ -460,6 +556,10 @@ func (sg *sessionGame) drawFrontendMultiplayer(screen *ebiten.Image, scale, ox, 
 		text("RETURN TO GAME", 48, 116)
 		text("LEAVE MATCH", 48, 140)
 		sg.drawMenuSkull(screen, 16, 112+menu.row*24, scale, ox, oy)
+		return
+	}
+	if menu.lobby.page != authorityLobbyPageNone && menu.attempt == nil && !menu.editing {
+		sg.drawAuthorityLobby(text)
 		return
 	}
 	sg.drawAuthorityBrowser(text)

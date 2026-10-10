@@ -33,7 +33,7 @@ func (sg *sessionGame) shouldStartInFrontend() bool {
 	if sg == nil {
 		return false
 	}
-	if sg.opts.StartInMapMode || sg.opts.DemoScript != nil || strings.TrimSpace(sg.opts.RecordDemoPath) != "" {
+	if sg.opts.AuthorityAutoJoin || sg.opts.StartInMapMode || sg.opts.DemoScript != nil || strings.TrimSpace(sg.opts.RecordDemoPath) != "" {
 		return false
 	}
 	return true
@@ -733,7 +733,7 @@ func (sg *sessionGame) tickFrontend() error {
 		Select: selectPressed,
 		Skip:   escape || up || down || left || right || selectPressed || sg.anyIntermissionSkipInput(),
 	}
-	if sg.frontend.Mode == frontendModeTitle && sg.frontend.MenuActive && sg.frontend.ItemOn == len(frontendMainMenuNames) && input.Select && sg.multiplayerMenuAvailable() {
+	if sg.frontend.Mode == frontendModeTitle && sg.frontend.MenuActive && sg.frontend.ItemOn == frontendMultiplayerMenuItem && input.Select && sg.multiplayerMenuAvailable() {
 		sg.openFrontendMultiplayer()
 		sg.playMenuConfirmSound()
 		return nil
@@ -1129,18 +1129,21 @@ func (sg *sessionGame) drawFrontendContents(screen *ebiten.Image, sw, sh int) {
 					if sg.frontendMenuItemDisabled(i) {
 						alpha = 0.4
 					}
-					_ = sg.drawMenuPatchAlpha(screen, name, 97, 64+i*16, scale, ox, oy, false, alpha)
+					_ = sg.drawMenuPatchAlpha(screen, name, 97, 64+sg.frontendMainMenuRow(i)*16, scale, ox, oy, false, alpha)
 				}
 			} else {
 				sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
 				for i, name := range frontendMainMenuNames {
-					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
+					_ = sg.drawMenuPatch(screen, name, 97, 64+sg.frontendMainMenuRow(i)*16, scale, ox, oy, false)
 				}
 			}
 			if sg.multiplayerMenuAvailable() {
-				sg.drawFrontendTextAt(screen, "MULTIPLAYER", ox+97*scale, oy+float64(64+len(frontendMainMenuNames)*16)*scale, scale, scale)
+				menuY := 64 + sg.frontendMainMenuRow(frontendMultiplayerMenuItem)*16
+				if !sg.drawMenuPatch(screen, "M_MULTI", 97, menuY, scale, ox, oy, false) {
+					sg.drawFrontendTextAt(screen, "MULTIPLAYER", ox+97*scale, oy+float64(menuY)*scale, scale, scale)
+				}
 			}
-			sg.drawMenuSkull(screen, 65, 64+sg.frontend.ItemOn*16, scale, ox, oy)
+			sg.drawMenuSkull(screen, 65, 64+sg.frontendMainMenuRow(sg.frontend.ItemOn)*16, scale, ox, oy)
 		}
 		if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
@@ -1772,10 +1775,13 @@ func (sg *sessionGame) frontendWatchMode() bool {
 
 func (sg *sessionGame) frontendMainMenuSelectableRows() []int {
 	if sg != nil && sg.opts.AuthorityClient != nil {
-		return []int{1, 4, 5, 6}
+		return []int{frontendMultiplayerMenuItem, 1, 4, 5}
 	}
 	if sg != nil && sg.frontend.InGame && sg.frontendWatchMode() {
 		return frontendWatchMenuSelectableRows
+	}
+	if sg.multiplayerMenuAvailable() {
+		return frontendMultiplayerMenuOrder[:]
 	}
 	return nil
 }

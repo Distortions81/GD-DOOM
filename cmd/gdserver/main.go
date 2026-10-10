@@ -23,6 +23,7 @@ import (
 	"gddoom/internal/doomruntime"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/netgame"
+	"gddoom/internal/roomhost"
 	"gddoom/internal/sessionflow"
 	"gddoom/internal/wad"
 )
@@ -42,8 +43,10 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	listen := fs.String("listen", "127.0.0.1:6671", "TCP listen address")
 	udpListen := fs.String("udp-listen", "", "optional authenticated WebTransport/QUIC UDP listen address; requires TLS certificate; route /netplay")
 	webListen := fs.String("web-listen", "", "optional HTTP/WebSocket listen address; game route /netplay")
+	readyFile := fs.String("ready-file", "", "optional private JSON file describing bound worker endpoints")
 	var webProxies webProxyFlags
 	fs.Var(&webProxies, "web-proxy", "additional exact WebSocket route=loopback HTTP URL; repeatable, e.g. /deathmatch=http://127.0.0.1:6674/netplay")
+	fs.Var(webProxyPrefixFlags{routes: &webProxies}, "web-proxy-prefix", "additional HTTP/WebSocket prefix/=loopback HTTP base/ preserving suffixes; repeatable, e.g. /api/v1/=http://127.0.0.1:6675/api/v1/")
 	webOrigins := fs.String("web-origins", "", "comma-separated permitted browser origins; same host allowed by default")
 	tlsCert := fs.String("tls-cert", "", "PEM certificate for TLS TCP, HTTPS/WSS, and WebTransport listeners")
 	tlsKey := fs.String("tls-key", "", "PEM key for TLS TCP, HTTPS/WSS, and WebTransport listeners")
@@ -53,6 +56,8 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	mode := fs.String("mode", "coop", "game mode: coop or deathmatch")
 	skill := fs.Int("skill", 3, "skill 1..5")
 	noMonsters := fs.Bool("no-monsters", false, "disable monsters")
+	fastMonsters := fs.Bool("fast-monsters", false, "enable fast monsters")
+	respawnMonsters := fs.Bool("respawn-monsters", false, "enable monster respawning")
 	friendlyFire := fs.Bool("friendly-fire", false, "allow co-op player damage")
 	fragLimit := fs.Int("frag-limit", 20, "deathmatch frag limit, 0 disables")
 	timeLimit := fs.Uint("time-limit", 0, "deathmatch time limit in seconds, 0 disables")
@@ -68,7 +73,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return fmt.Errorf("unexpected arguments: %v", fs.Args())
 	}
 	if len(webProxies) != 0 && *webListen == "" {
-		return fmt.Errorf("-web-proxy requires -web-listen")
+		return fmt.Errorf("-web-proxy or -web-proxy-prefix requires -web-listen")
 	}
 	if *timeLimit > uint(^uint32(0))/netgame.TickRate {
 		return fmt.Errorf("time limit too large")
@@ -108,7 +113,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		hash := sha256.Sum256(data)
 		hashes = append(hashes, hex.EncodeToString(hash[:]))
 	}
-	manifest := netgame.CompatibilityManifest{Simulation: netgame.SimulationVersion, WADHashes: hashes, Map: strings.ToUpper(*mapName), Mode: *mode, Skill: *skill, NoMonsters: *noMonsters, FriendlyFire: *friendlyFire, RespawnDelayTics: 35, FragLimit: *fragLimit, TimeLimitTics: uint32(*timeLimit) * netgame.TickRate}
+	manifest := netgame.CompatibilityManifest{Simulation: netgame.SimulationVersion, WADHashes: hashes, Map: strings.ToUpper(*mapName), Mode: *mode, Skill: *skill, NoMonsters: *noMonsters, FastMonsters: *fastMonsters, RespawnMonsters: *respawnMonsters, FriendlyFire: *friendlyFire, RespawnDelayTics: 35, FragLimit: *fragLimit, TimeLimitTics: uint32(*timeLimit) * netgame.TickRate}
 	compat, err := manifest.Key()
 	if err != nil {
 		return err
@@ -122,7 +127,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	authority, err := doomruntime.NewAuthority(m, doomruntime.Options{GameMode: *mode, SkillLevel: *skill, NoMonsters: *noMonsters, WADHash: contentKey, SFXVolume: 1})
+	authority, err := doomruntime.NewAuthority(m, doomruntime.Options{GameMode: *mode, SkillLevel: *skill, NoMonsters: *noMonsters, FastMonsters: *fastMonsters, RespawnMonsters: *respawnMonsters, WADHash: contentKey, SFXVolume: 1})
 	if err != nil {
 		return err
 	}
@@ -261,13 +266,25 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 		fmt.Fprintf(out, "websocket: %s://%s/netplay\n", scheme, webListener.Addr())
 		for _, proxy := range webProxies {
-			fmt.Fprintf(out, "websocket proxy: %s://%s%s -> %s\n", scheme, webListener.Addr(), proxy.route, proxy.upstream)
+			kind := "websocket proxy"
+			if proxy.prefix {
+				kind = "HTTP/WebSocket prefix proxy"
+			}
+			fmt.Fprintf(out, "%s: %s://%s%s -> %s\n", kind, scheme, webListener.Addr(), proxy.route, proxy.upstream)
 		}
 	}
 	if udpListener != nil {
 		fmt.Fprintf(out, "webtransport: https://%s/netplay\n", udpListener.LocalAddr())
 	}
 	fmt.Fprintln(out, "reconnect grace: 30 seconds")
+	ready := roomhost.WorkerReady{Version: 1, TCPAddress: ln.Addr().String(), Manifest: manifest}
+	if webListener != nil {
+		scheme := "http"
+		if tlsConfig != nil {
+			scheme = "https"
+		}
+		ready.WebURL = scheme + "://" + webListener.Addr().String() + "/netplay"
+	}
 	ownerDone := make(chan error, 1)
 	serviceDone := make(chan error, 2)
 	services := 0
@@ -280,12 +297,18 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		services++
 		go func() { serviceDone <- udpServer.Serve(udpListener) }()
 	}
+	if *readyFile != "" {
+		err = roomhost.WriteWorkerReady(*readyFile, ready)
+		defer os.Remove(*readyFile)
+	}
 	ownerFinished := false
-	select {
-	case err = <-ownerDone:
-		ownerFinished = true
-	case err = <-serviceDone:
-		services--
+	if err == nil {
+		select {
+		case err = <-ownerDone:
+			ownerFinished = true
+		case err = <-serviceDone:
+			services--
+		}
 	}
 	cancel()
 	if httpServer != nil {

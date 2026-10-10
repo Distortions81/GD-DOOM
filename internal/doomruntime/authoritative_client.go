@@ -18,10 +18,13 @@ type authorityClientUpdateState struct {
 	scoreboardHeld   bool
 	stamp            time.Time
 	accum            time.Duration
+	step             time.Duration
 	started          bool
 	sequence         uint32
 	turnHeld         int
 	snapshotAt       time.Time
+	serverStamp      time.Time
+	serverTick       uint32
 	chatStamp        time.Time
 	chatAccum        time.Duration
 }
@@ -130,6 +133,7 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 		}
 		acknowledge = acknowledge || applied
 		if applied {
+			g.clientUpdate.observeServerTick(snapshot.Tick, now)
 			g.clientUpdate.snapshotAt = now
 		}
 	}
@@ -144,6 +148,13 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 		return nil
 	}
 	const ticDuration = time.Second / netgame.TickRate
+	if clock.step == 0 {
+		clock.step = ticDuration
+	}
+	// A fresh baseline may overtake prediction after a stall. Only then may
+	// we establish a new lead; ordinary latency changes must not skip input
+	// slots or simulate several movement steps in one command interval.
+	reanchor := !p.hasInput || p.lastInput.Tick <= p.AuthoritativeTic()
 	budget := 0
 	if !clock.started {
 		clock.started, clock.stamp = true, now
@@ -154,12 +165,13 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 		if elapsed > 0 {
 			clock.accum += elapsed
 		}
-		budget = int(clock.accum / ticDuration)
-		clock.accum %= ticDuration
+		budget = int(clock.accum / clock.step)
+		clock.accum %= clock.step
 		if budget > 4 {
 			budget = 4
 		}
 	}
+	stepped := false
 	for i := 0; i < budget; i++ {
 		tick, ok := p.NextInputTic()
 		if !ok || clock.sequence == math.MaxUint32 {
@@ -169,12 +181,12 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 		if lead > math.MaxUint32 {
 			return netgame.ErrInputEpochExhausted
 		}
-		if uint64(tick) < lead {
+		if reanchor && uint64(tick) < lead {
 			tick = uint32(lead)
 		}
 		// Do not keep walking into an unknown world after a stalled stream. A
 		// fresh baseline reopens the one-second schedule without reusing tics.
-		if uint64(tick) > uint64(p.AuthoritativeTic())+netgame.TickRate {
+		if lead > uint64(p.AuthoritativeTic())+netgame.TickRate || uint64(tick) > uint64(p.AuthoritativeTic())+netgame.TickRate {
 			break
 		}
 		command := demo.Tic{}
@@ -190,11 +202,31 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 			return fmt.Errorf("predict local input: %w", err)
 		}
 		clock.sequence++
+		reanchor, stepped = false, true
 		acknowledge = true
-		// Rendering follows the fixed 35 Hz command clock, not the host frame
-		// that happened to sample it. Retain the fractional tic already elapsed
-		// so 60/120 Hz updates do not restart interpolation late on every step.
-		g.markSimUpdate(now.Add(-clock.accum))
+	}
+	target := g.authorityInputTarget(now)
+	horizon := uint64(p.AuthoritativeTic()) + netgame.TickRate
+	if stepped || (budget == 0 && target <= horizon && uint64(p.PredictedTic()) < horizon) {
+		// Gently recover the negotiated lead without inserting empty input
+		// slots. A one-tic dead band ignores packet arrival phase; the maximum
+		// 5% clock adjustment also bounds the change in visible movement speed.
+		step := ticDuration
+		next := uint64(p.PredictedTic()) + 1
+		if target > next+1 {
+			step = ticDuration * 20 / 21
+		} else if next > target+1 {
+			step = ticDuration * 20 / 19
+		}
+		changed := clock.step != step
+		// Keep the interpolation phase continuous when its duration changes.
+		if changed {
+			clock.accum = clock.accum * step / clock.step
+		}
+		clock.step = step
+		if stepped || changed {
+			g.markSimUpdate(now.Add(-clock.accum))
+		}
 	}
 	if acknowledge {
 		pending := p.PendingInputs()
@@ -231,14 +263,27 @@ func (g *game) authorityInputTarget(now time.Time) uint64 {
 	if lead > netgame.TickRate {
 		lead = netgame.TickRate
 	}
-	elapsed := now.Sub(g.clientUpdate.snapshotAt)
-	var advance uint64
-	if elapsed > time.Second {
-		advance = netgame.TickRate + 1
-	} else if elapsed > 0 {
-		advance = uint64(elapsed) * netgame.TickRate / uint64(time.Second)
+	if now.Sub(g.clientUpdate.snapshotAt) > time.Second {
+		return uint64(g.clientPrediction.AuthoritativeTic()) + netgame.TickRate + 1
 	}
-	return uint64(g.clientPrediction.AuthoritativeTic()) + advance + lead
+	return g.clientUpdate.estimatedServerTick(now) + lead
+}
+
+func (clock *authorityClientUpdateState) estimatedServerTick(now time.Time) uint64 {
+	tick := uint64(clock.serverTick)
+	if elapsed := now.Sub(clock.serverStamp); elapsed > 0 {
+		tick += uint64(elapsed / (time.Second / netgame.TickRate))
+	}
+	return tick
+}
+
+func (clock *authorityClientUpdateState) observeServerTick(tick uint32, now time.Time) {
+	// Packet arrival jitter must not rewind our estimate of the server clock.
+	// Retain its phase until a faster baseline advances it. A long silence is
+	// a resynchronization boundary, not a clock estimate to extrapolate forever.
+	if clock.serverStamp.IsZero() || now.Sub(clock.snapshotAt) > time.Second || uint64(tick) > clock.estimatedServerTick(now) {
+		clock.serverTick, clock.serverStamp = tick, now
+	}
 }
 
 func (g *game) captureAuthoritativeWeaponInput() {

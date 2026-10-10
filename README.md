@@ -215,12 +215,26 @@ and custom server addresses. Addresses are saved in native config or browser
 local storage; this is a saved list, not a public master registry.
 In a match, **Return to Game** resumes play and **Leave Match** returns to the
 title menu without restarting the game.
+For user-created games, run `cmd/gdlobby` and configure the client with
+`-multiplayer-lobby=https://your-lobby-host`. **Multiplayer** then opens a live
+room list with **Create Game**: choose WAD, level, difficulty, co-op/deathmatch,
+player limit, monster options, friendly fire and match limits. The lobby runs
+each room in its own authoritative server process. With uploads enabled,
+**Upload Loaded WADs** registers the game's current base WAD and overlays.
+Joining can download missing WADs explicitly approved for redistribution by the
+host and load the room's exact content, including graphics and audio. Matching
+local files are reused; private or commercial WADs must already be loaded.
+Uploads are private by default, and filenames never grant download permission.
+See [lobby hosting and custom WADs](docs/authoritative-multiplayer.md#multi-room-lobby-and-custom-wads).
 Mouse look turns left/right in multiplayer with your usual sensitivity and
 inversion settings; click the browser game to capture the pointer. Hold **F6**
 for scores, press **T** for chat, or **F12** to change the spectator view.
 The default deathmatch room supports four players, no monsters, and an E1M1/E1M2
 rotation with a 20-frag or 10-minute limit; map exits can rotate early.
 After dying, press **Use** to respawn.
+New menu labels use a reusable large Doom menu font; **Multiplayer** matches the
+original menu lettering. Custom WADs can override it with an `M_MULTI` patch.
+See the [font source and composition API](internal/render/menufont/assets/NOTICE.md).
 The [multiplayer design and verification status](docs/authoritative-multiplayer.md)
 records launch commands, transport choices, measured bandwidth, and remaining
 release requirements.
@@ -240,6 +254,8 @@ SoundFont caching, touch controls, and persistent saves. Click or tap once to
 start audio where browser autoplay policies require it.
 Set `MULTIPLAYER_SERVER=https://your-host:6672/netplay` when building to prefill
 the browser's join form and in-game menu. This does not join automatically.
+Set `MULTIPLAYER_LOBBY=https://your-lobby-host` to enable the live room browser
+and Create Game in the WASM build; `?multiplayer-lobby=...` overrides it.
 Browser rendering uses VSync by default, with no separate WASM frame throttle.
 Automatic detail starts at full resolution and reduces quality if performance
 requires it. Re-enabling AUTO also starts at full resolution; explicit

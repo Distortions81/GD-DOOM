@@ -10,10 +10,18 @@ the key. No private-key contents need to be copied or printed.
 The current release ID, source commit, and asset hashes are recorded in the
 site's `wasm-manifest.json`. Build and deploy the browser and server from the
 same clean commit. Browser launches start AUTO detail at full resolution.
-Esc → Multiplayer lists **GD-DOOM Co-op**, **GD-DOOM Deathmatch**, and saved
-custom servers. Select a row and press Enter to join; the connected menu offers
-Return to Game and Leave Match. The client preserves render interpolation
-across snapshots and smooths small prediction corrections.
+Esc → Multiplayer opens the live lobby, with **Create Game**, custom WAD
+uploads, and automatic loading of approved downloadable content. **Direct
+Servers** retains **GD-DOOM Co-op**, **GD-DOOM Deathmatch**, and saved custom
+servers. Select a room and press Enter to join; the connected menu offers
+Return to Game and Leave Match. The client runs a continuous input clock,
+accounts for command lead, and smooths small prediction corrections.
+
+The lobby base URL is `https://m45sci.xyz:6672`. Its user service is
+`gd-doom-lobby.service`, listening only on `127.0.0.1:6675`. The existing co-op
+HTTPS listener forwards `/api/v1/` and `/rooms/` to it; `/netplay`, `/deathmatch`
+and the co-op WebTransport listener retain their existing endpoints. This
+requires no additional public ports or nginx changes.
 
 The default authoritative co-op server was installed on 2026-10-10 UTC:
 
@@ -55,6 +63,13 @@ No change to the existing SSH, HTTPS or other application rules is needed.
 
 ## Build and update the backend
 
+Build both `./cmd/gdserver` and `./cmd/gdlobby` from the browser's clean commit.
+The first lobby installation and gateway unit are described below. For later
+updates, stage and hash-check both binaries, back up the current binaries and
+units, atomically replace the binaries, then restart the lobby and direct
+servers. Restarting the lobby ends its dynamic rooms; the configured uploaded
+WAD storage persists. Publish the browser assets only after backend probes pass.
+
 From the repository root, build the same working tree as the browser client:
 
 ```bash
@@ -86,7 +101,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/gd-doom
-ExecStart=%h/.local/bin/gdserver -wad DOOM1.WAD -map E1M1 -mode coop -skill 3 -players 4 -listen 127.0.0.1:6671 -web-listen :6672 -udp-listen :6672 -tls-cert /etc/letsencrypt/live/m45sci.xyz-0003/fullchain.pem -tls-key /etc/letsencrypt/live/m45sci.xyz-0003/privkey.pem -web-origins https://m45sci.xyz -web-proxy /deathmatch=http://127.0.0.1:6674/netplay
+ExecStart=%h/.local/bin/gdserver -wad DOOM1.WAD -map E1M1 -mode coop -skill 3 -players 4 -listen 127.0.0.1:6671 -web-listen :6672 -udp-listen :6672 -tls-cert /etc/letsencrypt/live/m45sci.xyz-0003/fullchain.pem -tls-key /etc/letsencrypt/live/m45sci.xyz-0003/privkey.pem -web-origins https://m45sci.xyz -web-proxy /deathmatch=http://127.0.0.1:6674/netplay -web-proxy-prefix /api/v1/=http://127.0.0.1:6675/api/v1/ -web-proxy-prefix /rooms/=http://127.0.0.1:6675/rooms/
 Restart=always
 RestartSec=3
 TimeoutStopSec=10
@@ -135,6 +150,13 @@ The `-web-proxy` option is repeatable, requires `-web-listen`, and accepts only
 literal loopback HTTP backends. It does not add another Authority to the co-op
 process, because the Doom RNG and compatibility state are process-global.
 
+`-web-proxy-prefix` also forwards ordinary HTTP and dynamic WebSocket paths
+below an operator-selected prefix. It preserves the suffix, browser Origin and
+subprotocol, rejects ambiguous paths, and allows enough upstream response time
+for bounded WAD uploads and room startup. Its destination is fixed to literal
+loopback HTTP. It replaces forwarded client identity from the actual socket;
+the lobby trusts that identity only from its explicitly configured proxy IP.
+
 Deathmatch starts on E1M1 with four slots, no monsters, 20 frags or 10 minutes,
 and E1M1/E1M2 rotation. Map exits can rotate early. Empty matches pause the timer;
 a single player starts it. Press Use after the one-second death delay to respawn.
@@ -161,6 +183,69 @@ machine to prove public reachability. For deathmatch use the WSS `/deathmatch`
 route and expect its deathmatch manifest; successful host-local tests do not prove
 the firewall permits internet clients.
 
+## Install the lobby
+
+Install `gdlobby` at `/home/dist/.local/bin/gdlobby`. Create
+`/home/dist/.local/share/gd-doom/lobby` and its `uploads` subdirectory with mode
+0700. Place this catalog at `lobby/catalog.json`:
+
+```json
+{
+  "packs": [
+    {"id": "doom-shareware", "name": "DOOM Shareware", "wads": ["../DOOM1.WAD"]}
+  ],
+  "redistribution": [
+    {
+      "sha256": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+      "name": "DOOM1.WAD",
+      "allow": true,
+      "license": "Original shareware redistribution terms",
+      "source": "Bundled GD-DOOM shareware data"
+    }
+  ]
+}
+```
+
+Only this already bundled shareware file is initially approved for download.
+Custom uploads stay private unless the operator adds an exact hash approval
+and restarts the lobby. Commercial WADs are not installed or approved by this
+deployment. See [content policy and limits](authoritative-multiplayer.md#multi-room-lobby-and-custom-wads)
+before adding other files.
+
+Install `/home/dist/.config/systemd/user/gd-doom-lobby.service`:
+
+```ini
+[Unit]
+Description=GD-DOOM multiplayer lobby and room supervisor
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/gd-doom
+ExecStart=%h/.local/bin/gdlobby -listen 127.0.0.1:6675 -public-url https://m45sci.xyz:6672 -worker %h/.local/bin/gdserver -catalog %h/.local/share/gd-doom/lobby/catalog.json -upload-dir %h/.local/share/gd-doom/lobby/uploads -web-origins https://m45sci.xyz -trusted-proxies 127.0.0.1 -max-rooms 8 -idle-timeout 10m -upload-quota 536870912 -download-quota 536870912
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
+```
+
+Run `systemctl --user daemon-reload`, enable/start `gd-doom-lobby.service`,
+and restart the co-op gateway after installing its prefix routes. Verify the
+public `/api/v1/lobby`, content hash route, and an actual created room's WSS
+handshake. Test both existing direct servers as well. Browser requests from
+`https://m45sci.xyz` must pass the origin check; unapproved origins must fail.
+
+Dynamic rooms expire after ten minutes without players, spectators or reconnect
+reservations. Any rooms seeded during deployment follow the same lifecycle and
+are not permanent default servers. The direct co-op and deathmatch services
+remain available under **Direct Servers** even when the lobby is empty.
+
 ## Publish the browser assets
 
 Build from the committed source with a traceable release ID:
@@ -169,13 +254,16 @@ Build from the committed source with a traceable release ID:
 GOCACHE=/tmp/gd-doom-wasm-cache \
 BUILD_ID="experiments-$(git rev-parse --short=12 HEAD)" \
 MULTIPLAYER_SERVER=https://m45sci.xyz:6672/netplay \
+MULTIPLAYER_LOBBY=https://m45sci.xyz:6672 \
   ./scripts/build_wasm.sh /tmp/gd-doom-wasm-release
 ```
 
 The output includes the shareware WAD and General MIDI SoundFont embedded in
-`gddoom.wasm`. Publish these seven assets and an updated `wasm-manifest.json`:
+`gddoom.wasm`. Publish these eight assets and an updated `wasm-manifest.json`:
 `index.html`, `player.html`, `launch.js`, `build-id.js`, `wasm_exec.js`,
-`gddoom.wasm`, and `gddoom.wasm.gz`. Use a staged upload, verify the hashes, and
+`gddoom.wasm`, `gddoom.wasm.gz`, and `font-notice.txt`. The font notice retains
+the credits and separate game-artwork terms for the embedded menu font.
+Use a staged upload, verify the hashes, and
 publish the manifest last. For direct updates, `rsync --delay-updates` delays
 replacement until the transfer has completed.
 
@@ -186,7 +274,7 @@ The existing nginx configuration already sends `application/wasm` and
 
 Preserve the existing manifest's `branch`, `commit`, `build_id` and `files`
 fields. Add `schema_version: 1`, `source_dirty` and `built_at` (UTC RFC3339).
-`files` maps each of the seven asset names to its SHA-256; it excludes the
+`files` maps each of the eight asset names to its SHA-256; it excludes the
 manifest itself. `build_id` must equal the value in `build-id.js`.
 
 ## Alternative: WSS through the existing HTTPS port

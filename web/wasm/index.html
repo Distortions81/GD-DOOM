@@ -124,6 +124,13 @@
     .multiplayer .wide { grid-column: 1 / -1; }
     .multiplayer input, .multiplayer select { width: 100%; padding: 9px; color: var(--text); background: #140d0b; border: 1px solid var(--line); font: inherit; }
     #join-status { margin: 0; color: #ffb49b; min-height: 1.4em; }
+    #local-wad-panel { position: relative; margin-top: 18px; padding: 12px; border: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    #local-wad-panel[hidden] { display: none; }
+    #local-wad-panel select { width: 100%; margin: 6px 0; padding: 8px; color: var(--text); background: #140d0b; border: 1px solid var(--line); }
+    #local-wad-overlays { padding: 0; list-style: none; }
+    #local-wad-overlays li { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+    #local-wad-overlays label { flex: 1; overflow-wrap: anywhere; }
+    #local-wad-overlays button { color: var(--text); background: #140d0b; border: 1px solid var(--line); cursor: pointer; }
 
     .hero::before {
       content: "";
@@ -241,6 +248,9 @@
     .panel-title {
       margin-bottom: 14px;
     }
+
+    .font-credits { margin: 16px 0 0; font-size: 12px; }
+    .font-credits a { color: var(--muted); }
 
     .controls {
       display: grid;
@@ -365,7 +375,7 @@
 <body>
   <div class="utilitybar" aria-label="Browser controls">
     <button id="fullscreen-button" class="utility-button" type="button">Fullscreen</button>
-    <button id="local-wad-button" class="wad-button" type="button">Load IWAD File</button>
+    <button id="local-wad-button" class="wad-button" type="button">Load WAD Files</button>
     <input id="local-wad-input" type="file" accept=".wad,.WAD" multiple hidden>
   </div>
 
@@ -378,7 +388,14 @@
         <h1 id="gddoom-title" class="logo">GD-DOOM</h1>
         <p class="tagline">Doom's classic software-rendered appearance, accelerated by GPU shaders in your browser.</p>
         <p class="subcopy">Faithful mode keeps the 256-color palette and Doom lighting tables. Source Port mode adds smooth motion and high-resolution output. Load your own IWAD or play shareware, with persistent saves.</p>
-        <p class="subcopy">Use Load IWAD File to add WADs to the picker, then keep focus in the game frame for keyboard and mouse input.</p>
+        <p class="subcopy">Use Load WAD Files to select a base game and custom maps. In Multiplayer, choose Create Game to host a room with your loaded WADs.</p>
+        <div id="local-wad-panel" hidden>
+          <label for="local-wad-base">Base game</label>
+          <select id="local-wad-base"><option value="DOOM1.WAD">Doom shareware</option></select>
+          <p>Custom maps load in the order below. Everyone in your room needs the same files and order.</p>
+          <ul id="local-wad-overlays" aria-label="Ordered WAD overlays"></ul>
+          <button id="local-wad-apply" class="secondary" type="button">Use selected WADs</button>
+        </div>
         <div class="meta-row">
           <div class="meta-pill">Browser IWAD Picker</div>
           <div class="meta-pill">GPU Shaders · Classic Look</div>
@@ -434,6 +451,7 @@
             <span class="kbd-row"><kbd>Esc</kbd><kbd>T</kbd><kbd>F6</kbd></span>
           </li>
         </ul>
+        <p class="font-credits"><a href="./font-notice.txt" target="_blank" rel="noreferrer">Doom menu font credits and terms</a></p>
       </aside>
     </div>
   </div>

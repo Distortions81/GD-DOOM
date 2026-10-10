@@ -7,6 +7,7 @@ import (
 	"gddoom/internal/audiofx"
 	"gddoom/internal/demo"
 	"gddoom/internal/gameplay"
+	"gddoom/internal/lobby"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
@@ -98,6 +99,28 @@ type AuthorityJoinResult struct {
 	Map       *mapdata.Map
 	Manifest  netgame.CompatibilityManifest
 	MapLoader func(netgame.MapChange) (*mapdata.Map, error)
+}
+
+// AuthorityContentProgress is advisory progress for the current room download.
+// The UI coalesces reports without blocking the downloader.
+type AuthorityContentProgress struct {
+	Stage, Name     string
+	Received, Total int64
+}
+
+// AuthorityContentPreparation owns verified downloaded resources until Load
+// succeeds. Load is called on the game thread with current user preferences;
+// success transfers ownership to Bundle.Options.AuthorityContentCleanup.
+// Cancel releases an abandoned preparation and must be safe to repeat.
+type AuthorityContentPreparation struct {
+	Load   func(current Options) (AuthorityContentBundle, error)
+	Cancel func()
+}
+
+type AuthorityContentBundle struct {
+	Map     *mapdata.Map
+	Options Options
+	NextMap func(mapdata.MapName, bool) (*mapdata.Map, mapdata.MapName, error)
 }
 
 // AuthorityLocalRules preserves local game rules across a network session
@@ -344,8 +367,16 @@ type Options struct {
 	AuthorityMapLoader           func(netgame.MapChange) (*mapdata.Map, error)
 	AuthorityJoin                func(context.Context, AuthorityJoinRequest) (AuthorityJoinResult, error)
 	AuthorityJoinDefaults        AuthorityJoinRequest
+	AuthorityAutoJoin            bool
 	AuthorityServers             []AuthorityServerEntry
 	AuthorityDiscover            func(context.Context, string) (AuthorityServerInfo, error)
+	AuthorityLobbyURL            string
+	AuthorityLobby               func(context.Context, string) (lobby.State, error)
+	AuthorityCreateGame          func(context.Context, string, lobby.CreateRequest) (lobby.Room, error)
+	AuthorityUploadWADs          func(context.Context, string, string) (lobby.Pack, error)
+	AuthorityPrepareRoom         func(context.Context, string, lobby.Room, func(AuthorityContentProgress)) (AuthorityContentPreparation, error)
+	AuthorityContentCleanup      func()
+	AuthorityWADHashes           []string
 	OnAuthorityServersChanged    func([]AuthorityServerEntry) error
 	AuthorityLocalRules          *AuthorityLocalRules
 	LiveTicSink                  LiveTicSink
