@@ -8,6 +8,7 @@ import (
 
 func TestAuthorityMoverWallsAndPlanesShareFractionalHeight(t *testing.T) {
 	g := &game{
+		opts:        Options{SourcePortMode: true},
 		m:           &mapdata.Map{Sectors: []mapdata.Sector{{FloorHeight: 1, CeilingHeight: 66, FloorPic: "FLOOR0_1", CeilingPic: "CEIL1_1"}}},
 		sectorFloor: []int64{fracUnit},
 		sectorCeil:  []int64{66 * fracUnit},
@@ -44,6 +45,7 @@ func TestAuthorityMoverWallsAndPlanesShareFractionalHeight(t *testing.T) {
 
 func TestAuthorityMoverFirstBaselineHoldsConfirmedDoor(t *testing.T) {
 	g := &game{
+		opts:             Options{SourcePortMode: true},
 		m:                &mapdata.Map{Sectors: []mapdata.Sector{{CeilingHeight: 64}}},
 		sectorFloor:      []int64{0},
 		sectorCeil:       []int64{64 * fracUnit},
@@ -64,6 +66,7 @@ func TestAuthorityMoverFirstBaselineHoldsConfirmedDoor(t *testing.T) {
 func TestAuthorityMoverPortalSplitTracksEachRenderedFrame(t *testing.T) {
 	sec := mapdata.Sector{CeilingHeight: 128, FloorPic: "FLOOR0_1", CeilingPic: "CEIL1_1", Light: 160}
 	g := &game{
+		opts:     Options{SourcePortMode: true},
 		worldTic: 12,
 		m:        &mapdata.Map{Sectors: []mapdata.Sector{sec, sec}},
 		wallSegStaticCache: []wallSegStatic{{

@@ -281,6 +281,7 @@ func TestAuthorityObserverSupportTransitionsAndCuts(t *testing.T) {
 func TestAuthoritySupportEyeOffsetRequiresActualSupport(t *testing.T) {
 	_, p := predictionTestWorld(t)
 	g := p.g
+	g.opts.SourcePortMode = true
 	g.clientPrediction = p
 	g.sectorFloor[0] = 8 * fracUnit
 	g.p.floorz, g.p.z = 8*fracUnit, 8*fracUnit

@@ -125,7 +125,7 @@ func TestAuthorityPresentationUnevenArrivalKeepsConstantVelocity(t *testing.T) {
 	start := time.Unix(100, 0)
 	stamp := func(tic float64) time.Time { return start.Add(time.Duration(tic * float64(time.Second) / 35)) }
 	s := newAuthorityRenderTimeline(authorityTimelineTestFrame(0), authorityTimelineTestFrame(2), stamp(2))
-	g := &game{authorityRender: s, authorityRules: &authorityRulesState{}}
+	g := &game{opts: Options{SourcePortMode: true}, authorityRender: s, authorityRules: &authorityRulesState{}}
 	g.authorityRules.Scores[1].Generation = 1
 	arrivals := []struct {
 		tic int
@@ -201,7 +201,7 @@ func TestAuthorityPresentationSectorStopsAndReversesOnSnapshotTimeline(t *testin
 		return authorityRenderFrame{tic: tic, sectors: []authorityRenderSector{{int64(floor), int64(ceil)}}}
 	}
 	s := newAuthorityRenderTimeline(frame(0), frame(2), stamp(2))
-	g := &game{authorityRender: s}
+	g := &game{opts: Options{SourcePortMode: true}, authorityRender: s}
 	arrivals := []struct {
 		tic int
 		at  float64
@@ -229,7 +229,7 @@ func TestAuthorityPresentationSectorPacketLossAndBurstStayBounded(t *testing.T) 
 	start := time.Unix(100, 0)
 	stamp := func(tic float64) time.Time { return start.Add(time.Duration(tic * float64(time.Second) / 35)) }
 	s := newAuthorityRenderTimeline(authorityTimelineTestFrame(0), authorityTimelineTestFrame(2), stamp(2))
-	g := &game{authorityRender: s}
+	g := &game{opts: Options{SourcePortMode: true}, authorityRender: s}
 	// Lose tics 4 and 6. Once the available interval is exhausted, hold the
 	// confirmed endpoint instead of repeatedly extrapolating a door by alpha.
 	s.prepare(stamp(8))
@@ -288,7 +288,7 @@ func TestAuthorityPresentationPlayerCutCannotRewindWhenMotionResumes(t *testing.
 			start := time.Unix(100, 0)
 			stamp := func(tic float64) time.Time { return start.Add(time.Duration(tic * float64(time.Second) / 35)) }
 			s := newAuthorityRenderTimeline(authorityTimelineTestFrame(0), authorityTimelineTestFrame(2), stamp(2))
-			g := &game{authorityRender: s, authorityRules: &authorityRulesState{}}
+			g := &game{opts: Options{SourcePortMode: true}, authorityRender: s, authorityRules: &authorityRulesState{}}
 			g.authorityRules.Scores[1].Generation = 1
 			if identity == "teleport" {
 				g.authorityRules.Scores[1].MovementEpoch = 1
@@ -335,7 +335,7 @@ func TestAuthorityPresentationNewActorsCannotRewindIntoBirth(t *testing.T) {
 	// previous actor's pose or display a future position before rewinding.
 	before := authorityRenderFrame{tic: 0, things: []authorityRenderThing{{kind: barrelThingType}}}
 	s := newAuthorityRenderTimeline(before, frame(2), stamp(2))
-	g := &game{authorityRender: s}
+	g := &game{opts: Options{SourcePortMode: true}, authorityRender: s}
 	confirmed := frame(2).projectiles[9]
 	lastX := int64(100 * fracUnit)
 	for quarter := 8; quarter <= 32; quarter++ {

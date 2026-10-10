@@ -7,7 +7,7 @@ import (
 )
 
 func authorityHeightVisibilityGame(direction uint16) *game {
-	return &game{m: &mapdata.Map{
+	return &game{opts: Options{SourcePortMode: true}, m: &mapdata.Map{
 		Sectors: []mapdata.Sector{
 			{CeilingHeight: 128, FloorPic: "FLOOR", CeilingPic: "CEIL", Light: 128},
 			{CeilingHeight: 0, FloorPic: "FLOOR", CeilingPic: "CEIL", Light: 128},

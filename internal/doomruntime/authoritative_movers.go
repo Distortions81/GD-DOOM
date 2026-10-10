@@ -52,6 +52,9 @@ type predictionSupportCorrection struct {
 }
 
 func (p *ClientPrediction) queueSupportTransition(from, to authorityPlayerSupport) {
+	if !p.g.opts.SourcePortMode {
+		return
+	}
 	if from.valid == to.valid && (!from.valid || from.sector == to.sector) {
 		return
 	}

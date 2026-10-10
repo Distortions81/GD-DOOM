@@ -39,8 +39,9 @@ The ordinary application and WASM entry points continue to use Ebiten.
   backslash toggles mouse turning. The toggles show the shared HUD messages
   and save through the same preferences as the menus.
 - Comma/period decrease/increase live game speed by 0.1, slash resets 1x.
-  The shared clock clamps speed to 0.1x–8x; demos and watcher streams keep their
-  authoritative cadence. Pausing and melt transitions freeze the live clock.
+  The shared clock clamps speed to 0.1x–8x in single-player live play. Multiplayer
+  (including relay hosts and watchers) and demos keep their authoritative
+  cadence. Pausing and melt transitions freeze the live clock.
 - In 3D view, plus/minus changes the status-bar layout; Ctrl+brackets changes
   HUD size. These shortcuts use the menu's settings and save to preferences.
 - Page Up/Page Down, the wheel or mouse buttons 4/5 select the previous/next owned weapon.

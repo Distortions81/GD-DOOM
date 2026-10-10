@@ -2722,13 +2722,13 @@ func (g *game) Update() error {
 		if g.keyJustPressed(ebiten.KeyF1) {
 			g.readThisRequested = true
 		}
-		if g.keyJustPressed(ebiten.KeyComma) {
+		if g.canScaleLiveSimulation() && g.keyJustPressed(ebiten.KeyComma) {
 			g.setSimTickScale(g.simTickScale - 0.1)
 		}
-		if g.keyJustPressed(ebiten.KeyPeriod) {
+		if g.canScaleLiveSimulation() && g.keyJustPressed(ebiten.KeyPeriod) {
 			g.setSimTickScale(g.simTickScale + 0.1)
 		}
-		if g.keyJustPressed(ebiten.KeySlash) {
+		if g.canScaleLiveSimulation() && g.keyJustPressed(ebiten.KeySlash) {
 			g.setSimTickScale(1.0)
 		}
 		if g.bindingJustPressed(bindingUse) {
@@ -2781,7 +2781,21 @@ func (g *game) Update() error {
 	return nil
 }
 
+// Only local Source Port live play may change the command cadence. Relay
+// hosts, watchers, coop and authoritative multiplayer all retain 35 Hz.
+func (g *game) canScaleLiveSimulation() bool {
+	return g.opts.SourcePortMode && g.opts.DemoScript == nil &&
+		g.opts.AuthorityClient == nil && g.opts.LiveTicSource == nil &&
+		g.opts.LiveTicSink == nil && g.opts.CoopPeers == nil &&
+		g.clientPrediction == nil && g.authorityRules == nil
+}
+
 func (g *game) consumeSimTicks() int {
+	if !g.canScaleLiveSimulation() {
+		g.simTickScale = 1
+		g.simTickAccum = 0
+		return 1
+	}
 	if g.simTickScale <= 0 {
 		g.simTickScale = 1
 	}
@@ -2802,6 +2816,11 @@ func (g *game) consumeSimTicks() int {
 }
 
 func (g *game) setSimTickScale(v float64) {
+	if !g.canScaleLiveSimulation() {
+		g.simTickScale = 1
+		g.simTickAccum = 0
+		return
+	}
 	if v < 0.1 {
 		v = 0.1
 	}
@@ -13428,7 +13447,7 @@ func normalizeDeg360(deg float64) float64 {
 
 func (g *game) playerEyeZ() float64 {
 	z := g.playerBaseEyeZ()
-	if g.clientPrediction != nil {
+	if g.opts.SourcePortMode && g.clientPrediction != nil {
 		z += g.clientPrediction.renderEyeOffset
 	}
 	z += g.authoritySupportEyeOffset()
@@ -16955,7 +16974,7 @@ func (g *game) sectorHeightSnapshot(sec int) (int64, int64, bool) {
 
 func (g *game) sectorHeightRenderSnapshot(sec int) (int64, int64, bool) {
 	floor, ceil, ok := g.sectorHeightSnapshot(sec)
-	if !ok || g == nil {
+	if !ok || g == nil || !g.opts.SourcePortMode {
 		return floor, ceil, ok
 	}
 	if g.authorityRender != nil || g.clientPrediction != nil {
@@ -19614,14 +19633,14 @@ func (g *game) prepareRenderState() {
 }
 
 func (g *game) prepareRenderStateAt(now time.Time) {
-	if g.authorityRender != nil {
+	if g.opts.SourcePortMode && g.authorityRender != nil {
 		g.authorityRender.prepare(now)
 	}
 	alpha := g.interpAlphaAt(now)
 	if !g.opts.SourcePortMode {
 		alpha = 1
 	}
-	if g.simTickScale > 1.0 {
+	if g.canScaleLiveSimulation() && g.simTickScale > 1.0 {
 		// Multiple sim ticks per frame already advance world state aggressively.
 		// Interpolating from prev can make render state lag behind simulation.
 		alpha = 1
@@ -19658,11 +19677,14 @@ func (g *game) markSimUpdate(now time.Time) {
 }
 
 func (g *game) expectedSimStepSeconds() float64 {
+	if g != nil && !g.opts.SourcePortMode {
+		return 1.0 / doomTicsPerSecond
+	}
 	if g != nil && g.clientPrediction != nil && g.clientUpdate.step > 0 && g.clientUpdate.step != time.Second/doomTicsPerSecond {
 		return g.clientUpdate.step.Seconds()
 	}
 	ticRate := float64(doomTicsPerSecond)
-	if g != nil && g.simTickScale > 0 {
+	if g != nil && g.canScaleLiveSimulation() && g.simTickScale > 0 {
 		ticRate *= g.simTickScale
 	}
 	if ticRate < 1e-6 {

@@ -174,6 +174,9 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 }
 
 func (sg *sessionGame) Update() error {
+	// Faithful presentation holds one complete frame until the next 35 Hz
+	// session tick, even while multiplayer keeps pumping at the host rate.
+	sg.faithfulFrameReady = false
 	// Refill before snapshot processing or level transitions can occupy the
 	// browser main thread. ChunkPlayer bounds and schedules the refill work.
 	if sg.musicCtl != nil && isWASMBuild() {
@@ -411,6 +414,26 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		screen.Fill(color.Black)
 		return
 	}
+	if sg.opts.SourcePortMode {
+		sg.faithfulFrameReady = false
+		sg.drawFrame(screen)
+		return
+	}
+	w, h := screen.Bounds().Dx(), screen.Bounds().Dy()
+	if sg.faithfulFrame == nil || sg.faithfulFrame.Bounds().Dx() != w || sg.faithfulFrame.Bounds().Dy() != h {
+		sg.faithfulFrame = newUnmanagedImage(w, h)
+		sg.faithfulFrameReady = false
+	}
+	if !sg.faithfulFrameReady || sg.faithfulFrameGame != sg.g {
+		sg.drawFrame(sg.faithfulFrame)
+		sg.faithfulFrameGame = sg.g
+		sg.faithfulFrameReady = true
+	}
+	screen.Fill(color.Black)
+	screen.DrawImage(sg.faithfulFrame, nil)
+}
+
+func (sg *sessionGame) drawFrame(screen *ebiten.Image) {
 	defer sg.drawAuthorityConnectionOverlay(screen)
 	// Gameplay can occupy a narrower aspect-correct viewport than menus.
 	// Clear the whole target so closing a menu cannot leave its text in the

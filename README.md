@@ -62,6 +62,8 @@ the familiar software-rendered appearance on desktop and in the browser.
 using the WAD's **COLORMAP lookup tables** for lighting and the selected gamma
 palette for color. Sky coordinates match the CPU renderer, and classic low
 detail still doubles each framebuffer column.
+Simulation and visual updates stay at 35 Hz, with no motion interpolation or
+game-speed controls, including in multiplayer.
 **Source Port** mode adds high-resolution output, interpolated camera, monster
 and weapon motion, full-color rendering, and optional CRT effects.
 

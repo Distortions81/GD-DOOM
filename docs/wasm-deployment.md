@@ -19,9 +19,11 @@ press Enter to join; the connected menu offers Return to Game and Leave Match.
 Its Players page shows names, ping, scores, and connection state; F6 opens the
 quick scoreboard. Join/leave/reconnect notices and a gameplay connection
 indicator make changes visible without opening a menu.
-The client runs a continuous input clock, accounts for command lead, and
-smooths small prediction corrections. Doors, lifts and their riders share
-the confirmed snapshot presentation timeline.
+The client runs a continuous input clock and accounts for command lead. Source
+Port mode smooths small prediction corrections; doors, lifts and their riders
+share the confirmed snapshot presentation timeline. Faithful mode holds each
+frame at 35 Hz and uses current tick state without interpolation or prediction
+smoothing. Game-speed controls are limited to single-player Source Port play.
 
 Multiplayer uses GDMP protocol version 3 with binary roster updates and the
 binary-only `gd-doom-authority-dev-3` simulation. The simulation revision adds

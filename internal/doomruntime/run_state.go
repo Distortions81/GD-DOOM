@@ -99,6 +99,9 @@ type sessionGame struct {
 	levelCarryover           *playerLevelCarryover
 	faithfulSurface          *ebiten.Image
 	faithfulNearest          *ebiten.Image
+	faithfulFrame            *ebiten.Image
+	faithfulFrameGame        *game
+	faithfulFrameReady       bool
 	crtShader                *ebiten.Shader
 	crtPost                  *ebiten.Image
 	crtUniforms              map[string]any

@@ -2,10 +2,10 @@ package doomruntime
 
 import "math"
 
-// Simulation speed is a local live-play control. Demo and watcher tics retain
-// their recorded/received cadence; intermissions retain their own 35-Hz clock.
+// Simulation speed is a local Source Port live-play control. Multiplayer,
+// demos and intermissions retain their own 35-Hz clock.
 func (c *NativeCampaign) canScaleSimulation() bool {
-	return c.Phase() == NativeCampaignPlaying && c.Game.g.opts.DemoScript == nil && !c.Watching()
+	return c.Phase() == NativeCampaignPlaying && c.Game.g.canScaleLiveSimulation() && !c.Watching()
 }
 
 func (c *NativeCampaign) SetSimulationSpeed(speed float64) {

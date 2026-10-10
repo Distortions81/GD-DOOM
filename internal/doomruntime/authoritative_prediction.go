@@ -81,6 +81,10 @@ func (p *ClientPrediction) correctionAt(now time.Time) (x, y, z, angle float64) 
 }
 
 func (p *ClientPrediction) prepareRenderCorrection(now time.Time) {
+	if !p.g.opts.SourcePortMode {
+		p.renderEyeOffset = 0
+		return
+	}
 	x, y, z, angle := p.correctionAt(now)
 	p.renderEyeOffset = z + p.prepareSupportCorrection(now)
 	g := p.g
@@ -93,6 +97,14 @@ func (p *ClientPrediction) prepareRenderCorrection(now time.Time) {
 
 func (p *ClientPrediction) restoreRenderHistory(from predictionRenderHistory, now time.Time) {
 	g := p.g
+	if !g.opts.SourcePortMode {
+		p.renderCorrection = predictionRenderCorrection{}
+		p.renderEyeOffset = 0
+		p.supportCorrection = predictionSupportCorrection{}
+		g.syncRenderState()
+		g.markSimUpdate(now)
+		return
+	}
 	dx, dy := g.p.x-from.body.x, g.p.y-from.body.y
 	dz := g.playerBaseEyeZ() - from.eyeZ
 	// Support-plane motion is already smoothed on the confirmed sector

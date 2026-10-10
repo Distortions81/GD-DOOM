@@ -179,7 +179,7 @@ func interpolateAuthorityPose(from, to authorityRenderPose, alpha float64) autho
 
 func (g *game) authorityRemoteRenderPose(slot int, p player) authorityRenderPose {
 	to := playerRenderPose(p)
-	if g.authorityRender == nil || g.authorityRules == nil {
+	if !g.opts.SourcePortMode || g.authorityRender == nil || g.authorityRules == nil {
 		return to
 	}
 	from, ok := g.authorityRender.from.players[slot]
@@ -192,7 +192,7 @@ func (g *game) authorityRemoteRenderPose(slot int, p player) authorityRenderPose
 }
 
 func (g *game) authorityThingRenderPose(index int, kind int16, to authorityRenderPose) authorityRenderPose {
-	if g.authorityRender == nil || index < 0 || index >= len(g.authorityRender.from.things) || index >= len(g.authorityRender.to.things) {
+	if !g.opts.SourcePortMode || g.authorityRender == nil || index < 0 || index >= len(g.authorityRender.from.things) || index >= len(g.authorityRender.to.things) {
 		return to
 	}
 	from := g.authorityRender.from.things[index]
@@ -205,7 +205,7 @@ func (g *game) authorityThingRenderPose(index int, kind int16, to authorityRende
 
 func (g *game) authorityProjectileRenderPose(p projectile) authorityRenderPose {
 	to := authorityRenderPose{x: p.x, y: p.y, z: p.z}
-	if g.authorityRender == nil || p.order <= 0 {
+	if !g.opts.SourcePortMode || g.authorityRender == nil || p.order <= 0 {
 		return to
 	}
 	from, ok := g.authorityRender.from.projectiles[p.order]
@@ -220,7 +220,7 @@ func (g *game) authorityProjectileRenderPose(p projectile) authorityRenderPose {
 // and the local command interpolation phase cannot predict a door's next state:
 // the server may stop or reverse it before another snapshot arrives.
 func (g *game) authoritySectorRenderHeights(sec int) (floor, ceil int64, ok bool) {
-	if g == nil || g.authorityRender == nil || sec < 0 || sec >= len(g.authorityRender.from.sectors) || sec >= len(g.authorityRender.to.sectors) {
+	if g == nil || !g.opts.SourcePortMode || g.authorityRender == nil || sec < 0 || sec >= len(g.authorityRender.from.sectors) || sec >= len(g.authorityRender.to.sectors) {
 		return 0, 0, false
 	}
 	from, to := g.authorityRender.from.sectors[sec], g.authorityRender.to.sectors[sec]
@@ -273,6 +273,10 @@ func (g *game) snapshotAuthorityRenderFrame() authorityRenderFrame {
 }
 
 func (g *game) beginAuthorityRenderBlend(from authorityRenderFrame, now time.Time) {
+	if !g.opts.SourcePortMode {
+		g.authorityRender = nil
+		return
+	}
 	to := g.snapshotAuthorityRenderFrame()
 	if g.authorityRender == nil {
 		g.authorityRender = newAuthorityRenderTimeline(from, to, now)
