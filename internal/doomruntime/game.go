@@ -19591,6 +19591,10 @@ func (g *game) prepareRenderStateAt(now time.Time) {
 	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
 	g.renderAngle = g.renderCameraAngle(alpha)
+	if g.clientPrediction != nil {
+		g.clientPrediction.prepareRenderCorrection(now)
+	}
+	g.prepareAuthorityObserverCamera()
 	g.renderAlpha = alpha
 	g.beginSourcePortSpectreFuzzFrame(alpha)
 	g.debugAimSS = debugFixedSubsector

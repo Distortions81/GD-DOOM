@@ -118,7 +118,6 @@ func TestMultiplayerMenuJoinIsNonblockingAndCanceledLateResultLeaves(t *testing.
 	}
 	sg.opts.AuthorityJoinDefaults = runtimecfg.AuthorityJoinRequest{Address: "server:6666", Name: "Player"}
 	sg.openFrontendMultiplayer()
-	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserJoin)
 	menuKey(sg, ebiten.KeyEnter)
 	if err := sg.tickFrontendMultiplayer(); err != nil {
 		t.Fatal(err)
@@ -187,6 +186,9 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	if sg.frontend.Mode != frontendModeMultiplayer {
 		t.Fatal("main menu did not open multiplayer page")
 	}
+	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserMore)
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
 	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserEdit)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
@@ -200,6 +202,8 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	if sg.multiplayer.request.Address != "old:6666" {
 		t.Fatal("edit cancel failed to restore prior value")
 	}
+	menuKey(sg, ebiten.KeyEscape)
+	_ = sg.tickFrontendMultiplayer()
 	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserName)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
@@ -208,6 +212,9 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	if len(sg.multiplayer.request.Name) != 64 {
 		t.Fatal("name UTF-8 byte limit not enforced")
 	}
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
+	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserMore)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
 	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserRole)
@@ -252,5 +259,41 @@ func TestMultiplayerMenuCLILeaveUsesOriginalLocalRules(t *testing.T) {
 	case <-client.left:
 	case <-time.After(time.Second):
 		t.Fatal("CLI client not left")
+	}
+}
+
+func TestMultiplayerMenuConnectedDefaultsToResumeAndKeepsLeaveClear(t *testing.T) {
+	sg := multiplayerMenuTestSession(t)
+	_, client := multiplayerMenuTestResult()
+	sg.opts.AuthorityClient, sg.g.opts.AuthorityClient = client, client
+	sg.frontend.InGame, sg.g.frontendActive = true, true
+	sg.openFrontendMultiplayer()
+	if sg.multiplayer.row != 0 {
+		t.Fatal("connected menu did not default to Return to Game")
+	}
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
+	if sg.frontend.Active || sg.frontend.MenuActive || sg.g.frontendActive || sg.opts.AuthorityClient != client || client.leaves.Load() != 0 {
+		t.Fatal("Return to Game did not resume the current live match")
+	}
+	sg.frontend.Active, sg.frontend.InGame = true, true
+	sg.openFrontendMultiplayer()
+	menuKey(sg, ebiten.KeyEscape)
+	_ = sg.tickFrontendMultiplayer()
+	if sg.frontend.Mode != frontendModeTitle || !sg.frontend.Active || client.leaves.Load() != 0 {
+		t.Fatal("Back from connected menu altered the match")
+	}
+	sg.openFrontendMultiplayer()
+	menuKey(sg, ebiten.KeyArrowDown)
+	_ = sg.tickFrontendMultiplayer()
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
+	select {
+	case <-client.left:
+	case <-time.After(time.Second):
+		t.Fatal("Leave Match did not release the client")
+	}
+	if sg.opts.AuthorityClient != nil || !sg.frontend.Active || sg.frontend.InGame {
+		t.Fatal("Leave Match did not return to local title")
 	}
 }

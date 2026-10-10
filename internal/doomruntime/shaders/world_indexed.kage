@@ -106,6 +106,10 @@ func fuzz(dstPos vec2, row float, post vec4) vec4 {
 func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	mode := int(floor(color.g/16384.0))
 	id := int(color.g)-mode*16384
+	blendAlpha := max(color.a, 0.0)
+	if color.a < 0.0 {
+		mode = int(floor(-color.a+0.5))-1
+	}
 	if mode == 11 {
 		return fuzz(dstPos.xy, color.r, custom)
 	}
@@ -120,7 +124,15 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	if mode == 6 {
 		return vec4(custom.xyz, 1.0)
 	}
-	meta := metadata(id)
+	var meta vec4
+	if color.a < 0.0 {
+		// Constant per-quad vertex values carry exact 22-bit pairs. Round
+		// before unpacking to tolerate interpolator arithmetic at boundaries.
+		packed := floor(color.gb+vec2(0.5))
+		meta = vec4(mod(packed, vec2(2048.0)), floor(packed/2048.0)+vec2(1.0))
+	} else {
+		meta = metadata(id)
+	}
 	anchor := srcPos-imageSrc0Origin()
 	delta := ivec2(floor(dstPos.xy)-anchor)
 	var uv vec2
@@ -143,11 +155,11 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	p := imageSrc0UnsafeAt(imageSrc0Origin()+meta.xy+uv+vec2(0.5))
 
 	var second vec4
-	if color.a > 0.0 {
+	if blendAlpha > 0.0 {
 		other := metadata(int(color.b))
 		second = imageSrc3UnsafeAt(imageSrc0Origin()+other.xy+uv+vec2(0.5))
 	}
-	if mode != 0 && mode != 1 && mode != 10 && p.g < 0.5 && (color.a == 0.0 || second.g < 0.5) {
+	if mode != 0 && mode != 1 && mode != 10 && p.g < 0.5 && (blendAlpha == 0.0 || second.g < 0.5) {
 		discard()
 	}
 	if mode == 8 || mode == 9 {
@@ -158,15 +170,15 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	row := color.r
 	if row < 0.0 {
 		row = -row-1.0
-		if p.g < 0.5 && (color.a == 0.0 || second.g < 0.5) {
+		if p.g < 0.5 && (blendAlpha == 0.0 || second.g < 0.5) {
 			discard()
 		}
 	}
 	index := floor(p.r*255.0+0.5)
 	result := shade(index, row)
-	if color.a > 0.0 {
+	if blendAlpha > 0.0 {
 		otherColor := shade(floor(second.r*255.0+0.5), row)
-		result = vec4(floor(mix(result.rgb, otherColor.rgb, color.a)*255.0+0.5)/255.0, 1.0)
+		result = vec4(floor(mix(result.rgb, otherColor.rgb, blendAlpha)*255.0+0.5)/255.0, 1.0)
 	}
 	return result
 }

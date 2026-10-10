@@ -42,6 +42,8 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	listen := fs.String("listen", "127.0.0.1:6671", "TCP listen address")
 	udpListen := fs.String("udp-listen", "", "optional authenticated WebTransport/QUIC UDP listen address; requires TLS certificate; route /netplay")
 	webListen := fs.String("web-listen", "", "optional HTTP/WebSocket listen address; game route /netplay")
+	var webProxies webProxyFlags
+	fs.Var(&webProxies, "web-proxy", "additional exact WebSocket route=loopback HTTP URL; repeatable, e.g. /deathmatch=http://127.0.0.1:6674/netplay")
 	webOrigins := fs.String("web-origins", "", "comma-separated permitted browser origins; same host allowed by default")
 	tlsCert := fs.String("tls-cert", "", "PEM certificate for TLS TCP, HTTPS/WSS, and WebTransport listeners")
 	tlsKey := fs.String("tls-key", "", "PEM key for TLS TCP, HTTPS/WSS, and WebTransport listeners")
@@ -64,6 +66,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+	if len(webProxies) != 0 && *webListen == "" {
+		return fmt.Errorf("-web-proxy requires -web-listen")
 	}
 	if *timeLimit > uint(^uint32(0))/netgame.TickRate {
 		return fmt.Errorf("time limit too large")
@@ -240,6 +245,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		defer webListener.Close()
 		mux := http.NewServeMux()
 		mux.Handle("/netplay", server.WebSocketHandler(netgame.WebSocketOptions{OriginPatterns: origins}))
+		for _, proxy := range webProxies {
+			mux.Handle(proxy.route, proxy.handler(ctx, errOut))
+		}
 		httpServer = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 		if tlsConfig != nil {
 			webListener = tls.NewListener(webListener, tlsConfig.Clone())
@@ -252,6 +260,9 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 			scheme = "wss"
 		}
 		fmt.Fprintf(out, "websocket: %s://%s/netplay\n", scheme, webListener.Addr())
+		for _, proxy := range webProxies {
+			fmt.Fprintf(out, "websocket proxy: %s://%s%s -> %s\n", scheme, webListener.Addr(), proxy.route, proxy.upstream)
+		}
 	}
 	if udpListener != nil {
 		fmt.Fprintf(out, "webtransport: https://%s/netplay\n", udpListener.LocalAddr())

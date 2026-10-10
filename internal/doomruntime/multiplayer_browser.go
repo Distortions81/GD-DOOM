@@ -21,9 +21,13 @@ const (
 	authorityBrowserEdit
 	authorityBrowserName
 	authorityBrowserRole
-	authorityBrowserJoin
-	authorityBrowserActionCount
+	authorityBrowserMore
+	authorityBrowserBack
 )
+
+var authorityBrowserPrimaryActions = []int{authorityBrowserName, authorityBrowserMore, authorityBrowserBack}
+var authorityBrowserEmptyActions = []int{authorityBrowserAdd, authorityBrowserName, authorityBrowserMore, authorityBrowserBack}
+var authorityBrowserMoreActions = []int{authorityBrowserRefreshAction, authorityBrowserAdd, authorityBrowserEdit, authorityBrowserRole, authorityBrowserBack}
 
 type authorityServerStatus uint8
 
@@ -54,7 +58,47 @@ type authorityBrowserRefresh struct {
 	pending int
 }
 
-func (m *authorityMenuState) actionRow(action int) int { return len(m.servers) + action }
+func (m *authorityMenuState) actions() []int {
+	if m.moreOptions {
+		return authorityBrowserMoreActions
+	}
+	if len(m.servers) == 0 {
+		return authorityBrowserEmptyActions
+	}
+	return authorityBrowserPrimaryActions
+}
+
+func (m *authorityMenuState) actionStart() int {
+	if m.moreOptions {
+		return 0
+	}
+	return len(m.servers)
+}
+
+func (m *authorityMenuState) actionRow(action int) int {
+	for row, candidate := range m.actions() {
+		if candidate == action {
+			return m.actionStart() + row
+		}
+	}
+	return -1
+}
+
+func (m *authorityMenuState) actionAtRow() int {
+	row := m.row - m.actionStart()
+	if row < 0 || row >= len(m.actions()) {
+		return -1
+	}
+	return m.actions()[row]
+}
+
+func (m *authorityMenuState) showServers() {
+	m.moreOptions = false
+	m.row = m.selected
+	if len(m.servers) == 0 {
+		m.row = m.actionRow(authorityBrowserAdd)
+	}
+}
 
 func (m *authorityMenuState) selectServer(index int) {
 	if index < 0 || index >= len(m.servers) {
@@ -199,7 +243,9 @@ func (sg *sessionGame) beginAuthorityServerEdit(name, add bool) {
 		m.status = "SERVER LIST FULL - EDIT AN ENTRY"
 		return
 	}
-	sg.cancelAuthorityServerRefresh()
+	if !name {
+		sg.cancelAuthorityServerRefresh()
+	}
 	m.editing, m.replace, m.editName, m.editNew = true, true, name, add
 	m.editOriginal, m.status = m.request.Address, ""
 	if name {
@@ -224,7 +270,7 @@ func (sg *sessionGame) commitAuthorityServerEdit() bool {
 				return false
 			}
 			m.selectServer(index)
-			m.row = index
+			m.showServers()
 			m.status = "SERVER ALREADY SAVED"
 			return true
 		}
@@ -239,7 +285,7 @@ func (sg *sessionGame) commitAuthorityServerEdit() bool {
 		}
 	}
 	m.selectServer(m.selected)
-	m.row = m.selected
+	m.showServers()
 	m.status = "SERVER SAVED"
 	if save := sg.opts.OnAuthorityServersChanged; save != nil {
 		entries := make([]runtimecfg.AuthorityServerEntry, len(m.servers))
@@ -299,6 +345,21 @@ func authorityServerSummary(server authorityBrowserServer) (string, string) {
 func (sg *sessionGame) drawAuthorityBrowser(text func(string, int, int)) {
 	m := &sg.multiplayer
 	fit := func(value string, width int) string { return sg.ellipsizeIntermissionText(value, width) }
+	if m.attempt != nil {
+		text("JOINING GAME...", 32, 56)
+		label := m.request.Address
+		if m.selected < len(m.servers) {
+			label = authorityServerLabel(m.servers[m.selected])
+		}
+		text(fit(label, 256), 32, 82)
+		role := "PLAYING AS "
+		if m.request.Spectator {
+			role = "WATCHING AS "
+		}
+		text(fit(role+m.request.Name, 256), 32, 106)
+		text("ESC / BACK: CANCEL", 32, 154)
+		return
+	}
 	if m.editing {
 		title, value := "EDIT SERVER ADDRESS", m.request.Address
 		if m.editNew {
@@ -322,72 +383,124 @@ func (sg *sessionGame) drawAuthorityBrowser(text func(string, int, int)) {
 		text(fit(m.status, 296), 12, 180)
 		return
 	}
-	text("SERVER BROWSER", 16, 32)
-	text(fmt.Sprintf("%d SAVED", len(m.servers)), 240, 32)
+	if m.moreOptions {
+		text("MORE OPTIONS", 24, 38)
+		if len(m.servers) > 0 {
+			server := m.servers[m.selected]
+			text(fit(authorityServerLabel(server), 272), 24, 56)
+			text(fit(server.entry.Address, 272), 24, 68)
+		}
+		role := "JOIN AS: PLAYER"
+		if m.request.Spectator {
+			role = "JOIN AS: SPECTATOR"
+		}
+		labels := []string{"REFRESH SERVERS", "ADD SERVER", "EDIT SELECTED SERVER", role, "BACK TO SERVERS"}
+		for row, label := range labels {
+			y := 90 + row*18
+			text(label, 36, y)
+			if m.row == row {
+				text(">", 20, y)
+			}
+		}
+		status := m.status
+		if status == "" && len(m.servers) > 0 {
+			server := m.servers[m.selected]
+			if server.status == authorityServerOnline {
+				status = fmt.Sprintf("RESPONSE %d MS", max(0, int(server.info.Ping.Milliseconds())))
+			} else if server.status == authorityServerOffline {
+				status = server.err
+			}
+		}
+		text(fit(status, 296), 12, 186)
+		return
+	}
+	verb := "JOIN"
+	if m.request.Spectator {
+		verb = "WATCH"
+	}
+	hint := "ENTER / TAP USE TO SELECT"
+	if m.row < len(m.servers) {
+		hint = "ENTER / TAP USE TO " + verb
+	}
+	text(hint, 24, 36)
 	if len(m.servers) == 0 {
-		text("NO SERVERS - CHOOSE ADD", 32, 61)
+		text("NO SAVED SERVERS YET", 32, 68)
 	}
 	for index := m.scroll; index < min(len(m.servers), m.scroll+authorityBrowserVisible); index++ {
 		server := m.servers[index]
-		y := 47 + (index-m.scroll)*14
-		marker := " "
-		if index == m.selected {
-			marker = "*"
-		}
+		y := 54 + (index-m.scroll)*16
+		label := authorityServerLabel(server)
 		if index == m.row {
-			marker = ">"
+			text(">", 12, y)
+			label = verb + " " + label
 		}
-		text(marker, 10, y)
-		text(fit(authorityServerLabel(server), 184), 24, y)
-		state := "UNCHECKED"
+		text(fit(label, 208), 24, y)
+		state := ""
 		switch server.status {
 		case authorityServerLoading:
-			state = "LOADING"
+			state = "CHECKING"
 		case authorityServerOffline:
 			state = "OFFLINE"
 		case authorityServerOnline:
-			ping := server.info.Ping.Milliseconds()
-			if ping < 0 {
-				ping = 0
+			state = "ONLINE"
+			if server.info.Players >= 0 && server.info.PlayerLimit > 0 {
+				state = fmt.Sprintf("%d/%d", server.info.Players, server.info.PlayerLimit)
 			}
-			state = fmt.Sprintf("%dMS", ping)
 			if !server.info.Compatible {
 				state = "MISMATCH"
 			}
 		}
-		text(fit(state, 80), 224, y)
+		text(fit(state, 64), 240, y)
 	}
 	if len(m.servers) > 0 {
 		server := m.servers[m.selected]
-		text(fit(server.entry.Address, 296), 12, 104)
-		details, compatibility := authorityServerSummary(server)
-		text(fit(details, 296), 12, 116)
-		text(fit(compatibility, 296), 12, 128)
-	}
-	role := "PLAY"
-	if m.request.Spectator {
-		role = "SPECTATE"
-	}
-	join := "JOIN"
-	if m.attempt != nil {
-		join = "JOINING"
-	}
-	actions := []struct {
-		label       string
-		x, y, width int
-	}{
-		{"REFRESH", 24, 144, 76}, {"ADD", 122, 144, 48}, {"EDIT", 222, 144, 72},
-		{"NAME: " + m.request.Name, 24, 158, 272}, {"AS: " + role, 24, 172, 164}, {join, 222, 172, 80},
-	}
-	for index, action := range actions {
-		if m.row == m.actionRow(index) {
-			text(">", action.x-12, action.y)
+		details, readiness := "", "ENTER TO CONNECT"
+		switch server.status {
+		case authorityServerLoading:
+			readiness = "CHECKING SERVER - YOU CAN STILL JOIN"
+		case authorityServerOffline:
+			readiness = "SERVER OFFLINE - ENTER TO RETRY"
+		case authorityServerOnline:
+			mode := strings.ToUpper(server.info.Manifest.Mode)
+			if mode == "COOP" {
+				mode = "CO-OP"
+			}
+			details = mode + "  " + server.info.Manifest.Map
+			readiness = "READY TO " + verb
+			if server.info.Spectators > 0 {
+				details += fmt.Sprintf("  %d WATCHING", server.info.Spectators)
+			}
+			if !server.info.Compatible {
+				readiness = "REQUIRES MATCHING GAME FILES"
+			}
 		}
-		text(fit(action.label, action.width), action.x, action.y)
+		text(fit(details, 272), 24, 120)
+		if m.status != "" {
+			readiness = m.status
+		}
+		text(fit(readiness, 296), 12, 132)
+	} else if m.status != "" {
+		text(fit(m.status, 296), 12, 90)
 	}
-	footer := "ENTER: JOIN  F5: REFRESH  F2: EDIT"
-	if m.status != "" {
-		footer = m.status
+	for index, action := range m.actions() {
+		label := ""
+		switch action {
+		case authorityBrowserAdd:
+			label = "ADD A SERVER"
+		case authorityBrowserName:
+			label = "PLAYER: " + m.request.Name
+		case authorityBrowserMore:
+			label = "MORE OPTIONS"
+		case authorityBrowserBack:
+			label = "BACK"
+		}
+		y := 154 + index*16
+		if len(m.servers) == 0 {
+			y = 110 + index*24
+		}
+		text(fit(label, 272), 36, y)
+		if m.row == m.actionRow(action) {
+			text(">", 20, y)
+		}
 	}
-	text(fit(footer, 296), 12, 188)
 }

@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -121,6 +122,92 @@ func TestAuthorityClientBoundsCatchupAndRedundantBatches(t *testing.T) {
 	}
 	if g.worldTic != 0 {
 		t.Fatal("client pump stepped server world")
+	}
+}
+
+func TestAuthorityClientInterpolationUsesCommandClock(t *testing.T) {
+	a, g, connection := authorityClientTestWorld(t, 0)
+	g.opts.SourcePortMode = true
+	connection.snapshots = []netgame.Snapshot{predictionSnapshot(t, a, 1, netgame.InputAck{})}
+	start := time.Unix(100, 0)
+	const ticDuration = time.Second / netgame.TickRate
+	// Uneven render updates cross command boundaries at different phases.
+	// Interpolation must retain the elapsed fraction rather than reset at
+	// the update time, which produces a repeating sawtooth in movement speed.
+	for _, elapsed := range []time.Duration{0, 16 * time.Millisecond, 34 * time.Millisecond, 49 * time.Millisecond, 67 * time.Millisecond, 84 * time.Millisecond, 101 * time.Millisecond, 130 * time.Millisecond} {
+		now := start.Add(elapsed)
+		if err := g.updateAuthoritativeClientAt(now, func() demo.Tic { return demo.Tic{Forward: 25} }); err != nil {
+			t.Fatal(err)
+		}
+		wantStamp := start.Add(elapsed / ticDuration * ticDuration)
+		if !g.lastUpdate.Equal(wantStamp) {
+			t.Fatalf("at %v interpolation clock = %v, want %v", elapsed, g.lastUpdate.Sub(start), wantStamp.Sub(start))
+		}
+		g.prepareRenderStateAt(now)
+		wantAlpha := now.Sub(wantStamp).Seconds() * netgame.TickRate
+		if math.Abs(g.renderAlpha-wantAlpha) > 1e-8 {
+			t.Fatalf("at %v interpolation alpha = %v, want %v", elapsed, g.renderAlpha, wantAlpha)
+		}
+	}
+}
+
+func TestAuthorityClientJitteredMatchingSnapshotsPreserveRenderedMotion(t *testing.T) {
+	a, g, connection := authorityClientTestWorld(t, 0)
+	_, reference, referenceConnection := authorityClientTestWorld(t, 0)
+	g.opts.SourcePortMode, reference.opts.SourcePortMode = true, true
+	g.opts.SmoothCameraYaw, reference.opts.SmoothCameraYaw = true, true
+	initial := predictionSnapshot(t, a, 1, netgame.InputAck{})
+	connection.snapshots, referenceConnection.snapshots = []netgame.Snapshot{initial}, []netgame.Snapshot{initial}
+	start := time.Unix(100, 0)
+	const ticDuration = time.Second / netgame.TickRate
+	type delayedSnapshot struct {
+		at       time.Time
+		snapshot netgame.Snapshot
+	}
+	var deliveries []delayedSnapshot
+	inputs := make(map[uint32]demo.Tic)
+	sample := func() demo.Tic { return demo.Tic{Forward: 25, AngleTurn: 128} }
+	id := uint32(1)
+	applied := 0
+	// The reference predicts the same commands without intermediate baselines.
+	// A matching authoritative baseline at any render phase should be invisible.
+	// Delivery jitter deliberately puts most packets between local 35 Hz steps.
+	for frame := range 90 {
+		elapsed := time.Duration(frame) * time.Second / 120
+		now := start.Add(elapsed)
+		for a.Tic() < uint32(elapsed/ticDuration) {
+			tick := a.Tic() + 1
+			if err := a.Step(map[byte]demo.Tic{1: inputs[tick]}); err != nil {
+				t.Fatal(err)
+			}
+			if tick%2 == 0 {
+				id++
+				jitter := []time.Duration{3, 21, 7, 15}[int(id)%4] * time.Millisecond
+				deliveries = append(deliveries, delayedSnapshot{start.Add(time.Duration(tick)*ticDuration + jitter), predictionSnapshot(t, a, id, netgame.InputAck{HasTick: true, Tick: tick, HasSequence: true, Sequence: tick})})
+			}
+		}
+		for len(deliveries) > 0 && !now.Before(deliveries[0].at) {
+			connection.snapshots = append(connection.snapshots, deliveries[0].snapshot)
+			deliveries = deliveries[1:]
+			applied++
+		}
+		for _, clientGame := range []*game{g, reference} {
+			if err := clientGame.updateAuthoritativeClientAt(now, sample); err != nil {
+				t.Fatal(err)
+			}
+			clientGame.prepareRenderStateAt(now)
+		}
+		if len(connection.sent) > 0 {
+			for _, input := range connection.sent[len(connection.sent)-1].Inputs {
+				inputs[input.Tick] = input.Command
+			}
+		}
+		if g.p != reference.p || math.Abs(g.renderPX-reference.renderPX) > 1e-6 || math.Abs(g.renderPY-reference.renderPY) > 1e-6 || g.renderAngle != reference.renderAngle {
+			t.Fatalf("snapshot changed motion at frame %d: body equal=%v render=(%.6f, %.6f, %d), uninterrupted=(%.6f, %.6f, %d)", frame, g.p == reference.p, g.renderPX, g.renderPY, g.renderAngle, reference.renderPX, reference.renderPY, reference.renderAngle)
+		}
+	}
+	if applied < 10 {
+		t.Fatalf("insufficient jittered baselines: %d", applied)
 	}
 }
 

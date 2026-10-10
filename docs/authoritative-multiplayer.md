@@ -149,24 +149,39 @@ client deduplication. Menus keep receiving chat and snapshots while gameplay
 controls are neutral; opening chat never pauses the match.
 Hold F6 to view the current roster, frags and deaths.
 
-The desktop and WASM title/pause menus include **Multiplayer**. Its server list
-includes the configured default and saved custom addresses. Select a server to
-see its map, mode, player capacity, spectators and loaded-WAD/engine compatibility;
-the list also shows response time. **Refresh** queries these addresses in the
-background without reserving gameplay slots. Older servers can still supply
-map and compatibility information when player counts are unavailable. This is
-a bounded saved list of up to 32 addresses, with no public master registry or
-automatic network scanning.
+The desktop and WASM title/pause menus include **Multiplayer**. Select a server
+and press Enter or tap the touch **Use** button to join immediately. The selected
+row says **Join** and shows the server name; nearby details show map, mode,
+occupancy and whether the loaded game files match. **Player** changes your name.
+The configured default server is selected when the menu first opens, so joining
+does not require entering an address or choosing a transport.
+The built-in list includes **GD-DOOM Co-op** at
+`https://m45sci.xyz:6672/netplay` and **GD-DOOM Deathmatch** at
+`wss://m45sci.xyz:6672/deathmatch`. A configured custom address remains preferred.
+The hosted deathmatch room has four slots, no monsters, a 20-frag/10-minute
+limit, and E1M1/E1M2 rotation. Map exits can rotate early. Press Use after the
+one-second respawn delay; scores and loadouts reset on each map.
+Co-op uses WebTransport with WSS fallback. The hosted deathmatch endpoint uses
+WSS through the same public port, forwarded to an isolated loopback match
+process; gameplay RNG is never shared between the two matches.
 
-Use **Add** or **Edit** for an HTTPS/WebTransport or WS/WSS URL,
-or a native `host:port` TCP address. Server entries persist in the native
-configuration's `multiplayer_servers` field, or in the current browser origin's
-local storage. Choose a player name, optionally select spectator mode, then **Join**.
-Joining runs in the background; Escape cancels and errors stay in the menu for
-retry. The loaded WAD stack is retained and checked against the server. While
-connected, **Leave Match** releases the player and returns to the title menu
-without exiting the program or reloading the browser. Local rules are restored,
-while audio, rendering and input preferences remain current.
+**More Options** contains refresh, custom server addresses, and **Join As** for
+spectator mode. Returning to the list after selecting spectator mode changes
+the selected action to **Watch**. **Add Server** and **Edit Selected Server**
+accept an HTTPS/WebTransport or WS/WSS URL, or a native `host:port` TCP address.
+This page also shows the selected address and response time. Entries persist
+in native configuration's `multiplayer_servers` field, or the current browser
+origin's local storage. The list contains at most 32 configured/saved addresses;
+there is no public master registry or automatic network scanning. Background
+status queries reserve no gameplay slots, and older servers can omit counts.
+
+Joining has a progress screen with Escape/Back to cancel; errors remain on the
+server list for retry. The loaded WAD stack is retained and verified. While
+connected, the menu defaults to **Return to Game**, which closes the menu and
+resumes the current match. **Leave Match** releases the player and returns to the
+title menu without exiting the program or reloading the browser. Escape returns
+to the parent menu. Leaving restores local rules and keeps current audio,
+rendering and input preferences.
 The `-multiplayer-server` option selects the default list entry; `-connect` still
 joins immediately. `MULTIPLAYER_SERVER` supplies the default browser address
 when running `scripts/build_wasm.sh`.
@@ -180,6 +195,23 @@ Menus, chat and reconnecting clear pending motion and send neutral controls or
 no gameplay input as appropriate. Regression tests cover startup suppression,
 repeated host samples, catch-up commands, sensitivity, inversion and correction
 without duplicate turning.
+
+Client rendering keeps its 35 Hz movement clock and interpolation endpoints
+across matching snapshots. Receiving a baseline does not restart camera
+interpolation; host updates retain the elapsed fraction of the current tic.
+Small position/yaw corrections use a presentation-only offset that fades over
+100 ms, while new input and collision take effect immediately. Teleports,
+respawns, death transitions and large corrections reset that offset.
+
+Remote players, monsters, projectiles and spectator camera motion interpolate
+raw snapshots on a monotonic server-tic timeline rather than starting another
+blend whenever a packet arrives. The buffer normally adds three tics (about
+86 ms) of visual delay, retains at most eight frames, and bounds recovery delay
+to seven tics. A stalled stream holds the newest known pose without
+extrapolating. Player incarnation/teleport changes cut immediately and clear
+affected pose history; confirmed gameplay and collision always use the newest
+server state. Deterministic tests exercise 120 Hz rendering with uneven snapshot
+delivery, corrections, stalls and discontinuities.
 
 Menu verification: real browser joining, movement, leaving to title, and
 rejoining as a spectator passed without a page reload. The public WASM build

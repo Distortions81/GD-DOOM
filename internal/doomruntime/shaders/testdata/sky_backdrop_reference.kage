@@ -20,13 +20,13 @@ func sampleSkyPoint(u, v float) vec4 {
 	return imageSrc0At(src)
 }
 
-func prefilterSky(center, left, right, up, down vec4) vec4 {
-	// Preserve the original prefilter's sample positions and arithmetic order.
-	c := center * 0.7
-	c += left * 0.075
-	c += right * 0.075
-	c += up * 0.075
-	c += down * 0.075
+func sampleSkyPrefiltered(u, v float) vec4 {
+	// Tiny half-pixel prefilter to calm palette dithering before reconstruction.
+	c := sampleSkyPoint(u, v) * 0.7
+	c += sampleSkyPoint(u-0.5, v) * 0.075
+	c += sampleSkyPoint(u+0.5, v) * 0.075
+	c += sampleSkyPoint(u, v-0.5) * 0.075
+	c += sampleSkyPoint(u, v+0.5) * 0.075
 	return c
 }
 
@@ -54,64 +54,22 @@ func sampleSkySharp(u, v float) vec4 {
 	baseV := floor(v)
 	wu := catmullRomWeights(u - baseU)
 	wv := catmullRomWeights(v - baseV)
-	// Adjacent prefilter centers share their half-texel edge samples.
-	// Cache 20 horizontal and 20 vertical edges plus 16 centers: 56 reads.
-	h00 := sampleSkyPoint(baseU-1.5, baseV-1.0)
-	h10 := sampleSkyPoint(baseU-0.5, baseV-1.0)
-	h20 := sampleSkyPoint(baseU+0.5, baseV-1.0)
-	h30 := sampleSkyPoint(baseU+1.5, baseV-1.0)
-	h40 := sampleSkyPoint(baseU+2.5, baseV-1.0)
-	h01 := sampleSkyPoint(baseU-1.5, baseV)
-	h11 := sampleSkyPoint(baseU-0.5, baseV)
-	h21 := sampleSkyPoint(baseU+0.5, baseV)
-	h31 := sampleSkyPoint(baseU+1.5, baseV)
-	h41 := sampleSkyPoint(baseU+2.5, baseV)
-	h02 := sampleSkyPoint(baseU-1.5, baseV+1.0)
-	h12 := sampleSkyPoint(baseU-0.5, baseV+1.0)
-	h22 := sampleSkyPoint(baseU+0.5, baseV+1.0)
-	h32 := sampleSkyPoint(baseU+1.5, baseV+1.0)
-	h42 := sampleSkyPoint(baseU+2.5, baseV+1.0)
-	h03 := sampleSkyPoint(baseU-1.5, baseV+2.0)
-	h13 := sampleSkyPoint(baseU-0.5, baseV+2.0)
-	h23 := sampleSkyPoint(baseU+0.5, baseV+2.0)
-	h33 := sampleSkyPoint(baseU+1.5, baseV+2.0)
-	h43 := sampleSkyPoint(baseU+2.5, baseV+2.0)
-	v00 := sampleSkyPoint(baseU-1.0, baseV-1.5)
-	v10 := sampleSkyPoint(baseU, baseV-1.5)
-	v20 := sampleSkyPoint(baseU+1.0, baseV-1.5)
-	v30 := sampleSkyPoint(baseU+2.0, baseV-1.5)
-	v01 := sampleSkyPoint(baseU-1.0, baseV-0.5)
-	v11 := sampleSkyPoint(baseU, baseV-0.5)
-	v21 := sampleSkyPoint(baseU+1.0, baseV-0.5)
-	v31 := sampleSkyPoint(baseU+2.0, baseV-0.5)
-	v02 := sampleSkyPoint(baseU-1.0, baseV+0.5)
-	v12 := sampleSkyPoint(baseU, baseV+0.5)
-	v22 := sampleSkyPoint(baseU+1.0, baseV+0.5)
-	v32 := sampleSkyPoint(baseU+2.0, baseV+0.5)
-	v03 := sampleSkyPoint(baseU-1.0, baseV+1.5)
-	v13 := sampleSkyPoint(baseU, baseV+1.5)
-	v23 := sampleSkyPoint(baseU+1.0, baseV+1.5)
-	v33 := sampleSkyPoint(baseU+2.0, baseV+1.5)
-	v04 := sampleSkyPoint(baseU-1.0, baseV+2.5)
-	v14 := sampleSkyPoint(baseU, baseV+2.5)
-	v24 := sampleSkyPoint(baseU+1.0, baseV+2.5)
-	v34 := sampleSkyPoint(baseU+2.0, baseV+2.5)
-	p00 := prefilterSky(sampleSkyPoint(baseU-1.0, baseV-1.0), h00, h10, v00, v01)
-	p10 := prefilterSky(sampleSkyPoint(baseU, baseV-1.0), h10, h20, v10, v11)
-	p20 := prefilterSky(sampleSkyPoint(baseU+1.0, baseV-1.0), h20, h30, v20, v21)
-	p30 := prefilterSky(sampleSkyPoint(baseU+2.0, baseV-1.0), h30, h40, v30, v31)
-	p01 := prefilterSky(sampleSkyPoint(baseU-1.0, baseV), h01, h11, v01, v02)
-	p11 := prefilterSky(sampleSkyPoint(baseU, baseV), h11, h21, v11, v12)
-	p21 := prefilterSky(sampleSkyPoint(baseU+1.0, baseV), h21, h31, v21, v22)
-	p31 := prefilterSky(sampleSkyPoint(baseU+2.0, baseV), h31, h41, v31, v32)
-	p02 := prefilterSky(sampleSkyPoint(baseU-1.0, baseV+1.0), h02, h12, v02, v03)
-	p12 := prefilterSky(sampleSkyPoint(baseU, baseV+1.0), h12, h22, v12, v13)
-	p22 := prefilterSky(sampleSkyPoint(baseU+1.0, baseV+1.0), h22, h32, v22, v23)
-	p32 := prefilterSky(sampleSkyPoint(baseU+2.0, baseV+1.0), h32, h42, v32, v33)
-	p03 := prefilterSky(sampleSkyPoint(baseU-1.0, baseV+2.0), h03, h13, v03, v04)
-	p13 := prefilterSky(sampleSkyPoint(baseU, baseV+2.0), h13, h23, v13, v14)
-	p23 := prefilterSky(sampleSkyPoint(baseU+1.0, baseV+2.0), h23, h33, v23, v24)
-	p33 := prefilterSky(sampleSkyPoint(baseU+2.0, baseV+2.0), h33, h43, v33, v34)
+	p00 := sampleSkyPrefiltered(baseU-1.0, baseV-1.0)
+	p10 := sampleSkyPrefiltered(baseU, baseV-1.0)
+	p20 := sampleSkyPrefiltered(baseU+1.0, baseV-1.0)
+	p30 := sampleSkyPrefiltered(baseU+2.0, baseV-1.0)
+	p01 := sampleSkyPrefiltered(baseU-1.0, baseV)
+	p11 := sampleSkyPrefiltered(baseU, baseV)
+	p21 := sampleSkyPrefiltered(baseU+1.0, baseV)
+	p31 := sampleSkyPrefiltered(baseU+2.0, baseV)
+	p02 := sampleSkyPrefiltered(baseU-1.0, baseV+1.0)
+	p12 := sampleSkyPrefiltered(baseU, baseV+1.0)
+	p22 := sampleSkyPrefiltered(baseU+1.0, baseV+1.0)
+	p32 := sampleSkyPrefiltered(baseU+2.0, baseV+1.0)
+	p03 := sampleSkyPrefiltered(baseU-1.0, baseV+2.0)
+	p13 := sampleSkyPrefiltered(baseU, baseV+2.0)
+	p23 := sampleSkyPrefiltered(baseU+1.0, baseV+2.0)
+	p33 := sampleSkyPrefiltered(baseU+2.0, baseV+2.0)
 	row0 := p00*wu.x + p10*wu.y + p20*wu.z + p30*wu.w
 	row1 := p01*wu.x + p11*wu.y + p21*wu.z + p31*wu.w
 	row2 := p02*wu.x + p12*wu.y + p22*wu.z + p32*wu.w

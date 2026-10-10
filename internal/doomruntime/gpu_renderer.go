@@ -371,6 +371,15 @@ func (r *gpuRenderer) rect(commands *gpuCommands, x0, y0, x1, y1 int, tex, other
 		b = &commands.batches[commands.used-1]
 	}
 	vertex := ebiten.Vertex{SrcX: float32(x0), SrcY: float32(y0), ColorR: float32(light), ColorG: float32(tex.id + mode*gpuModeStride), ColorB: float32(other.id), ColorA: float32(alpha) / 255, Custom0: u, Custom1: v, Custom2: du, Custom3: dv}
+	if alpha == 0 && mode != 6 && mode != 7 && mode != 11 && mode != 12 {
+		// An unblended texture needs no second ID or blend fraction. Carry its
+		// two exact 22-bit metadata pairs in those existing vertex channels,
+		// avoiding metadata image reads in the fragment shader. Negative alpha
+		// identifies this encoding; special passes retain their original form.
+		vertex.ColorG = float32(tex.x | (tex.width-1)<<11)
+		vertex.ColorB = float32(tex.y | (tex.height-1)<<11)
+		vertex.ColorA = -float32(mode + 1)
+	}
 	// Wall sampling depends only on Y within a column. Adjacent columns with
 	// the same texel, light and Y mapping can share a rectangle. Solid colors
 	// and sky copies likewise need only the outer bounds of an adjacent run.
@@ -674,10 +683,12 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	}
 	r.frame.Fill(background)
 	r.snapshot.Clear()
-	if key, tex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name); ok {
-		g.initSkyLayerShader()
-		if g.enableSkyLayerFrame(camAng, focal, key, tex, effectiveSkyTexHeight(tex)) {
-			g.drawSkyLayerFrame(r.snapshot)
+	if r.skyCommands.used > 0 {
+		if key, tex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name); ok {
+			g.initSkyLayerShader()
+			if g.enableSkyLayerFrame(camAng, focal, key, tex, effectiveSkyTexHeight(tex)) {
+				g.drawSkyLayerFrame(r.snapshot)
+			}
 		}
 	}
 	if g.opts.SourcePortMode {

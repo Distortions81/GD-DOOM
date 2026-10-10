@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 	"unicode"
@@ -12,6 +13,7 @@ import (
 	"gddoom/internal/runtimecfg"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type authorityJoinReply struct {
@@ -38,6 +40,7 @@ type authorityMenuState struct {
 	probeSlots       chan struct{}
 	editName         bool
 	editNew          bool
+	moreOptions      bool
 	sessionCancel    context.CancelFunc
 	localRules       *runtimecfg.AuthorityLocalRules
 	localMap         *mapdata.Map
@@ -63,7 +66,8 @@ func (sg *sessionGame) openFrontendMultiplayer() {
 		menu.initialized = true
 		sg.initializeAuthorityBrowser()
 	}
-	menu.row, menu.editing = menu.selected, false
+	menu.showServers()
+	menu.editing = false
 	if sg.opts.AuthorityClient != nil {
 		menu.row = 0
 	}
@@ -136,12 +140,17 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 		return nil
 	}
 	if escape {
+		if menu.moreOptions {
+			menu.showServers()
+			sg.playMenuBackSound()
+			return nil
+		}
 		sg.cancelAuthorityServerRefresh()
 		sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, len(frontendMainMenuNames)
 		sg.playMenuBackSound()
 		return nil
 	}
-	count := len(menu.servers) + authorityBrowserActionCount
+	count := menu.actionStart() + len(menu.actions())
 	connected := sg.opts.AuthorityClient != nil
 	if connected {
 		count = 2
@@ -154,19 +163,23 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 		menu.row = (menu.row + 1) % count
 		sg.playMenuMoveSound()
 	}
-	if !connected && menu.row < len(menu.servers) {
+	if !connected && !menu.moreOptions && menu.row < len(menu.servers) {
 		menu.selectServer(menu.row)
 	}
 	if !connected && sg.keyJustPressed(ebiten.KeyF5) {
 		sg.refreshAuthorityServers()
 	}
 	if !connected && sg.keyJustPressed(ebiten.KeyInsert) {
+		menu.moreOptions = true
+		menu.row = menu.actionRow(authorityBrowserAdd)
 		sg.beginAuthorityServerEdit(false, true)
 	}
 	if !connected && sg.keyJustPressed(ebiten.KeyF2) {
+		menu.moreOptions = true
+		menu.row = menu.actionRow(authorityBrowserEdit)
 		sg.beginAuthorityServerEdit(false, false)
 	}
-	if !connected && menu.row == menu.actionRow(authorityBrowserRole) && (sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionLeft) || sg.touchJustPressed(touchActionRight)) {
+	if !connected && menu.actionAtRow() == authorityBrowserRole && (sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionLeft) || sg.touchJustPressed(touchActionRight)) {
 		menu.request.Spectator = !menu.request.Spectator
 		sg.playMenuMoveSound()
 	}
@@ -176,17 +189,22 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 	sg.playMenuConfirmSound()
 	if connected {
 		if menu.row == 0 {
-			sg.leaveAuthorityMatch()
+			sg.frontend = frontendState{}
+			if sg.rt != nil {
+				sg.rt.sessionSetFrontendActive(false)
+			}
+			sg.clearSampledInput()
+			sg.suppressTouchUntilRelease()
 		} else {
-			sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, len(frontendMainMenuNames)
+			sg.leaveAuthorityMatch()
 		}
 		return nil
 	}
-	if menu.row < len(menu.servers) {
+	if !menu.moreOptions && menu.row < len(menu.servers) {
 		sg.beginAuthorityJoin()
 		return nil
 	}
-	switch menu.row - len(menu.servers) {
+	switch menu.actionAtRow() {
 	case authorityBrowserRefreshAction:
 		sg.refreshAuthorityServers()
 	case authorityBrowserAdd:
@@ -197,8 +215,15 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 		sg.beginAuthorityServerEdit(true, false)
 	case authorityBrowserRole:
 		menu.request.Spectator = !menu.request.Spectator
-	case authorityBrowserJoin:
-		sg.beginAuthorityJoin()
+	case authorityBrowserMore:
+		menu.moreOptions, menu.row = true, 0
+	case authorityBrowserBack:
+		if menu.moreOptions {
+			menu.showServers()
+		} else {
+			sg.cancelAuthorityServerRefresh()
+			sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, len(frontendMainMenuNames)
+		}
 	}
 	return nil
 }
@@ -273,11 +298,13 @@ func (sg *sessionGame) beginAuthorityJoin() {
 	request.Address, request.Name = strings.TrimSpace(request.Address), strings.TrimSpace(request.Name)
 	if request.Address == "" {
 		menu.status = "ADD OR SELECT A SERVER"
+		menu.moreOptions = true
 		menu.row = menu.actionRow(authorityBrowserAdd)
 		return
 	}
 	if request.Name == "" {
 		menu.status = "ENTER YOUR PLAYER NAME"
+		menu.moreOptions = false
 		menu.row = menu.actionRow(authorityBrowserName)
 		return
 	}
@@ -408,23 +435,31 @@ func (sg *sessionGame) closeAuthorityMultiplayer() {
 
 func (sg *sessionGame) drawFrontendMultiplayer(screen *ebiten.Image, scale, ox, oy float64) {
 	menu := &sg.multiplayer
+	// Keep Doom's menu lettering readable over gameplay and attract-demo
+	// damage flashes. The opaque panel covers every row without changing
+	// other frontend pages or their animated backdrops.
+	ebitenutil.DrawRect(screen, ox+6*scale, oy+6*scale, 308*scale, 192*scale, color.RGBA{R: 36, G: 24, B: 12, A: 255})
+	ebitenutil.DrawRect(screen, ox+8*scale, oy+8*scale, 304*scale, 188*scale, color.RGBA{R: 8, G: 8, B: 8, A: 255})
 	text := func(value string, x, y int) {
 		sg.drawFrontendTextAt(screen, value, ox+float64(x)*scale, oy+float64(y)*scale, scale, scale)
 	}
 	text("MULTIPLAYER", 32, 16)
 	text("BACK: ESC", 240, 16)
 	if sg.opts.AuthorityClient != nil {
-		text(sg.ellipsizeIntermissionText(menu.request.Address, 280), 20, 46)
-		text(fmt.Sprintf("%s - %s", strings.ToUpper(sg.opts.GameMode), sg.current), 32, 70)
+		text("IN A MULTIPLAYER MATCH", 32, 46)
+		mode := strings.ToUpper(sg.opts.GameMode)
+		if mode == "COOP" {
+			mode = "CO-OP"
+		}
+		text(fmt.Sprintf("%s - %s", mode, sg.current), 32, 70)
 		role := fmt.Sprintf("PLAYER %d", sg.opts.AuthorityClient.Welcome().PlayerID)
 		if sg.opts.AuthorityClient.Welcome().PlayerID == 0 {
 			role = "SPECTATOR"
 		}
 		text(role, 32, 88)
-		text("LEAVE MATCH", 48, 126)
-		text("BACK", 48, 148)
-		sg.drawMenuSkull(screen, 16, 122+menu.row*22, scale, ox, oy)
-		text("F6: SCORES  T: CHAT  F12: SPECTATE", 16, 178)
+		text("RETURN TO GAME", 48, 116)
+		text("LEAVE MATCH", 48, 140)
+		sg.drawMenuSkull(screen, 16, 112+menu.row*24, scale, ox, oy)
 		return
 	}
 	sg.drawAuthorityBrowser(text)

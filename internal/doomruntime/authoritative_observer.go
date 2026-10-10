@@ -55,6 +55,10 @@ func (g *game) updateAuthoritativeObserverAt(now time.Time) error {
 		g.applyValidatedAuthorityReplica(r)
 		if sameView {
 			g.beginAuthorityRenderBlend(renderFrom, now)
+		} else {
+			// Changing followed players is a camera cut, not interpolation from
+			// the previous viewer's snapshot timeline.
+			g.authorityRender = nil
 		}
 		p.ready, p.viewer, p.snapshotID = true, r.Viewer, snapshot.ID
 		p.authoritativeTic, p.predictedTic = snapshot.Tick, snapshot.Tick
@@ -80,4 +84,16 @@ func (g *game) updateAuthoritativeObserverAt(now time.Time) error {
 		g.snd.tick()
 	}
 	return nil
+}
+
+// Spectators share the remote snapshot timeline for horizontal camera motion
+// and yaw. Their confirmed body, eye height and collision remain authoritative.
+func (g *game) prepareAuthorityObserverCamera() {
+	if g.opts.AuthorityClient == nil || g.opts.AuthorityClient.Welcome().PlayerID != 0 || g.clientPrediction == nil || !g.clientPrediction.ready {
+		return
+	}
+	pose := g.authorityRemoteRenderPose(int(g.clientPrediction.viewer), g.p)
+	g.renderPX, g.renderPY = float64(pose.x)/fracUnit, float64(pose.y)/fracUnit
+	g.renderAngle = pose.angle
+	g.State.RenderCamX, g.State.RenderCamY = g.renderPX, g.renderPY
 }

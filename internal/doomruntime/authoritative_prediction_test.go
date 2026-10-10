@@ -2,8 +2,10 @@ package doomruntime
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	"gddoom/internal/demo"
 	"gddoom/internal/doomrand"
@@ -242,5 +244,175 @@ func TestAuthoritativeTeleportEpochSurvivesLaterTics(t *testing.T) {
 	g.tickPlayerBody()
 	if g.p.teleportedThisTic || g.authorityRules.Scores[1].MovementEpoch != 1 {
 		t.Fatal("teleport identity was lost before a later snapshot")
+	}
+}
+
+func predictMovementAt(t *testing.T, p *ClientPrediction, tic uint32, command demo.Tic, now time.Time) {
+	t.Helper()
+	p.g.capturePrevState()
+	if err := p.Predict(netgame.Input{Sequence: tic, Tick: tic, Command: command}); err != nil {
+		t.Fatal(err)
+	}
+	p.g.markSimUpdate(now)
+}
+
+type predictionCameraSample struct {
+	x, y, mapX, mapY float64
+	angle            uint32
+}
+
+func capturePredictionCamera(g *game, now time.Time) predictionCameraSample {
+	g.prepareRenderStateAt(now)
+	return predictionCameraSample{g.renderPX, g.renderPY, g.State.RenderCamX, g.State.RenderCamY, g.renderAngle}
+}
+
+func assertPredictionCameraNear(t *testing.T, got, want predictionCameraSample) {
+	t.Helper()
+	if math.Abs(got.x-want.x) > 1e-9 || math.Abs(got.y-want.y) > 1e-9 ||
+		math.Abs(got.mapX-want.mapX) > 1e-9 || math.Abs(got.mapY-want.mapY) > 1e-9 ||
+		abs(int64(int32(got.angle-want.angle))) > 2 {
+		t.Fatalf("camera jumped: got=%+v want=%+v", got, want)
+	}
+}
+
+func TestPredictionMatchingSnapshotsPreserveMovingCameraThroughJitter(t *testing.T) {
+	for _, smoothYaw := range []bool{false, true} {
+		t.Run(map[bool]string{false: "linear-yaw", true: "smooth-yaw"}[smoothYaw], func(t *testing.T) {
+			a, p := predictionTestWorld(t)
+			g := p.g
+			g.clientPrediction = p
+			g.opts.SourcePortMode, g.opts.SmoothCameraYaw = true, smoothYaw
+			command := demo.Tic{Forward: 25, Side: 4, AngleTurn: 256}
+			start, period := time.Unix(100, 0), time.Second/netgame.TickRate
+			for tic := uint32(1); tic <= 8; tic++ {
+				predictMovementAt(t, p, tic, command, start.Add(time.Duration(tic)*period))
+			}
+			for range 4 {
+				if err := a.Step(map[byte]demo.Tic{1: command}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lastUpdate, previousX, previousY := g.lastUpdate, g.prevPX, g.prevPY
+			previousAngle, previousPreviousAngle := g.prevAngle, g.prevPrevAngle
+			for i, fraction := range []int{2, 5, 9} {
+				if err := a.Step(map[byte]demo.Tic{1: command}); err != nil {
+					t.Fatal(err)
+				}
+				now := lastUpdate.Add(period * time.Duration(fraction) / 10)
+				before, body := capturePredictionCamera(g, now), g.p
+				snapshot := predictionSnapshot(t, a, uint32(i+2), netgame.InputAck{HasTick: true, Tick: a.Tic(), HasSequence: true, Sequence: a.Tic()})
+				if _, err := p.reconcileAt(snapshot, now); err != nil {
+					t.Fatal(err)
+				}
+				if g.p != body || p.PredictedTic() != 8 {
+					t.Fatal("matching baseline changed predicted movement")
+				}
+				if g.lastUpdate != lastUpdate || g.prevPX != previousX || g.prevPY != previousY || g.prevAngle != previousAngle || g.prevPrevAngle != previousPreviousAngle {
+					t.Fatal("snapshot arrival restarted local interpolation")
+				}
+				assertPredictionCameraNear(t, capturePredictionCamera(g, now), before)
+				if p.renderCorrection != (predictionRenderCorrection{}) {
+					t.Fatal("matching movement introduced a correction offset")
+				}
+			}
+		})
+	}
+}
+
+func TestPredictionCorrectionChangesCollisionImmediatelyAndCameraContinuously(t *testing.T) {
+	a, p := predictionTestWorld(t)
+	g := p.g
+	g.clientPrediction = p
+	g.opts.SourcePortMode, g.opts.SmoothCameraYaw = true, true
+	start, period := time.Unix(200, 0), time.Second/netgame.TickRate
+	command := demo.Tic{Forward: 25, AngleTurn: 256}
+	for tic := uint32(1); tic <= 6; tic++ {
+		predictMovementAt(t, p, tic, command, start.Add(time.Duration(tic)*period))
+		if err := a.Step(map[byte]demo.Tic{1: command}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := g.lastUpdate.Add(period / 3)
+	before := capturePredictionCamera(g, now)
+	a.players[1].p.x += 2 * fracUnit
+	a.players[1].p.y -= fracUnit
+	a.players[1].p.angle += doomAng5
+	if _, err := p.reconcileAt(predictionSnapshot(t, a, 2, netgame.InputAck{HasTick: true, Tick: 6, HasSequence: true, Sequence: 6}), now); err != nil {
+		t.Fatal(err)
+	}
+	if g.p != a.players[1].p || len(p.history) != 0 {
+		t.Fatal("camera smoothing delayed the authoritative collision correction")
+	}
+	assertPredictionCameraNear(t, capturePredictionCamera(g, now), before)
+	// A second small correction arriving during the decay starts from the
+	// currently displayed camera, not either old endpoint or a fresh 100ms hold.
+	now = now.Add(40 * time.Millisecond)
+	before = capturePredictionCamera(g, now)
+	a.players[1].p.x += fracUnit
+	if _, err := p.reconcileAt(predictionSnapshot(t, a, 3, netgame.InputAck{HasTick: true, Tick: 6, HasSequence: true, Sequence: 6}), now); err != nil {
+		t.Fatal(err)
+	}
+	assertPredictionCameraNear(t, capturePredictionCamera(g, now), before)
+	correction := p.renderCorrection
+	// New movement still advances immediately on the corrected body. Only its
+	// display offset decays; it never changes thrust, collision or input replay.
+	predictMovementAt(t, p, 7, command, now.Add(period))
+	if err := a.Step(map[byte]demo.Tic{1: command}); err != nil {
+		t.Fatal(err)
+	}
+	if g.p != a.players[1].p || p.renderCorrection != correction {
+		t.Fatal("smoothing changed or delayed new predicted input")
+	}
+	// An accurate follow-up snapshot must not restart the decay clock.
+	if _, err := p.reconcileAt(predictionSnapshot(t, a, 4, netgame.InputAck{HasTick: true, Tick: 7, HasSequence: true, Sequence: 7}), now.Add(50*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if p.renderCorrection != correction {
+		t.Fatal("accurate snapshot extended a correction")
+	}
+	got := capturePredictionCamera(g, now.Add(predictionCorrectionDuration))
+	want := predictionCameraSample{float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, g.p.angle}
+	assertPredictionCameraNear(t, got, want)
+}
+
+func TestPredictionDiscontinuitiesSnapAndClearCameraCorrection(t *testing.T) {
+	for _, kind := range []string{"teleport", "respawn", "death", "large-position", "large-yaw", "accumulated-position", "accumulated-yaw", "newer-timeline"} {
+		t.Run(kind, func(t *testing.T) {
+			a, p := predictionTestWorld(t)
+			g := p.g
+			g.clientPrediction = p
+			g.opts.SourcePortMode = true
+			now := time.Unix(300, 0)
+			p.renderCorrection = predictionRenderCorrection{3, -1, float64(doomAng5), now}
+			switch kind {
+			case "teleport":
+				a.g.authorityRules.Scores[1].MovementEpoch++
+			case "respawn":
+				a.g.authorityRules.Scores[1].Generation++
+			case "death":
+				a.players[1].isDead, a.players[1].stats.Health = true, 0
+			case "large-position":
+				a.players[1].p.x += 64 * fracUnit
+			case "large-yaw":
+				a.players[1].p.angle += doomAng180
+			case "accumulated-position":
+				a.players[1].p.x -= 31 * fracUnit
+			case "accumulated-yaw":
+				a.players[1].p.angle -= doomAng90
+			case "newer-timeline":
+				if err := a.Step(nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := p.reconcileAt(predictionSnapshot(t, a, 2, netgame.InputAck{}), now); err != nil {
+				t.Fatal(err)
+			}
+			if p.renderCorrection != (predictionRenderCorrection{}) || g.lastUpdate != now || g.prevPX != g.p.x || g.prevPY != g.p.y {
+				t.Fatal("discontinuity retained local interpolation or a correction")
+			}
+			got := capturePredictionCamera(g, now)
+			want := predictionCameraSample{float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, g.p.angle}
+			assertPredictionCameraNear(t, got, want)
+		})
 	}
 }

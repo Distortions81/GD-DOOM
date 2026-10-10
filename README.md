@@ -206,15 +206,21 @@ See the [relay, voice, controls, and cheats reference](docs/usage.md).
 
 Authoritative co-op/deathmatch is available through `cmd/gdserver` and the
 `-connect` client option, with prediction, reconnects, chat and spectators.
-In desktop and browser games, open **Esc → Multiplayer** to browse the default
-and saved servers. The list shows map, mode, player counts, response time and
-whether your loaded WADs match. **Add** and **Edit** manage custom
-addresses, saved in native config or browser local storage; this is a saved list,
-not a public master registry. Choose a name or spectator role, then **Join**.
-**Leave Match** returns to the title menu without restarting the game.
+In desktop and browser games, open **Esc → Multiplayer** to browse the public
+**GD-DOOM Co-op** and **GD-DOOM Deathmatch** rooms and your saved servers.
+Select a server and press **Enter** or tap **Use** to join.
+The list shows map, mode, player counts and whether your loaded WADs match.
+**Player** changes your name; **More Options** contains spectator mode, refresh,
+and custom server addresses. Addresses are saved in native config or browser
+local storage; this is a saved list, not a public master registry.
+In a match, **Return to Game** resumes play and **Leave Match** returns to the
+title menu without restarting the game.
 Mouse look turns left/right in multiplayer with your usual sensitivity and
 inversion settings; click the browser game to capture the pointer. Hold **F6**
 for scores, press **T** for chat, or **F12** to change the spectator view.
+The default deathmatch room supports four players, no monsters, and an E1M1/E1M2
+rotation with a 20-frag or 10-minute limit; map exits can rotate early.
+After dying, press **Use** to respawn.
 The [multiplayer design and verification status](docs/authoritative-multiplayer.md)
 records launch commands, transport choices, measured bandwidth, and remaining
 release requirements.

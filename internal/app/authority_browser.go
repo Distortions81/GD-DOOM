@@ -13,7 +13,11 @@ import (
 	"gddoom/internal/runtimecfg"
 )
 
-const maxSavedAuthorityServers = 32
+const (
+	maxSavedAuthorityServers    = 32
+	defaultAuthorityCoopAddress = "https://m45sci.xyz:6672/netplay"
+	defaultAuthorityDMAddress   = "wss://m45sci.xyz:6672/deathmatch"
+)
 
 func cleanAuthorityServers(entries []runtimecfg.AuthorityServerEntry) []runtimecfg.AuthorityServerEntry {
 	out := make([]runtimecfg.AuthorityServerEntry, 0, min(len(entries), maxSavedAuthorityServers))
@@ -36,19 +40,19 @@ func cleanAuthorityServers(entries []runtimecfg.AuthorityServerEntry) []runtimec
 }
 
 func configureAuthorityBrowser(opts *runtimecfg.Options, paths []string, configPath string) {
-	entries := loadAuthorityServers(configPath)
 	address := strings.TrimSpace(opts.AuthorityJoinDefaults.Address)
 	if address == "" {
-		address = "https://m45sci.xyz:6672/netplay"
-		opts.AuthorityJoinDefaults.Address = address
+		address = defaultAuthorityCoopAddress
 	}
-	if address != "" {
-		label := "Default server"
-		if address == "https://m45sci.xyz:6672/netplay" {
-			label = "GD-DOOM Co-op"
-		}
-		entries = append([]runtimecfg.AuthorityServerEntry{{Label: label, Address: address}}, entries...)
+	opts.AuthorityJoinDefaults.Address = address
+	entries := []runtimecfg.AuthorityServerEntry{
+		{Label: "GD-DOOM Co-op", Address: defaultAuthorityCoopAddress},
+		{Label: "GD-DOOM Deathmatch", Address: defaultAuthorityDMAddress},
 	}
+	if address != defaultAuthorityCoopAddress && address != defaultAuthorityDMAddress {
+		entries = append([]runtimecfg.AuthorityServerEntry{{Label: "Default server", Address: address}}, entries...)
+	}
+	entries = append(entries, loadAuthorityServers(configPath)...)
 	opts.AuthorityServers = cleanAuthorityServers(entries)
 	opts.OnAuthorityServersChanged = func(entries []runtimecfg.AuthorityServerEntry) error {
 		return saveAuthorityServers(configPath, cleanAuthorityServers(entries))

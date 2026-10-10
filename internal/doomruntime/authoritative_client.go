@@ -191,7 +191,10 @@ func (g *game) updateAuthoritativeClientAt(now time.Time, sample func() demo.Tic
 		}
 		clock.sequence++
 		acknowledge = true
-		g.markSimUpdate(now)
+		// Rendering follows the fixed 35 Hz command clock, not the host frame
+		// that happened to sample it. Retain the fractional tic already elapsed
+		// so 60/120 Hz updates do not restart interpolation late on every step.
+		g.markSimUpdate(now.Add(-clock.accum))
 	}
 	if acknowledge {
 		pending := p.PendingInputs()

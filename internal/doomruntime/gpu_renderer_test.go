@@ -172,6 +172,49 @@ func TestGPUTextureMetadataPacking(t *testing.T) {
 	}
 }
 
+func TestGPUUnblendedVerticesCarryExactTextureMetadata(t *testing.T) {
+	for _, mode := range []int{0, 1, 2, 3, 8, 9, 10} {
+		for _, origin := range []int{0, 255, 256, 2047} {
+			for _, size := range []int{1, 64, 255, 256, 2048} {
+				r, commands := &gpuRenderer{}, &gpuCommands{}
+				tex := gpuTexture{id: gpuModeStride - 1, x: origin, y: gpuAtlasSize - 1 - origin, width: size, height: gpuAtlasSize + 1 - size}
+				r.rect(commands, 0, 0, 15, 15, tex, tex, mode, -264, 0, 0, 0, 1, 1)
+				for _, vertex := range commands.batches[0].vertices {
+					if vertex.ColorA != -float32(mode+1) || vertex.ColorR != -264 {
+						t.Fatalf("mode=%d encoded mode/light changed: %+v", mode, vertex)
+					}
+					for axis, packed := range []float32{vertex.ColorG, vertex.ColorB} {
+						want := [2][2]int{{tex.x, tex.width}, {tex.y, tex.height}}[axis]
+						got := [2]int{int(packed) % gpuAtlasSize, int(packed)/gpuAtlasSize + 1}
+						if got != want {
+							t.Fatalf("mode=%d axis=%d got=%v want=%v", mode, axis, got, want)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestGPUAnimatedAndSpecialVerticesKeepLegacyEncoding(t *testing.T) {
+	tex := gpuTexture{id: 127, x: 2030, y: 2010, width: 8, height: 16}
+	other := gpuTexture{id: gpuModeStride - 1}
+	for _, mode := range []int{0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12} {
+		for _, alpha := range []uint8{0, 1, 127, 255} {
+			if alpha == 0 && mode != 6 && mode != 7 && mode != 11 && mode != 12 {
+				continue
+			}
+			r, commands := &gpuRenderer{}, &gpuCommands{}
+			r.rect(commands, 0, 0, 15, 15, tex, other, mode, 192, alpha, 0, 0, 1, 1)
+			for _, vertex := range commands.batches[0].vertices {
+				if vertex.ColorG != float32(tex.id+mode*gpuModeStride) || vertex.ColorB != float32(other.id) || vertex.ColorA != float32(alpha)/255 {
+					t.Fatalf("mode=%d alpha=%d legacy encoding changed: %+v", mode, alpha, vertex)
+				}
+			}
+		}
+	}
+}
+
 func TestGPUWrapFixedPreservesTexturePhase(t *testing.T) {
 	for _, size := range []int{1, 64, 128} {
 		period := int64(size) * fracUnit

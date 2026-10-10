@@ -122,7 +122,7 @@ func TestAuthorityBrowserSavedServersPreservePreferences(t *testing.T) {
 	}
 	opts := runtimecfg.Options{}
 	configureAuthorityBrowser(&opts, []string{filepath.Join("..", "..", "DOOM1.WAD")}, path)
-	if opts.AuthorityJoinDefaults.Address != "https://m45sci.xyz:6672/netplay" || len(opts.AuthorityServers) != 1 || opts.AuthorityDiscover == nil || opts.OnAuthorityServersChanged == nil {
+	if opts.AuthorityJoinDefaults.Address != defaultAuthorityCoopAddress || len(opts.AuthorityServers) != 2 || opts.AuthorityDiscover == nil || opts.OnAuthorityServersChanged == nil {
 		t.Fatal("browser has no default server or callbacks")
 	}
 	entries := []runtimecfg.AuthorityServerEntry{{Label: " Friends ", Address: " ws://localhost:1234/netplay "}, {Label: "duplicate", Address: "ws://localhost:1234/netplay"}, {Address: ""}, {Address: "bad\naddress"}, {Label: strings.Repeat("x", 65), Address: "localhost:5678"}}
@@ -141,7 +141,49 @@ func TestAuthorityBrowserSavedServersPreservePreferences(t *testing.T) {
 		t.Fatalf("saved servers: %+v", got)
 	}
 	configureAuthorityBrowser(&opts, nil, path)
-	if len(opts.AuthorityServers) != 3 || opts.AuthorityServers[1] != expected[0] {
+	if len(opts.AuthorityServers) != 4 || opts.AuthorityServers[2] != expected[0] {
 		t.Fatal("relaunch lost saved server list")
+	}
+}
+
+func TestAuthorityBrowserPublicRoomsPreservePreferredAndSavedServers(t *testing.T) {
+	public := []runtimecfg.AuthorityServerEntry{
+		{Label: "GD-DOOM Co-op", Address: "https://m45sci.xyz:6672/netplay"},
+		{Label: "GD-DOOM Deathmatch", Address: "wss://m45sci.xyz:6672/deathmatch"},
+	}
+	custom := runtimecfg.AuthorityServerEntry{Label: "Default server", Address: "wss://friends.example/netplay"}
+	saved := runtimecfg.AuthorityServerEntry{Label: "Weekend game", Address: "localhost:6670"}
+	for _, preferred := range []string{"", public[0].Address, public[1].Address, " " + custom.Address + " "} {
+		t.Run(preferred, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			// Built-in rows and the preferred address may also have been saved by
+			// an earlier session. Each address should still appear exactly once.
+			entries := []runtimecfg.AuthorityServerEntry{public[1], public[0], saved}
+			if strings.TrimSpace(preferred) == custom.Address {
+				entries = append(entries, custom)
+			}
+			if err := saveAuthorityServers(path, entries); err != nil {
+				t.Fatal(err)
+			}
+			opts := runtimecfg.Options{AuthorityJoinDefaults: runtimecfg.AuthorityJoinRequest{Address: preferred, Name: "Marine", Spectator: true}}
+			configureAuthorityBrowser(&opts, nil, path)
+			wantAddress := strings.TrimSpace(preferred)
+			if wantAddress == "" {
+				wantAddress = public[0].Address
+			}
+			if opts.AuthorityJoinDefaults.Address != wantAddress || opts.AuthorityJoinDefaults.Name != "Marine" || !opts.AuthorityJoinDefaults.Spectator {
+				t.Fatalf("preferred join settings changed: %+v", opts.AuthorityJoinDefaults)
+			}
+			want := append(append([]runtimecfg.AuthorityServerEntry(nil), public...), saved)
+			if wantAddress == custom.Address {
+				want = append([]runtimecfg.AuthorityServerEntry{custom}, want...)
+			}
+			if !reflect.DeepEqual(opts.AuthorityServers, want) {
+				t.Fatalf("server catalog: got %+v want %+v", opts.AuthorityServers, want)
+			}
+			if got := loadAuthorityServers(path); !reflect.DeepEqual(got, entries) {
+				t.Fatal("opening the browser rewrote saved entries")
+			}
+		})
 	}
 }

@@ -71,3 +71,43 @@ func TestAuthoritativeObserverSwitchesCameraAndRejectsPlayerAcknowledgment(t *te
 		t.Fatal("accepted gameplay acknowledgment on spectator connection")
 	}
 }
+
+func TestAuthoritativeObserverCameraUsesSnapshotTimeline(t *testing.T) {
+	a, g, connection := authorityClientTestWorld(t, 3)
+	connection.welcome.PlayerID = 0
+	g.opts.SourcePortMode = true
+	now := time.Unix(100, 0)
+	connection.snapshots = []netgame.Snapshot{predictionSnapshot(t, a, 1, netgame.InputAck{})}
+	if err := g.updateAuthoritativeClientAt(now, nil); err != nil {
+		t.Fatal(err)
+	}
+	initial := g.p
+	a.players[1].p.x += 20 * fracUnit
+	a.players[1].p.y += 10 * fracUnit
+	a.players[1].p.angle += 0x20000000
+	a.g.worldTic += 2
+	connection.snapshots = []netgame.Snapshot{predictionSnapshot(t, a, 2, netgame.InputAck{})}
+	arrival := now.Add(time.Second * 2 / 35)
+	if err := g.updateAuthoritativeClientAt(arrival, nil); err != nil {
+		t.Fatal(err)
+	}
+	confirmed := g.p
+	g.prepareRenderStateAt(arrival.Add(time.Second * 2 / 35))
+	if abs(int64(g.renderPX*fracUnit)-(initial.x+10*fracUnit)) > 1 || abs(int64(g.renderPY*fracUnit)-(initial.y+5*fracUnit)) > 1 {
+		t.Fatalf("observer camera snapped instead of interpolating: %v,%v", g.renderPX, g.renderPY)
+	}
+	if delta := int32(g.renderAngle - (initial.angle + 0x10000000)); delta < -8 || delta > 8 {
+		t.Fatalf("observer yaw did not interpolate: %x", g.renderAngle)
+	}
+	if g.State.RenderCamX != g.renderPX || g.State.RenderCamY != g.renderPY {
+		t.Fatal("observer automap and first-person camera use different timelines")
+	}
+	if g.p != confirmed || g.worldTic != 2 || len(g.clientPrediction.history) != 0 {
+		t.Fatal("observer presentation changed confirmed state or predicted movement")
+	}
+	for _, batch := range connection.sent {
+		if len(batch.Inputs) != 0 {
+			t.Fatal("spectator interpolation sent player input")
+		}
+	}
+}
