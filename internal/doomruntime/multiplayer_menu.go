@@ -96,11 +96,7 @@ func (sg *sessionGame) openFrontendMultiplayer() {
 	}
 	sg.frontend.Mode, sg.frontend.MenuActive = frontendModeMultiplayer, true
 	if sg.opts.AuthorityClient == nil {
-		if sg.authorityLobbyAvailable() {
-			sg.openAuthorityLobby()
-		} else {
-			sg.refreshAuthorityServers()
-		}
+		sg.openAuthorityMultiplayerHome()
 	}
 }
 
@@ -218,8 +214,8 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 			sg.playMenuBackSound()
 			return nil
 		}
-		if sg.authorityLobbyAvailable() && sg.opts.AuthorityClient == nil {
-			sg.openAuthorityLobby()
+		if sg.opts.AuthorityClient == nil {
+			sg.openAuthorityMultiplayerHome()
 			sg.playMenuBackSound()
 			return nil
 		}
@@ -257,10 +253,6 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 		menu.row = menu.actionRow(authorityBrowserEdit)
 		sg.beginAuthorityServerEdit(false, false)
 	}
-	if !connected && menu.actionAtRow() == authorityBrowserRole && (sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionLeft) || sg.touchJustPressed(touchActionRight)) {
-		menu.request.Spectator = !menu.request.Spectator
-		sg.playMenuMoveSound()
-	}
 	if !selectPressed {
 		return nil
 	}
@@ -289,22 +281,13 @@ func (sg *sessionGame) tickFrontendMultiplayer() error {
 		sg.beginAuthorityServerEdit(false, true)
 	case authorityBrowserEdit:
 		sg.beginAuthorityServerEdit(false, false)
-	case authorityBrowserName:
-		sg.beginAuthorityServerEdit(true, false)
-	case authorityBrowserRole:
-		menu.request.Spectator = !menu.request.Spectator
 	case authorityBrowserMore:
 		menu.moreOptions, menu.row = true, 0
 	case authorityBrowserBack:
 		if menu.moreOptions {
 			menu.showServers()
 		} else {
-			sg.cancelAuthorityServerRefresh()
-			if sg.authorityLobbyAvailable() {
-				sg.openAuthorityLobby()
-			} else {
-				sg.frontend.Mode, sg.frontend.ItemOn = frontendModeTitle, frontendMultiplayerMenuItem
-			}
+			sg.openAuthorityMultiplayerHome()
 		}
 	}
 	return nil
@@ -388,9 +371,8 @@ func (sg *sessionGame) beginAuthorityJoin() {
 		return
 	}
 	if request.Name == "" {
+		sg.openAuthorityPlayerSetup(menu.lobby.page)
 		menu.status = "ENTER YOUR PLAYER NAME"
-		menu.moreOptions = false
-		menu.row = menu.actionRow(authorityBrowserName)
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -535,7 +517,7 @@ func (sg *sessionGame) drawFrontendMultiplayer(screen *ebiten.Image, scale, ox, 
 	text := func(value string, x, y int) {
 		sg.drawFrontendTextAt(screen, value, ox+float64(x)*scale, oy+float64(y)*scale, scale, scale)
 	}
-	text("MULTIPLAYER", 32, 16)
+	text(sg.authorityMultiplayerPageTitle(), 24, 16)
 	text("BACK: ESC", 240, 16)
 	if menu.content != nil {
 		sg.drawAuthorityContent(text)

@@ -23,21 +23,22 @@ var (
 // changes only the local body/view. Weapons, pickups, damage, triggers, and AI
 // remain server-owned and are never replayed.
 type ClientPrediction struct {
-	g                *game
-	epoch            uint64
-	viewer           byte
-	ready            bool
-	snapshotID       uint32
-	authoritativeTic uint32
-	predictedTic     uint32
-	generation       uint32
-	movementEpoch    uint32
-	soundCursor      uint64
-	history          []netgame.Input
-	lastInput        netgame.Input
-	hasInput         bool
-	renderCorrection predictionRenderCorrection
-	renderEyeOffset  float64
+	g                 *game
+	epoch             uint64
+	viewer            byte
+	ready             bool
+	snapshotID        uint32
+	authoritativeTic  uint32
+	predictedTic      uint32
+	generation        uint32
+	movementEpoch     uint32
+	soundCursor       uint64
+	history           []netgame.Input
+	lastInput         netgame.Input
+	hasInput          bool
+	renderCorrection  predictionRenderCorrection
+	renderEyeOffset   float64
+	supportCorrection predictionSupportCorrection
 }
 
 const predictionCorrectionDuration = 100 * time.Millisecond
@@ -57,6 +58,7 @@ type predictionRenderHistory struct {
 	renderX, renderY         float64
 	renderAngle              uint32
 	eyeZ                     float64
+	support                  authorityPlayerSupport
 	alpha                    float64
 	updated                  time.Time
 }
@@ -65,7 +67,7 @@ func (p *ClientPrediction) captureRenderHistory() predictionRenderHistory {
 	g := p.g
 	return predictionRenderHistory{g.p, g.State, g.prevPX, g.prevPY,
 		g.prevAngle, g.prevPrevAngle, g.renderPX, g.renderPY, g.renderAngle,
-		g.playerBaseEyeZ(), g.renderAlpha, g.lastUpdate}
+		g.playerBaseEyeZ(), g.authorityPlayerSupport(), g.renderAlpha, g.lastUpdate}
 }
 
 func (p *ClientPrediction) correctionAt(now time.Time) (x, y, z, angle float64) {
@@ -80,7 +82,7 @@ func (p *ClientPrediction) correctionAt(now time.Time) (x, y, z, angle float64) 
 
 func (p *ClientPrediction) prepareRenderCorrection(now time.Time) {
 	x, y, z, angle := p.correctionAt(now)
-	p.renderEyeOffset = z
+	p.renderEyeOffset = z + p.prepareSupportCorrection(now)
 	g := p.g
 	g.renderPX += x
 	g.renderPY += y
@@ -93,6 +95,10 @@ func (p *ClientPrediction) restoreRenderHistory(from predictionRenderHistory, no
 	g := p.g
 	dx, dy := g.p.x-from.body.x, g.p.y-from.body.y
 	dz := g.playerBaseEyeZ() - from.eyeZ
+	// Support-plane motion is already smoothed on the confirmed sector
+	// timeline. Only independent eye/body corrections enter this decay.
+	dz -= authoritySupportDisplacement(from.support, g.authorityPlayerSupport())
+	p.queueSupportTransition(from.support, g.authorityPlayerSupport())
 	da := g.p.angle - from.body.angle
 	// Preserve the current interpolation phase and velocity, translating its
 	// endpoints onto the corrected timeline instead of restarting it on receipt.
@@ -118,6 +124,7 @@ func (p *ClientPrediction) restoreRenderHistory(from predictionRenderHistory, no
 	if math.Abs(cx) > 32 || math.Abs(cy) > 32 || math.Abs(cz) > 32 || math.Abs(ca) > float64(doomAng90) {
 		p.renderCorrection = predictionRenderCorrection{}
 		p.renderEyeOffset = 0
+		p.supportCorrection = predictionSupportCorrection{}
 		g.syncRenderState()
 		g.markSimUpdate(now)
 		return
@@ -176,7 +183,9 @@ func (p *ClientPrediction) Predict(input netgame.Input) error {
 	}
 	p.history = append(p.history, input)
 	p.lastInput, p.hasInput = input, true
+	previousSupport := p.g.authorityPlayerSupport()
 	p.replayTo(input)
+	p.queueSupportTransition(previousSupport, p.g.authorityPlayerSupport())
 	p.g.State.SetCamera(float64(p.g.p.x)/fracUnit, float64(p.g.p.y)/fracUnit)
 	return nil
 }
@@ -267,6 +276,7 @@ func (p *ClientPrediction) reconcileAt(snapshot netgame.Snapshot, now time.Time)
 	} else {
 		p.renderCorrection = predictionRenderCorrection{}
 		p.renderEyeOffset = 0
+		p.supportCorrection = predictionSupportCorrection{}
 		p.g.markSimUpdate(now)
 	}
 	p.applyAuthoritySounds(r, wasReady)

@@ -36,7 +36,7 @@ func authorityBrowserText(sg *sessionGame) string {
 	return strings.Join(lines, "\n")
 }
 
-func TestAuthorityBrowserPrimaryScreenJoinsDirectlyByKeyboardOrTouch(t *testing.T) {
+func TestAuthorityBrowserDirectScreenJoinsByKeyboardOrTouch(t *testing.T) {
 	for _, touch := range []bool{false, true} {
 		sg := multiplayerMenuTestSession(t)
 		sg.opts.AuthorityServers = []runtimecfg.AuthorityServerEntry{{Label: "CO-OP SERVER", Address: "wss://example.test/netplay"}}
@@ -46,14 +46,15 @@ func TestAuthorityBrowserPrimaryScreenJoinsDirectlyByKeyboardOrTouch(t *testing.
 			return runtimecfg.AuthorityJoinResult{}, errors.New("probe completed")
 		}
 		sg.openFrontendMultiplayer()
+		sg.openAuthorityDirectServers()
 		sg.multiplayer.servers[0].status, sg.multiplayer.servers[0].info = authorityServerOnline, browserInfo("MAP02")
 		text := authorityBrowserText(sg)
-		for _, want := range []string{"JOIN CO-OP SERVER", "ENTER / TAP USE TO JOIN", "MORE OPTIONS", "PLAYER: Player", "BACK", "2/4", "MAP02", "READY TO JOIN"} {
+		for _, want := range []string{"JOIN CO-OP SERVER", "ENTER / TAP USE TO JOIN", "MANAGE SERVERS", "REFRESH", "BACK", "2/4", "MAP02", "READY TO JOIN"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("primary screen missing %q: %s", want, text)
 			}
 		}
-		for _, hidden := range []string{"wss://", "REFRESH SERVERS", "EDIT SELECTED SERVER", "SPECTATOR", " MS"} {
+		for _, hidden := range []string{"wss://", "REFRESH SERVERS", "EDIT SELECTED SERVER", "PLAYER:", "JOIN AS:", "SPECTATOR", " MS"} {
 			if strings.Contains(text, hidden) {
 				t.Fatalf("primary screen exposes advanced item %q", hidden)
 			}
@@ -66,7 +67,7 @@ func TestAuthorityBrowserPrimaryScreenJoinsDirectlyByKeyboardOrTouch(t *testing.
 		if err := sg.tickFrontendMultiplayer(); err != nil {
 			t.Fatal(err)
 		}
-		if text := authorityBrowserText(sg); !strings.Contains(text, "JOINING GAME") || strings.Contains(text, "MORE OPTIONS") {
+		if text := authorityBrowserText(sg); !strings.Contains(text, "JOINING GAME") || strings.Contains(text, "MANAGE SERVERS") {
 			t.Fatalf("joining screen did not focus on progress/cancel: %s", text)
 		}
 		pollMenuJoin(t, sg)
@@ -77,50 +78,99 @@ func TestAuthorityBrowserPrimaryScreenJoinsDirectlyByKeyboardOrTouch(t *testing.
 	}
 }
 
-func TestAuthorityBrowserMoreOptionsReturnsToSelectedServer(t *testing.T) {
+func TestAuthorityBrowserBlankNameReturnsFromPlayerSetupToSelectedServer(t *testing.T) {
 	sg := multiplayerMenuTestSession(t)
-	sg.opts.AuthorityServers = []runtimecfg.AuthorityServerEntry{{Label: "CO-OP SERVER", Address: "wss://example.test/netplay"}}
-	sg.openFrontendMultiplayer()
-	for range 2 {
-		menuKey(sg, ebiten.KeyArrowDown)
-		_ = sg.tickFrontendMultiplayer()
+	sg.opts.AuthorityServers = []runtimecfg.AuthorityServerEntry{
+		{Label: "FIRST", Address: "wss://first.test/netplay"},
+		{Label: "SELECTED", Address: "wss://selected.test/netplay"},
 	}
+	requests := make(chan runtimecfg.AuthorityJoinRequest, 1)
+	sg.opts.AuthorityJoin = func(_ context.Context, request runtimecfg.AuthorityJoinRequest) (runtimecfg.AuthorityJoinResult, error) {
+		requests <- request
+		return runtimecfg.AuthorityJoinResult{}, errors.New("test request captured")
+	}
+	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
+	menuKey(sg, ebiten.KeyArrowDown)
+	_ = sg.tickFrontendMultiplayer()
+	sg.multiplayer.request.Name, sg.multiplayer.request.Spectator = " ", true
+	menuKey(sg, ebiten.KeyEnter)
+	if err := sg.tickFrontendMultiplayer(); err != nil {
+		t.Fatal(err)
+	}
+	if sg.multiplayer.attempt != nil || sg.multiplayer.lobby.page != authorityLobbyPagePlayer || sg.multiplayer.lobby.row != 0 || sg.multiplayer.status != "ENTER YOUR PLAYER NAME" {
+		t.Fatal("blank player name did not redirect to Player Setup before joining")
+	}
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
+	if !sg.multiplayer.editing || !sg.multiplayer.editName {
+		t.Fatal("Player Setup did not open the name editor")
+	}
+	sg.input = sessionInputSnapshot{inputChars: []rune("Doomer"), justPressedKeys: map[ebiten.Key]int{ebiten.KeyEnter: 1}}
+	_ = sg.tickFrontendMultiplayer()
+	sg.multiplayer.lobby.row = 2
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
+	if sg.multiplayer.lobby.page != authorityLobbyPageNone || sg.multiplayer.selected != 1 || sg.multiplayer.row != 1 || sg.multiplayer.request.Address != "wss://selected.test/netplay" || !sg.multiplayer.request.Spectator {
+		t.Fatal("Player Setup Back lost the selected direct server or role")
+	}
+	menuKey(sg, ebiten.KeyEnter)
+	_ = sg.tickFrontendMultiplayer()
+	pollMenuJoin(t, sg)
+	select {
+	case request := <-requests:
+		if request.Name != "Doomer" || request.Address != "wss://selected.test/netplay" || !request.Spectator {
+			t.Fatalf("corrected join request=%+v", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("corrected player name did not allow the selected join")
+	}
+}
+
+func TestAuthorityBrowserManageReturnsToSelectedServerAndHome(t *testing.T) {
+	sg := multiplayerMenuTestSession(t)
+	sg.opts.AuthorityServers = []runtimecfg.AuthorityServerEntry{{Label: "FIRST", Address: "wss://first.test/netplay"}, {Label: "CO-OP SERVER", Address: "wss://example.test/netplay"}}
+	sg.opts.AuthorityJoinDefaults.Address = "wss://example.test/netplay"
+	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
+	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserMore)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
 	if !sg.multiplayer.moreOptions {
-		t.Fatal("More Options did not open")
+		t.Fatal("Manage Servers did not open")
 	}
-	for _, want := range []string{"wss://example.test/netplay", "REFRESH SERVERS", "ADD SERVER", "EDIT SELECTED SERVER", "JOIN AS: PLAYER", "BACK TO SERVERS"} {
+	for _, want := range []string{"wss://example.test/netplay", "ADD SERVER", "EDIT SELECTED SERVER", "BACK"} {
 		if !strings.Contains(authorityBrowserText(sg), want) {
-			t.Fatalf("advanced screen missing %q", want)
+			t.Fatalf("manage screen missing %q", want)
 		}
 	}
-	for range 3 {
-		menuKey(sg, ebiten.KeyArrowDown)
-		_ = sg.tickFrontendMultiplayer()
+	for _, absent := range []string{"PLAYER:", "JOIN AS:", "REFRESH SERVERS"} {
+		if strings.Contains(authorityBrowserText(sg), absent) {
+			t.Fatalf("manage screen includes unrelated control %q", absent)
+		}
 	}
-	menuKey(sg, ebiten.KeyArrowRight)
-	_ = sg.tickFrontendMultiplayer()
 	menuKey(sg, ebiten.KeyEscape)
 	_ = sg.tickFrontendMultiplayer()
-	if sg.multiplayer.moreOptions || sg.multiplayer.row != 0 || sg.frontend.Mode != frontendModeMultiplayer {
-		t.Fatal("Back from options did not return to selected server")
+	if sg.multiplayer.moreOptions || sg.multiplayer.row != 1 || sg.multiplayer.selected != 1 || sg.frontend.Mode != frontendModeMultiplayer || sg.multiplayer.request.Address != "wss://example.test/netplay" {
+		t.Fatal("Back from management did not return to selected server")
 	}
-	if text := authorityBrowserText(sg); !strings.Contains(text, "WATCH CO-OP SERVER") || !strings.Contains(text, "TAP USE TO WATCH") {
-		t.Fatalf("spectator join action unclear: %s", text)
-	}
-	menuKey(sg, ebiten.KeyArrowUp)
-	_ = sg.tickFrontendMultiplayer()
+	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserBack)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
+	if sg.multiplayer.lobby.page != authorityLobbyPageHome || sg.frontend.Mode != frontendModeMultiplayer {
+		t.Fatal("direct-server Back did not return to Multiplayer Home")
+	}
+	menuKey(sg, ebiten.KeyEscape)
+	_ = sg.tickFrontendMultiplayer()
 	if sg.frontend.Mode != frontendModeTitle {
-		t.Fatal("primary Back did not return to parent menu")
+		t.Fatal("Home Back did not return to the title menu")
 	}
 }
 
 func TestAuthorityBrowserEmptyListOffersAddFirst(t *testing.T) {
 	sg := multiplayerMenuTestSession(t)
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	if sg.multiplayer.actionAtRow() != authorityBrowserAdd || !strings.Contains(authorityBrowserText(sg), "ADD A SERVER") {
 		t.Fatal("empty browser does not offer a direct add action")
 	}
@@ -141,6 +191,7 @@ func TestAuthorityBrowserSeedsExplicitEntriesAndBoundsList(t *testing.T) {
 	sg.opts.AuthorityServers = []runtimecfg.AuthorityServerEntry{{Label: "Default", Address: "wss://default.test/netplay"}, {Address: " wss://custom.test/netplay "}, {Address: "wss://default.test/netplay"}}
 	sg.opts.AuthorityJoinDefaults.Address = "wss://custom.test/netplay"
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	if len(sg.multiplayer.servers) != 2 || sg.multiplayer.selected != 1 || sg.multiplayer.row != 1 || sg.multiplayer.request.Address != "wss://custom.test/netplay" {
 		t.Fatal("browser lost explicit entries, deduplication, or selected default")
 	}
@@ -149,6 +200,7 @@ func TestAuthorityBrowserSeedsExplicitEntriesAndBoundsList(t *testing.T) {
 	}
 	sg.multiplayer = authorityMenuState{}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	if len(sg.multiplayer.servers) != authorityBrowserLimit {
 		t.Fatalf("server list size=%d", len(sg.multiplayer.servers))
 	}
@@ -172,6 +224,7 @@ func TestAuthorityBrowserRefreshShowsOnlineOfflineAndWADMismatch(t *testing.T) {
 		return info, nil
 	}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	pollBrowser(t, sg)
 	servers := sg.multiplayer.servers
 	if servers[0].status != authorityServerOnline || servers[1].status != authorityServerOffline || servers[2].status != authorityServerOnline || servers[2].info.Compatible {
@@ -214,6 +267,7 @@ func TestAuthorityBrowserRefreshBoundPersistsAcrossCancellation(t *testing.T) {
 		return browserInfo("MAP01"), ctx.Err()
 	}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	defer sg.closeAuthorityMultiplayer()
 	for range 4 {
 		select {
@@ -248,6 +302,7 @@ func TestAuthorityBrowserEditedAddressIgnoresLateRefresh(t *testing.T) {
 		return browserInfo("MAP02"), nil
 	}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	<-started
 	sg.beginAuthorityServerEdit(false, false)
 	sg.multiplayer.request.Address = "new"
@@ -269,6 +324,7 @@ func TestAuthorityBrowserAddCancelPersistSelectAndJoin(t *testing.T) {
 	var saved []runtimecfg.AuthorityServerEntry
 	sg.opts.OnAuthorityServersChanged = func(entries []runtimecfg.AuthorityServerEntry) error { saved = entries; return nil }
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	sg.beginAuthorityServerEdit(false, true)
 	sg.multiplayer.request.Address = "discarded"
 	menuKey(sg, ebiten.KeyEscape)
@@ -288,10 +344,8 @@ func TestAuthorityBrowserAddCancelPersistSelectAndJoin(t *testing.T) {
 		requests <- request
 		return runtimecfg.AuthorityJoinResult{}, errors.New("stop after request")
 	}
-	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserMore)
-	menuKey(sg, ebiten.KeyEnter)
-	_ = sg.tickFrontendMultiplayer()
-	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserRole)
+	sg.openAuthorityPlayerSetup(authorityLobbyPageNone)
+	sg.multiplayer.lobby.row = 1
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
 	menuKey(sg, ebiten.KeyEscape)
@@ -317,6 +371,7 @@ func TestAuthorityBrowserEscapeCancelsDiscoveryAndScrollsSelection(t *testing.T)
 		return runtimecfg.AuthorityServerInfo{}, ctx.Err()
 	}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	ctx := <-started
 	for range 6 {
 		menuKey(sg, ebiten.KeyArrowDown)
@@ -327,7 +382,7 @@ func TestAuthorityBrowserEscapeCancelsDiscoveryAndScrollsSelection(t *testing.T)
 	}
 	menuKey(sg, ebiten.KeyEscape)
 	_ = sg.tickFrontendMultiplayer()
-	if ctx.Err() == nil || sg.multiplayer.refresh != nil || sg.frontend.Mode != frontendModeTitle {
-		t.Fatal("leaving browser did not cancel discovery")
+	if ctx.Err() == nil || sg.multiplayer.refresh != nil || (sg.frontend.Mode != frontendModeMultiplayer || sg.multiplayer.lobby.page != authorityLobbyPageHome) {
+		t.Fatal("leaving browser did not cancel discovery and return Home")
 	}
 }

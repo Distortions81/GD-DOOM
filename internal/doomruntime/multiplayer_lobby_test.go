@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -76,17 +77,18 @@ func TestMultiplayerLobbyCreateDefaultsAndRules(t *testing.T) {
 		t.Fatalf("wrong initial form: %+v", m.request)
 	}
 	m.request.RequestID = strings.Repeat("1", 32)
-	m.row = 2
+	m.page, m.row = authorityLobbyPageFiles, 1
 	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
 	if m.request.Settings.Map != "E1M2" || m.request.RequestID != "" {
 		t.Fatal("map selection did not change settings and invalidate retry ID")
 	}
-	m.row = 1
+	m.row = 0
 	lobbyMenuKey(t, sg, ebiten.KeyArrowRight)
 	if m.request.Settings.PackID != "other" || m.request.Settings.Map != "MAP01" {
 		t.Fatal("changing WAD did not select a map from the new pack")
 	}
-	m.row = 3
+	lobbyMenuKey(t, sg, ebiten.KeyEscape)
+	m.row = authorityCreateModeRow
 	lobbyMenuKey(t, sg, ebiten.KeyEnter)
 	if m.request.Settings.Mode != "deathmatch" || !m.request.Settings.NoMonsters || m.ruleRows()[4] != "FRAG LIMIT" {
 		t.Fatal("deathmatch defaults/rules not selected")
@@ -101,7 +103,7 @@ func TestMultiplayerLobbyCreateDefaultsAndRules(t *testing.T) {
 	if m.request.Settings.TimeLimitSeconds != 300 {
 		t.Fatal("time limit did not advance")
 	}
-	m.page, m.row = authorityLobbyPageCreate, 3
+	m.page, m.row = authorityLobbyPageCreate, authorityCreateModeRow
 	lobbyMenuKey(t, sg, ebiten.KeyEnter)
 	if m.request.Settings.Mode != "coop" || m.request.Settings.FragLimit != 0 || m.request.Settings.NoMonsters || m.ruleRows()[4] != "FRIENDLY FIRE" {
 		t.Fatal("co-op did not reset deathmatch-only rules")
@@ -269,8 +271,10 @@ func TestMultiplayerLobbyJoinReadyOnlyAndWatchRole(t *testing.T) {
 	if !request.Spectator || request.Address != room.Address || request.Name != "Doomer" {
 		t.Fatal("watch action lost role/address/player")
 	}
-	sg.multiplayer.lobby.row = sg.authorityLobbyActionRow(authorityLobbyRoleAction)
+	sg.openAuthorityPlayerSetup(authorityLobbyPageRooms)
+	sg.multiplayer.lobby.row = 1
 	lobbyMenuKey(t, sg, ebiten.KeyEnter)
+	lobbyMenuKey(t, sg, ebiten.KeyEscape)
 	sg.multiplayer.lobby.row = 0
 	lobbyMenuKey(t, sg, ebiten.KeyEnter)
 	request = <-requests
@@ -283,16 +287,16 @@ func TestMultiplayerLobbyJoinReadyOnlyAndWatchRole(t *testing.T) {
 func TestMultiplayerLobbyDirectServersAndConnectedMenuRemainSeparate(t *testing.T) {
 	sg := lobbyMenuTestSession(t)
 	m := &sg.multiplayer.lobby
-	m.page = authorityLobbyPageRooms
-	m.row = sg.authorityLobbyActionRow(authorityLobbyDirectAction)
+	sg.openAuthorityMultiplayerHome()
+	m.row = slices.Index(sg.authorityHomeActions(), authorityHomeDirect)
 	sg.multiplayer.request.Address = "wss://temporary.test/room"
 	lobbyMenuKey(t, sg, ebiten.KeyEnter)
 	if m.page != authorityLobbyPageNone || sg.multiplayer.request.Address != sg.multiplayer.servers[0].entry.Address {
 		t.Fatal("direct server list inherited transient room address")
 	}
 	lobbyMenuKey(t, sg, ebiten.KeyEscape)
-	if m.page != authorityLobbyPageRooms {
-		t.Fatal("back from direct servers did not return to lobby")
+	if m.page != authorityLobbyPageHome {
+		t.Fatal("back from direct servers did not return to multiplayer home")
 	}
 	sg.cancelAuthorityLobbyRefresh()
 	_, client := multiplayerMenuTestResult()
@@ -323,8 +327,9 @@ func TestMultiplayerLobbyUploadsSelectMatchingStackAndDeduplicate(t *testing.T) 
 		return pack, nil
 	}
 	sg.openAuthorityCreate()
-	if sg.authorityCreateActionRow() != 7 {
-		t.Fatal("upload action is not in the enabled create form")
+	m.page, m.row = authorityLobbyPageFiles, 2
+	if sg.authorityFilesBackRow() != 3 {
+		t.Fatal("upload action is not in the game files page")
 	}
 	for i := 0; i < 2; i++ {
 		m.request.RequestID = "prior-request"
@@ -335,7 +340,7 @@ func TestMultiplayerLobbyUploadsSelectMatchingStackAndDeduplicate(t *testing.T) 
 		}
 		sg.beginAuthorityUpload()
 		settleLobby(t, func() bool { return m.uploading != nil }, sg.pollAuthorityUpload)
-		if m.request.Settings.PackID != pack.ID || m.request.Settings.Map != wantMap || m.request.RequestID != wantID || m.row != sg.authorityCreateActionRow() {
+		if m.request.Settings.PackID != pack.ID || m.request.Settings.Map != wantMap || m.request.RequestID != wantID || m.page != authorityLobbyPageFiles || m.row != 1 {
 			t.Fatalf("uploaded catalog pack not selected: %+v status=%s", m.request, sg.multiplayer.status)
 		}
 	}
@@ -343,7 +348,7 @@ func TestMultiplayerLobbyUploadsSelectMatchingStackAndDeduplicate(t *testing.T) 
 		t.Fatal("re-upload duplicated/changed the content-addressed pack")
 	}
 	m.state.UploadsEnabled = false
-	if sg.authorityCreateActionRow() != 6 {
+	if sg.authorityFilesBackRow() != 2 {
 		t.Fatal("disabled lobby still advertised upload action")
 	}
 }
@@ -387,6 +392,7 @@ func TestMultiplayerLobbyUploadAvailableWithEmptyCatalog(t *testing.T) {
 	if m.page != authorityLobbyPageCreate || m.request.Settings.Mode != "coop" {
 		t.Fatal("empty upload-enabled catalog prevented creating a custom pack")
 	}
+	m.page = authorityLobbyPageFiles
 	var labels []string
 	sg.drawAuthorityLobby(func(label string, _, _ int) { labels = append(labels, label) })
 	if !strings.Contains(strings.Join(labels, "\n"), "UPLOAD LOADED WADS") {
@@ -435,7 +441,7 @@ func TestMultiplayerLobbyClosingCancelsAllPendingIO(t *testing.T) {
 func TestMultiplayerLobbyUnavailableCreationHidden(t *testing.T) {
 	sg := lobbyMenuTestSession(t)
 	sg.opts.AuthorityCreateGame = nil
-	sg.multiplayer.lobby.page = authorityLobbyPageRooms
+	sg.openAuthorityMultiplayerHome()
 	var labels []string
 	sg.drawAuthorityLobby(func(label string, _, _ int) { labels = append(labels, label) })
 	for _, label := range labels {
@@ -443,7 +449,7 @@ func TestMultiplayerLobbyUnavailableCreationHidden(t *testing.T) {
 			t.Fatal("read-only lobby exposed creation action")
 		}
 	}
-	sg.multiplayer.lobby.row = sg.authorityLobbyActionRow(authorityLobbyDirectAction)
+	sg.multiplayer.lobby.row = slices.Index(sg.authorityHomeActions(), authorityHomeDirect)
 	lobbyMenuKey(t, sg, ebiten.KeyEnter)
 	if sg.multiplayer.lobby.page != authorityLobbyPageNone {
 		t.Fatal("hiding creation broke remaining room-list actions")
@@ -459,7 +465,7 @@ func TestMultiplayerLobbyStatusUsesOneLineAndRowsStayInPanel(t *testing.T) {
 	sg.multiplayer.status = "LOAD MATCHING WAD FIRST"
 	statusLines := 0
 	sg.drawAuthorityLobby(func(label string, _, y int) {
-		if y == 117 && label != "" {
+		if y == 188 && label != "" {
 			statusLines++
 		}
 		if y > 188 {

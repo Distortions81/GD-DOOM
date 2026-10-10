@@ -7,7 +7,7 @@ import (
 )
 
 type plane3DKey struct {
-	height int16
+	height float64 // Map units; network presentation preserves sub-unit planes.
 	light  int16
 	flatID uint16
 	sky    bool

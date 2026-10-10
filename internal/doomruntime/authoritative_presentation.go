@@ -19,11 +19,15 @@ type authorityRenderThing struct {
 	pose authorityRenderPose
 	kind int16
 }
+type authorityRenderSector struct {
+	floor, ceil int64
+}
 type authorityRenderFrame struct {
 	tic         int
 	players     map[int]authorityRenderPlayer
 	things      []authorityRenderThing
 	projectiles map[int64]authorityRenderPose
+	sectors     []authorityRenderSector
 }
 type authorityRenderState struct {
 	frames   []authorityRenderFrame
@@ -212,6 +216,18 @@ func (g *game) authorityProjectileRenderPose(p projectile) authorityRenderPose {
 	return interpolateAuthorityPose(from, toFrame, g.authorityRender.alpha)
 }
 
+// Sector planes use the same confirmed snapshot cursor as actors. Mover speed
+// and the local command interpolation phase cannot predict a door's next state:
+// the server may stop or reverse it before another snapshot arrives.
+func (g *game) authoritySectorRenderHeights(sec int) (floor, ceil int64, ok bool) {
+	if g == nil || g.authorityRender == nil || sec < 0 || sec >= len(g.authorityRender.from.sectors) || sec >= len(g.authorityRender.to.sectors) {
+		return 0, 0, false
+	}
+	from, to := g.authorityRender.from.sectors[sec], g.authorityRender.to.sectors[sec]
+	alpha := g.authorityRender.alpha
+	return lerpFixed(from.floor, to.floor, alpha), lerpFixed(from.ceil, to.ceil, alpha), true
+}
+
 func (g *game) captureAuthorityRenderFrame(now time.Time) authorityRenderFrame {
 	if g.authorityRender != nil {
 		g.authorityRender.prepare(now)
@@ -226,7 +242,11 @@ func (g *game) captureAuthorityRenderFrame(now time.Time) authorityRenderFrame {
 // Save raw authoritative endpoints, never an already interpolated pose. Reusing
 // the displayed pose at packet arrival makes velocity depend on packet jitter.
 func (g *game) snapshotAuthorityRenderFrame() authorityRenderFrame {
-	frame := authorityRenderFrame{tic: g.worldTic, players: make(map[int]authorityRenderPlayer), things: make([]authorityRenderThing, len(g.m.Things)), projectiles: make(map[int64]authorityRenderPose, len(g.projectiles))}
+	frame := authorityRenderFrame{tic: g.worldTic, players: make(map[int]authorityRenderPlayer), things: make([]authorityRenderThing, len(g.m.Things)), projectiles: make(map[int64]authorityRenderPose, len(g.projectiles)), sectors: make([]authorityRenderSector, len(g.m.Sectors))}
+	for sec := range frame.sectors {
+		floor, ceil, _ := g.sectorHeightSnapshot(sec)
+		frame.sectors[sec] = authorityRenderSector{floor, ceil}
+	}
 	for _, p := range g.authorityPlayers {
 		if g.authorityRules != nil {
 			score := g.authorityRules.Scores[p.localSlot]

@@ -150,12 +150,15 @@ controls are neutral; opening chat never pauses the match.
 Hold F6 to view the current roster, frags and deaths.
 
 The desktop and WASM title/pause menus place **Multiplayer** directly below
-**New Game**. Select a server
-and press Enter or tap the touch **Use** button to join immediately. The selected
-row says **Join** and shows the server name; nearby details show map, mode,
-occupancy and whether the loaded game files match. **Player** changes your name.
-The configured default server is selected when the menu first opens, so joining
-does not require entering an address or choosing a transport.
+**New Game**. The multiplayer home separates **Find Game**, **Create Game**,
+**Player Setup** and **Direct Connect**. Find Game shows the live room list with
+only refresh and back actions. Player Setup contains name and player/spectator
+preference. Direct Connect opens the saved server list. Without a configured
+lobby, the home offers **Saved Servers** and Player Setup.
+Select a room or server and press Enter or tap the touch **Use** button to join.
+Details show map, mode, occupancy and whether the loaded game files match.
+Direct Connect selects the configured default server, so joining does not
+require entering an address or choosing a transport.
 The built-in list includes **GD-DOOM Co-op** at
 `https://m45sci.xyz:6672/netplay` and **GD-DOOM Deathmatch** at
 `wss://m45sci.xyz:6672/deathmatch`. A configured custom address remains preferred.
@@ -166,9 +169,9 @@ Co-op uses WebTransport with WSS fallback. The hosted deathmatch endpoint uses
 WSS through the same public port, forwarded to an isolated loopback match
 process; gameplay RNG is never shared between the two matches.
 
-**More Options** contains refresh, custom server addresses, and **Join As** for
-spectator mode. Returning to the list after selecting spectator mode changes
-the selected action to **Watch**. **Add Server** and **Edit Selected Server**
+**Player Setup → Join As** selects spectator mode; the game list then offers
+**Watch**. **Manage Servers** under Direct Connect contains custom addresses.
+**Add Server** and **Edit Selected Server**
 accept an HTTPS/WebTransport or WS/WSS URL, or a native `host:port` TCP address.
 This page also shows the selected address and response time. Entries persist
 in native configuration's `multiplayer_servers` field, or the current browser
@@ -256,12 +259,14 @@ WebSocket upgrades and the HTTP API to the lobby. Allow the frontend's exact
 origin with `-web-origins`. Configure the proxy's upload body limit and timeout
 to accommodate WAD uploads. Worker ports stay private. The browser accepts
 `?multiplayer-lobby=<HTTP(S) base URL>`; native clients accept
-`-multiplayer-lobby=<URL>`. **Direct Servers** retains the saved server browser.
+`-multiplayer-lobby=<URL>`. **Direct Connect** retains the saved server browser.
 The room list is transient and is not added to saved favorites.
 
-**Create Game** selects name, WAD, starting map, difficulty and mode; **Rules**
-contains player count, monster behavior, friendly fire, frag and time limits.
-With `-upload-dir` configured, **Upload Loaded WADs** uploads the entire ordered
+**Create Game** selects name, mode and difficulty. Its **Game Files** page
+selects the WAD and starting level; **Rules** contains player count, monster
+behavior, friendly fire, frag and time limits. Each page returns to its parent
+with Back or Esc, preserving the current choices.
+With `-upload-dir` configured, **Game Files → Upload Loaded WADs** uploads the entire ordered
 stack currently loaded by the client, including browser-local files selected
 in the launcher. **Load WAD Files** lets browser players choose their base IWAD,
 enable custom PWADs and reorder overlays before starting. Uploads are disabled
@@ -355,6 +360,17 @@ extrapolating. Player incarnation/teleport changes cut immediately and clear
 affected pose history; confirmed gameplay and collision always use the newest
 server state. Deterministic tests exercise 120 Hz rendering with uneven snapshot
 delivery, corrections, stalls and discontinuities.
+
+Doors, lifts and other sector planes share that snapshot timeline. Their
+rendered heights retain fractional map units across wall edges, floor/ceiling
+planes and visibility checks; they never extrapolate from the local input
+clock. A grounded lift rider's camera follows the displayed support floor,
+without applying a second reconciliation blend to the same floor displacement.
+Entering or leaving a moving support uses a bounded 100 ms camera transition,
+including spectator views, without restarting other correction smoothing.
+Collision and input replay still use the newest confirmed heights. Tests cover
+opening, stopping, reversing, packet loss, burst delivery, stalled streams and
+riding ascending/descending floors.
 
 Menu verification: real browser joining, movement, leaving to title, and
 rejoining as a spectator passed without a page reload. The public WASM build

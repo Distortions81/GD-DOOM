@@ -206,19 +206,20 @@ See the [relay, voice, controls, and cheats reference](docs/usage.md).
 
 Authoritative co-op/deathmatch is available through `cmd/gdserver` and the
 `-connect` client option, with prediction, reconnects, chat and spectators.
-In desktop and browser games, open **Esc → Multiplayer** to browse the public
-**GD-DOOM Co-op** and **GD-DOOM Deathmatch** rooms and your saved servers.
-Select a server and press **Enter** or tap **Use** to join.
-The list shows map, mode, player counts and whether your loaded WADs match.
-**Player** changes your name; **More Options** contains spectator mode, refresh,
-and custom server addresses. Addresses are saved in native config or browser
-local storage; this is a saved list, not a public master registry.
+In desktop and browser games, open **Esc → Multiplayer**. **Find Game** opens
+the live room list; **Create Game** starts a room of your own. **Player Setup**
+contains your name and player/spectator preference. **Direct Connect** opens
+the public **GD-DOOM Co-op** and **GD-DOOM Deathmatch** servers and your saved
+addresses, with a separate **Manage Servers** page for adding or editing them.
+Select a game and press **Enter** or tap **Use** to join. The list shows map,
+mode, player counts and whether your loaded WADs match. Saved addresses persist
+in native config or browser local storage. **Back** or **Esc** returns one page.
 In a match, **Return to Game** resumes play and **Leave Match** returns to the
 title menu without restarting the game.
 For user-created games, run `cmd/gdlobby` and configure the client with
-`-multiplayer-lobby=https://your-lobby-host`. **Multiplayer** then opens a live
-room list with **Create Game**: choose WAD, level, difficulty, co-op/deathmatch,
-player limit, monster options, friendly fire and match limits. The lobby runs
+`-multiplayer-lobby=https://your-lobby-host`. **Create Game** keeps the name,
+mode and difficulty together. **Game Files** selects WADs and the starting
+level; **Rules** contains player limits, monsters, friendly fire and match limits. The lobby runs
 each room in its own authoritative server process. With uploads enabled,
 **Upload Loaded WADs** registers the game's current base WAD and overlays.
 Joining can download missing WADs explicitly approved for redistribution by the

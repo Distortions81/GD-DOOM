@@ -19,15 +19,13 @@ const (
 	authorityBrowserRefreshAction = iota
 	authorityBrowserAdd
 	authorityBrowserEdit
-	authorityBrowserName
-	authorityBrowserRole
 	authorityBrowserMore
 	authorityBrowserBack
 )
 
-var authorityBrowserPrimaryActions = []int{authorityBrowserName, authorityBrowserMore, authorityBrowserBack}
-var authorityBrowserEmptyActions = []int{authorityBrowserAdd, authorityBrowserName, authorityBrowserMore, authorityBrowserBack}
-var authorityBrowserMoreActions = []int{authorityBrowserRefreshAction, authorityBrowserAdd, authorityBrowserEdit, authorityBrowserRole, authorityBrowserBack}
+var authorityBrowserPrimaryActions = []int{authorityBrowserRefreshAction, authorityBrowserMore, authorityBrowserBack}
+var authorityBrowserEmptyActions = []int{authorityBrowserAdd, authorityBrowserBack}
+var authorityBrowserMoreActions = []int{authorityBrowserAdd, authorityBrowserEdit, authorityBrowserBack}
 
 type authorityServerStatus uint8
 
@@ -389,19 +387,14 @@ func (sg *sessionGame) drawAuthorityBrowser(text func(string, int, int)) {
 		return
 	}
 	if m.moreOptions {
-		text("MORE OPTIONS", 24, 38)
 		if len(m.servers) > 0 {
 			server := m.servers[m.selected]
-			text(fit(authorityServerLabel(server), 272), 24, 56)
-			text(fit(server.entry.Address, 272), 24, 68)
+			text(fit(authorityServerLabel(server), 272), 24, 46)
+			text(fit(server.entry.Address, 272), 24, 60)
 		}
-		role := "JOIN AS: PLAYER"
-		if m.request.Spectator {
-			role = "JOIN AS: SPECTATOR"
-		}
-		labels := []string{"REFRESH SERVERS", "ADD SERVER", "EDIT SELECTED SERVER", role, "BACK TO SERVERS"}
+		labels := []string{"ADD SERVER", "EDIT SELECTED SERVER", "BACK"}
 		for row, label := range labels {
-			y := 90 + row*18
+			y := 90 + row*24
 			text(label, 36, y)
 			if m.row == row {
 				text(">", 20, y)
@@ -492,10 +485,10 @@ func (sg *sessionGame) drawAuthorityBrowser(text func(string, int, int)) {
 		switch action {
 		case authorityBrowserAdd:
 			label = "ADD A SERVER"
-		case authorityBrowserName:
-			label = "PLAYER: " + m.request.Name
+		case authorityBrowserRefreshAction:
+			label = "REFRESH"
 		case authorityBrowserMore:
-			label = "MORE OPTIONS"
+			label = "MANAGE SERVERS"
 		case authorityBrowserBack:
 			label = "BACK"
 		}

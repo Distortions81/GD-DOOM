@@ -5545,10 +5545,18 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 	}
 	key.light = g.sectorLightForRender(secIdx, sec)
 	pic := sec.CeilingPic
-	key.height = sec.CeilingHeight
+	key.height = float64(sec.CeilingHeight)
 	if floor {
 		pic = sec.FloorPic
-		key.height = sec.FloorHeight
+		key.height = float64(sec.FloorHeight)
+	}
+	if g.authorityRender != nil || g.clientPrediction != nil {
+		if fz, cz, ok := g.sectorHeightRenderSnapshot(secIdx); ok {
+			key.height = float64(cz) / fracUnit
+			if floor {
+				key.height = float64(fz) / fracUnit
+			}
+		}
 	}
 	if !floor && isSkyFlatName(pic) {
 		key.sky = true
@@ -9818,6 +9826,14 @@ func (g *game) refinePlaneSampleAtPixel(x, y int, cx, cy, camX, camY, ca, sa, ey
 		if ceiling {
 			nextZ = float64(g.m.Sectors[rsec].CeilingHeight)
 		}
+		if g.authorityRender != nil || g.clientPrediction != nil {
+			if fz, cz, valid := g.sectorHeightRenderSnapshot(rsec); valid {
+				nextZ = float64(fz) / fracUnit
+				if ceiling {
+					nextZ = float64(cz) / fracUnit
+				}
+			}
+		}
 		wx, wy, depth, sec = rwx, rwy, rd, rsec
 		if rsec == lastSec || math.Abs(nextZ-planeZ) < 0.001 {
 			return wx, wy, depth, sec, true
@@ -13430,6 +13446,7 @@ func (g *game) playerEyeZ() float64 {
 	if g.clientPrediction != nil {
 		z += g.clientPrediction.renderEyeOffset
 	}
+	z += g.authoritySupportEyeOffset()
 	return z
 }
 
@@ -13668,6 +13685,16 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 }
 
 func (g *game) beginPlane3DFrame(viewW int) []*plane3DVisplane {
+	if g.authorityRender != nil || g.clientPrediction != nil {
+		// Interpolated movers can have a new fractional height every frame.
+		// Keep only the preceding frame's buckets for reuse; their generation
+		// already guards the pooled visplanes, so older keys serve no purpose.
+		for key, bucket := range g.plane3DVisBuckets {
+			if bucket.gen != g.plane3DVisGen {
+				delete(g.plane3DVisBuckets, key)
+			}
+		}
+	}
 	if g.plane3DPoolViewW != viewW {
 		g.plane3DPool = g.plane3DPool[:0]
 		g.plane3DPoolUsed = 0
@@ -14291,6 +14318,10 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 	}
 	animatedLight := g.sectorLightKindCached(frontSectorIdx) != sectorLightEffectNone ||
 		g.sectorLightKindCached(backSectorIdx) != sectorLightEffectNone
+	// A replica's displayed heights advance between snapshots, even while its
+	// world tic stays fixed. Neither the static nor per-tic cache covers them.
+	replica := g.authorityRender != nil || g.clientPrediction != nil
+	cacheOK = cacheOK && !replica
 	if cacheOK && segIdx >= 0 && segIdx < len(g.wallSegStaticCache) {
 		c := &g.wallSegStaticCache[segIdx]
 		if c.portalSplitStatic && !animatedLight {
@@ -14302,8 +14333,13 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 	}
 	front := &g.m.Sectors[frontSectorIdx]
 	back := &g.m.Sectors[backSectorIdx]
-	split := front.FloorHeight != back.FloorHeight ||
-		front.CeilingHeight != back.CeilingHeight ||
+	heightSplit := front.FloorHeight != back.FloorHeight || front.CeilingHeight != back.CeilingHeight
+	if replica {
+		ff, fc, _ := g.sectorHeightRenderSnapshot(frontSectorIdx)
+		bf, bc, _ := g.sectorHeightRenderSnapshot(backSectorIdx)
+		heightSplit = ff != bf || fc != bc
+	}
+	split := heightSplit ||
 		normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
 		normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
 		g.sectorsLightDifferForRender(frontSectorIdx, backSectorIdx, front, back)
@@ -16936,6 +16972,14 @@ func (g *game) sectorHeightRenderSnapshot(sec int) (int64, int64, bool) {
 	floor, ceil, ok := g.sectorHeightSnapshot(sec)
 	if !ok || g == nil {
 		return floor, ceil, ok
+	}
+	if g.authorityRender != nil || g.clientPrediction != nil {
+		if fz, cz, valid := g.authoritySectorRenderHeights(sec); valid {
+			return fz, cz, true
+		}
+		// Before a second baseline arrives, hold the confirmed heights. Local
+		// input alpha must never extrapolate an authoritative world mover.
+		return floor, ceil, true
 	}
 	if sec < 0 || sec >= len(g.sectorCeil) {
 		return floor, ceil, true

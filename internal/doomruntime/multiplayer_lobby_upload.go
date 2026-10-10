@@ -90,7 +90,7 @@ func (sg *sessionGame) pollAuthorityUpload() {
 		if before != m.request.Settings {
 			m.request.RequestID = ""
 		}
-		m.row = sg.authorityCreateActionRow()
+		m.page, m.row = authorityLobbyPageFiles, 1
 		menu.status = "WADS READY - CREATE YOUR GAME"
 	case <-job.ctx.Done():
 		sg.cancelAuthorityUpload()

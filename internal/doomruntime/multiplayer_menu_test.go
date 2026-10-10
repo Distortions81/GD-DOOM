@@ -73,6 +73,7 @@ func TestMultiplayerMenuJoinLeaveRestoresRulesAndKeepsLiveSettings(t *testing.T)
 	}
 	sg.opts.AuthorityJoinDefaults = runtimecfg.AuthorityJoinRequest{Address: "wss://example.test/netplay", Name: "Doomer"}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	// An attract demo can finish behind the menu while connection IO runs.
 	sg.g.opts.DemoScript, sg.g.demoWorldDone = &demo.Script{}, true
 	sg.beginAuthorityJoin()
@@ -121,6 +122,7 @@ func TestMultiplayerMenuJoinIsNonblockingAndCanceledLateResultLeaves(t *testing.
 	}
 	sg.opts.AuthorityJoinDefaults = runtimecfg.AuthorityJoinRequest{Address: "server:6666", Name: "Player"}
 	sg.openFrontendMultiplayer()
+	sg.openAuthorityDirectServers()
 	menuKey(sg, ebiten.KeyEnter)
 	if err := sg.tickFrontendMultiplayer(); err != nil {
 		t.Fatal(err)
@@ -189,6 +191,10 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	if sg.frontend.Mode != frontendModeMultiplayer {
 		t.Fatal("main menu did not open multiplayer page")
 	}
+	if sg.multiplayer.lobby.page != authorityLobbyPageHome {
+		t.Fatal("main menu did not open Multiplayer Home")
+	}
+	sg.openAuthorityDirectServers()
 	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserMore)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
@@ -207,7 +213,7 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	}
 	menuKey(sg, ebiten.KeyEscape)
 	_ = sg.tickFrontendMultiplayer()
-	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserName)
+	sg.openAuthorityPlayerSetup(authorityLobbyPageNone)
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
 	sg.input = sessionInputSnapshot{inputChars: []rune(strings.Repeat("é", 100))}
@@ -217,15 +223,14 @@ func TestMultiplayerMenuEditingRetryAndUnavailableActions(t *testing.T) {
 	}
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
-	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserMore)
-	menuKey(sg, ebiten.KeyEnter)
-	_ = sg.tickFrontendMultiplayer()
-	sg.multiplayer.row = sg.multiplayer.actionRow(authorityBrowserRole)
+	sg.multiplayer.lobby.row = 1
 	menuKey(sg, ebiten.KeyEnter)
 	_ = sg.tickFrontendMultiplayer()
 	if !sg.multiplayer.request.Spectator {
 		t.Fatal("spectator selection not toggled")
 	}
+	menuKey(sg, ebiten.KeyEscape)
+	_ = sg.tickFrontendMultiplayer()
 	sg.beginAuthorityJoin()
 	pollMenuJoin(t, sg)
 	if sg.multiplayer.status != "server unavailable" || sg.opts.AuthorityClient != nil {

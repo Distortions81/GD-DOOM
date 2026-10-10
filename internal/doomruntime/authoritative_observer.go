@@ -48,6 +48,12 @@ func (g *game) updateAuthoritativeObserverAt(now time.Time) error {
 			return err
 		}
 		wasReady, sameView := p.ready, p.ready && p.viewer == r.Viewer
+		previousSupport, wasDead := g.authorityPlayerSupport(), g.isDead
+		var previousGeneration, previousMovement uint32
+		if sameView && g.authorityRules != nil {
+			previousGeneration = g.authorityRules.Scores[r.Viewer].Generation
+			previousMovement = g.authorityRules.Scores[r.Viewer].MovementEpoch
+		}
 		var renderFrom authorityRenderFrame
 		if sameView {
 			renderFrom = g.captureAuthorityRenderFrame(now)
@@ -59,6 +65,13 @@ func (g *game) updateAuthoritativeObserverAt(now time.Time) error {
 			// Changing followed players is a camera cut, not interpolation from
 			// the previous viewer's snapshot timeline.
 			g.authorityRender = nil
+		}
+		score := r.Rules.Scores[r.Viewer]
+		if sameView && wasDead == g.isDead && previousGeneration == score.Generation && previousMovement == score.MovementEpoch {
+			p.queueSupportTransition(previousSupport, g.authorityPlayerSupport())
+		} else {
+			p.supportCorrection = predictionSupportCorrection{}
+			p.renderEyeOffset = 0
 		}
 		p.ready, p.viewer, p.snapshotID = true, r.Viewer, snapshot.ID
 		p.authoritativeTic, p.predictedTic = snapshot.Tick, snapshot.Tick

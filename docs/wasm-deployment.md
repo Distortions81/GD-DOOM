@@ -10,12 +10,15 @@ the key. No private-key contents need to be copied or printed.
 The current release ID, source commit, and asset hashes are recorded in the
 site's `wasm-manifest.json`. Build and deploy the browser and server from the
 same clean commit. Browser launches start AUTO detail at full resolution.
-Esc → Multiplayer opens the live lobby, with **Create Game**, custom WAD
-uploads, and automatic loading of approved downloadable content. **Direct
-Servers** retains **GD-DOOM Co-op**, **GD-DOOM Deathmatch**, and saved custom
-servers. Select a room and press Enter to join; the connected menu offers
-Return to Game and Leave Match. The client runs a continuous input clock,
-accounts for command lead, and smooths small prediction corrections.
+Esc → Multiplayer opens a compact home page with **Find Game**, **Create
+Game**, **Player Setup**, and **Direct Connect**. Creation has separate
+**Game Files** and **Rules** pages, including custom WAD uploads and automatic
+loading of approved downloadable content. Direct Connect retains **GD-DOOM
+Co-op**, **GD-DOOM Deathmatch**, and saved custom servers. Select a room and
+press Enter to join; the connected menu offers Return to Game and Leave Match.
+The client runs a continuous input clock, accounts for command lead, and
+smooths small prediction corrections. Doors, lifts and their riders share
+the confirmed snapshot presentation timeline.
 
 The lobby base URL is `https://m45sci.xyz:6672`. Its user service is
 `gd-doom-lobby.service`, listening only on `127.0.0.1:6675`. The existing co-op
@@ -244,7 +247,7 @@ handshake. Test both existing direct servers as well. Browser requests from
 Dynamic rooms expire after ten minutes without players, spectators or reconnect
 reservations. Any rooms seeded during deployment follow the same lifecycle and
 are not permanent default servers. The direct co-op and deathmatch services
-remain available under **Direct Servers** even when the lobby is empty.
+remain available under **Direct Connect** even when the lobby is empty.
 
 ## Publish the browser assets
 

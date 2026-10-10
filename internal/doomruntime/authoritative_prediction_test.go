@@ -384,6 +384,7 @@ func TestPredictionDiscontinuitiesSnapAndClearCameraCorrection(t *testing.T) {
 			g.opts.SourcePortMode = true
 			now := time.Unix(300, 0)
 			p.renderCorrection = predictionRenderCorrection{x: 3, y: -1, z: 2, angle: float64(doomAng5), started: now}
+			p.supportCorrection = predictionSupportCorrection{z: 1, pending: 1, started: now}
 			g.prepareRenderStateAt(now)
 			switch kind {
 			case "teleport":
@@ -419,6 +420,9 @@ func TestPredictionDiscontinuitiesSnapAndClearCameraCorrection(t *testing.T) {
 			}
 			if p.renderEyeOffset != 0 || g.playerEyeZ() != g.playerBaseEyeZ() {
 				t.Fatal("discontinuity retained vertical camera correction")
+			}
+			if p.supportCorrection != (predictionSupportCorrection{}) {
+				t.Fatal("discontinuity retained support-boundary correction")
 			}
 			got := capturePredictionCamera(g, now)
 			want := predictionCameraSample{float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, float64(g.p.x) / fracUnit, float64(g.p.y) / fracUnit, g.p.angle}

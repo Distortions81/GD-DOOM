@@ -31,9 +31,12 @@ func TestAuthorityPresentationInterpolatesWithoutChangingCollision(t *testing.T)
 		t.Fatal("map fixture has no barrel")
 	}
 	oldThingX, oldThingY := a.g.thingPosFixed(thingIndex, a.g.m.Things[thingIndex])
+	oldFloor, oldCeil, _ := a.g.sectorHeightSnapshot(0)
 	a.players[1].p.x += 20 * fracUnit
 	a.g.setThingPosFixed(thingIndex, oldThingX+20*fracUnit, oldThingY)
 	a.g.projectiles[0].x += 60 * fracUnit
+	a.g.sectorFloor[0] += 12 * fracUnit
+	a.g.sectorCeil[0] += 18 * fracUnit
 	a.g.worldTic = 13
 	next, err := a.Snapshot(2)
 	if err != nil {
@@ -57,11 +60,24 @@ func TestAuthorityPresentationInterpolatesWithoutChangingCollision(t *testing.T)
 	if abs(x-30*fracUnit) > 1 {
 		t.Fatal("projectile did not interpolate by stable thinker identity")
 	}
+	for _, alpha := range []float64{0, 0.5, 1} {
+		g.renderAlpha = alpha
+		floor, ceil, ok := g.authoritySectorRenderHeights(0)
+		if !ok || abs(floor-(oldFloor+6*fracUnit)) > 1 || abs(ceil-(oldCeil+9*fracUnit)) > 1 {
+			t.Fatalf("sector interpolation used local command clock %.1f: floor=%d ceil=%d", alpha, floor-oldFloor, ceil-oldCeil)
+		}
+	}
 	if g.remotePlayers[1].p != a.players[1].p || g.thingX[thingIndex] != oldThingX+20*fracUnit || g.projectiles[0].x != 60*fracUnit || g.worldTic != 13 {
 		t.Fatal("presentation interpolation changed canonical collision/world state")
 	}
+	if floor, ceil, _ := g.sectorHeightSnapshot(0); floor != oldFloor+12*fracUnit || ceil != oldCeil+18*fracUnit {
+		t.Fatal("sector interpolation changed canonical collision heights")
+	}
 	if raw := g.captureAuthorityRenderFrame(now.Add(time.Second * 3 / 35 / 2)); raw.players[1].pose.x != a.players[1].p.x {
 		t.Fatal("next snapshot would rebase from an interpolated position")
+	}
+	if raw := g.captureAuthorityRenderFrame(now.Add(time.Second * 3 / 35 / 2)); raw.sectors[0] != (authorityRenderSector{oldFloor + 12*fracUnit, oldCeil + 18*fracUnit}) {
+		t.Fatal("next snapshot would rebase from interpolated sector heights")
 	}
 	if after, afterPlay := doomrand.State(); after != rng || afterPlay != play {
 		t.Fatal("render interpolation consumed gameplay/effects RNG")
@@ -69,6 +85,9 @@ func TestAuthorityPresentationInterpolatesWithoutChangingCollision(t *testing.T)
 	g.prepareRenderStateAt(now.Add(10 * time.Second))
 	if pose := g.authorityRemoteRenderPose(1, g.remotePlayers[1].p); pose.x != a.players[1].p.x {
 		t.Fatal("stalled stream extrapolated remote player")
+	}
+	if floor, ceil, _ := g.authoritySectorRenderHeights(0); floor != oldFloor+12*fracUnit || ceil != oldCeil+18*fracUnit {
+		t.Fatal("stalled stream extrapolated sector planes")
 	}
 	// A sparse baseline can report a teleport after its one-tic flag cleared.
 	a.g.authorityRules.Scores[1].MovementEpoch++
@@ -98,6 +117,7 @@ func authorityTimelineTestFrame(tic int) authorityRenderFrame {
 		players:     map[int]authorityRenderPlayer{1: {pose: pose, generation: 1}},
 		things:      []authorityRenderThing{{pose: pose, kind: barrelThingType}},
 		projectiles: map[int64]authorityRenderPose{1: pose},
+		sectors:     []authorityRenderSector{{floor: int64(tic) * 2 * fracUnit, ceil: int64(128+tic*3) * fracUnit}},
 	}
 }
 
@@ -137,6 +157,11 @@ func TestAuthorityPresentationUnevenArrivalKeepsConstantVelocity(t *testing.T) {
 		if delta := int32(poses[0].angle - uint32(wantTic*0x01000000)); delta < -1 || delta > 1 {
 			t.Fatalf("at %.2f ticks yaw changed velocity: %x", at, poses[0].angle)
 		}
+		g.renderAlpha = float64(quarter%4) / 4
+		floor, ceil, ok := g.authoritySectorRenderHeights(0)
+		if !ok || math.Abs(float64(floor)-wantTic*2*fracUnit) > 1 || math.Abs(float64(ceil)-(128+wantTic*3)*fracUnit) > 1 {
+			t.Fatalf("at %.2f ticks sectors changed velocity with packet arrival or local input phase: floor=%d ceil=%d", at, floor, ceil)
+		}
 	}
 }
 
@@ -156,6 +181,104 @@ func TestAuthorityPresentationBoundsRecoveryAndNeverExtrapolates(t *testing.T) {
 	s.prepare(now)
 	if s.tic != 100 {
 		t.Fatal("render cursor moved backwards with clock")
+	}
+}
+
+func TestAuthorityPresentationSectorStopsAndReversesOnSnapshotTimeline(t *testing.T) {
+	start := time.Unix(100, 0)
+	stamp := func(tic float64) time.Time { return start.Add(time.Duration(tic * float64(time.Second) / 35)) }
+	// A rising lift and a closing ceiling stop for two tics, then reverse.
+	// Their latest server mover direction must not be applied to older frames.
+	heights := func(tic float64) (float64, float64) {
+		floor := 2 * math.Min(tic, 4)
+		if tic > 6 {
+			floor -= 2 * (math.Min(tic, 10) - 6)
+		}
+		return floor * fracUnit, (128 - 1.5*floor) * fracUnit
+	}
+	frame := func(tic int) authorityRenderFrame {
+		floor, ceil := heights(float64(tic))
+		return authorityRenderFrame{tic: tic, sectors: []authorityRenderSector{{int64(floor), int64(ceil)}}}
+	}
+	s := newAuthorityRenderTimeline(frame(0), frame(2), stamp(2))
+	g := &game{authorityRender: s}
+	arrivals := []struct {
+		tic int
+		at  float64
+	}{{4, 3.8}, {6, 6.2}, {8, 7.7}, {10, 10.3}}
+	next := 0
+	for quarter := 8; quarter <= 64; quarter++ {
+		at := float64(quarter) / 4
+		for next < len(arrivals) && arrivals[next].at <= at {
+			arrival := arrivals[next]
+			s.appendFrame(frame(arrival.tic), stamp(arrival.at))
+			next++
+		}
+		s.prepare(stamp(at))
+		g.renderAlpha = float64(quarter%4) / 4
+		floor, ceil, ok := g.authoritySectorRenderHeights(0)
+		wantTic := math.Max(0, stamp(at).Sub(stamp(3)).Seconds()*35)
+		wantFloor, wantCeil := heights(wantTic)
+		if !ok || math.Abs(float64(floor)-wantFloor) > 1 || math.Abs(float64(ceil)-wantCeil) > 1 {
+			t.Fatalf("at %.2f ticks sector stop/reverse jumped: floor=%d ceil=%d want floor=%.1f ceil=%.1f", at, floor, ceil, wantFloor, wantCeil)
+		}
+	}
+}
+
+func TestAuthorityPresentationSectorPacketLossAndBurstStayBounded(t *testing.T) {
+	start := time.Unix(100, 0)
+	stamp := func(tic float64) time.Time { return start.Add(time.Duration(tic * float64(time.Second) / 35)) }
+	s := newAuthorityRenderTimeline(authorityTimelineTestFrame(0), authorityTimelineTestFrame(2), stamp(2))
+	g := &game{authorityRender: s}
+	// Lose tics 4 and 6. Once the available interval is exhausted, hold the
+	// confirmed endpoint instead of repeatedly extrapolating a door by alpha.
+	s.prepare(stamp(8))
+	floor, ceil, ok := g.authoritySectorRenderHeights(0)
+	if !ok || floor != 4*fracUnit || ceil != 134*fracUnit {
+		t.Fatalf("packet loss extrapolated sectors: floor=%d ceil=%d", floor, ceil)
+	}
+	// Several buffered packets arriving together must not restart the clock
+	// for each packet or allow the timeline backlog to grow without bound.
+	for _, tic := range []int{8, 10, 12} {
+		s.appendFrame(authorityTimelineTestFrame(tic), stamp(8))
+	}
+	lastFloor, lastCeil := floor, ceil
+	for quarter := 32; quarter <= 80; quarter++ {
+		s.prepare(stamp(float64(quarter) / 4))
+		g.renderAlpha = float64(quarter%4) / 4
+		floor, ceil, ok = g.authoritySectorRenderHeights(0)
+		if !ok || floor < lastFloor || ceil < lastCeil || floor > 24*fracUnit || ceil > 164*fracUnit || len(s.frames) > authorityRenderMaxFrames {
+			t.Fatalf("burst recovery rewound or extrapolated at %.2f: floor=%d ceil=%d", float64(quarter)/4, floor, ceil)
+		}
+		lastFloor, lastCeil = floor, ceil
+	}
+	if floor != 24*fracUnit || ceil != 164*fracUnit {
+		t.Fatal("burst recovery did not reach newest confirmed sector heights")
+	}
+}
+
+func TestAuthorityPresentationSectorFramesOwnHeights(t *testing.T) {
+	g := newGame(predictionTestMap(), Options{Headless: true, SkillLevel: 3})
+	frame := g.snapshotAuthorityRenderFrame()
+	if len(frame.sectors) != len(g.m.Sectors) || len(frame.sectors) == 0 {
+		t.Fatal("render frame omitted map sectors")
+	}
+	before := frame.sectors[0]
+	g.sectorFloor[0] += 8 * fracUnit
+	g.sectorCeil[0] -= 8 * fracUnit
+	if frame.sectors[0] != before {
+		t.Fatal("render endpoints alias canonical sector heights")
+	}
+	for _, sec := range []int{-1, 0, len(frame.sectors)} {
+		if _, _, ok := g.authoritySectorRenderHeights(sec); ok {
+			t.Fatal("missing timeline reported a sector endpoint")
+		}
+	}
+	g.authorityRender = newAuthorityRenderTimeline(frame, g.snapshotAuthorityRenderFrame(), time.Unix(100, 0))
+	for _, sec := range []int{-1, len(frame.sectors)} {
+		if _, _, ok := g.authoritySectorRenderHeights(sec); ok {
+			t.Fatal("out-of-range sector reported a render endpoint")
+		}
 	}
 }
 
