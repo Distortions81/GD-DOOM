@@ -89,6 +89,7 @@ func prepareAuthorityContent(ctx context.Context, address string, room lobby.Roo
 func preserveAuthorityContentPreferences(next *runtimecfg.Options, current runtimecfg.Options) {
 	next.AuthorityServers = slices.Clone(current.AuthorityServers)
 	next.RespawnMonsters = current.RespawnMonsters
+	next.DisableCameraBob, next.DisableWeaponBob = current.DisableCameraBob, current.DisableWeaponBob
 	next.SmoothCameraYaw = current.SmoothCameraYaw
 	next.ZombiemanThinkerBlend, next.DebugMonsterThinkerBlend = current.ZombiemanThinkerBlend, current.DebugMonsterThinkerBlend
 	next.DisableMaskedMidFastPaths, next.DisableGeometryAspectCorrect = current.DisableMaskedMidFastPaths, current.DisableGeometryAspectCorrect
@@ -185,7 +186,7 @@ func contentRenderConfig(o runtimecfg.Options) renderBuildConfig {
 		detailLevel: o.InitialDetailLevel, detailLevelExplicit: true, autoDetail: o.AutoDetail, gammaLevel: o.InitialGammaLevel,
 		debug: o.Debug, debugEvents: o.DebugEvents, playerSlot: o.PlayerSlot,
 		skillLevel: o.SkillLevel, gameMode: o.GameMode, showNoSkillItems: o.ShowNoSkillItems, showAllItems: o.ShowAllItems, noMonsters: o.NoMonsters,
-		mouseLook: o.MouseLook, mouseInvert: o.MouseInvert, mouseLookSpeed: o.MouseLookSpeed, keyboardTurnSpeed: o.KeyboardTurnSpeed,
+		mouseLook: o.MouseLook, mouseInvert: o.MouseInvert, disableCameraBob: o.DisableCameraBob, disableWeaponBob: o.DisableWeaponBob, mouseLookSpeed: o.MouseLookSpeed, keyboardTurnSpeed: o.KeyboardTurnSpeed,
 		musicVolume: o.MusicVolume, musPanMax: o.MUSPanMax, musVolumeCompression: o.MUSVolumeCompression, oplVolume: o.OPLVolume,
 		audioPreEmphasis: o.AudioPreEmphasis, musicBackend: o.MusicBackend, soundFontPath: o.MusicSoundFontPath,
 		sfxVolume: o.SFXVolume, pcSpeakerVolume: o.PCSpeakerVolume, sfxPitchShift: o.SFXPitchShift,

@@ -47,6 +47,7 @@ type nativeSettings struct {
 	mouseSensitivity, keyboardSpeed          float64
 	mouseLook, mouseInvert, autoWeaponSwitch bool
 	smoothCameraYaw                          bool
+	disableCameraBob, disableWeaponBob       bool
 	bindings                                 runtimecfg.InputBindings
 	alwaysRun, debug, fullscreen             bool
 	textureFilter                            raymesh.TextureFilter
@@ -189,7 +190,7 @@ func (m *nativeMenu) rows(s nativeSettings) []menuRow {
 		}
 		return rows
 	case menuOptions:
-		return []menuRow{{label: "MESSAGES"}, {label: "STATUS BAR MODE"}, {label: "HUD SIZE"}, {label: "FPS"}, {label: "MOUSE SENSITIVITY"}, {label: "SOUND OPTIONS"}, {label: "KEY BINDINGS"}, {label: "RAYLIB OPTIONS"}}
+		return []menuRow{{label: "MESSAGES"}, {label: "STATUS BAR MODE"}, {label: "HUD SIZE"}, {label: "FPS"}, {label: "MOUSE SENSITIVITY"}, {label: "SOUND OPTIONS"}, {label: "KEY BINDINGS"}, {label: "CAMERA BOB"}, {label: "WEAPON BOB"}, {label: "RAYLIB OPTIONS"}}
 	case menuControls:
 		return []menuRow{{label: "KEY BINDINGS"}, {label: "MOUSE AIM", value: onoff(s.mouseLook)}, {label: "MOUSE INVERT", value: onoff(s.mouseInvert)}, {label: "MOUSE SPEED", value: fmt.Sprintf("%.1f", s.mouseSensitivity)}, {label: "KEY TURN SPEED", value: fmt.Sprintf("%.1f", s.keyboardSpeed)}, {label: "ALWAYS RUN", value: onoff(s.alwaysRun)}, {label: "AUTO WEAPONS", value: onoff(s.autoWeaponSwitch)}, {label: "SMOOTH CAMERA", value: onoff(s.smoothCameraYaw)}, {label: "BACK"}}
 	case menuBindings:
@@ -246,7 +247,7 @@ func (m *nativeMenu) back() {
 		m.row = 6
 	case menuGraphics:
 		m.open(menuOptions)
-		m.row = nativeOptionRow(8)
+		m.row = nativeOptionRow(10)
 	case menuOptions, menuNewGame, menuHelp, menuSave, menuLoad:
 		m.open(menuMain)
 	default:
@@ -579,7 +580,7 @@ func (m *nativeMenu) rowLayout(total int) (first, step float64, offset, count in
 	case menuNewGame, menuSkill:
 		first, step = 63, 16
 	case menuOptions:
-		first, step = 37, 16
+		first, step = 37, 14
 	case menuMusicPlayer:
 		first, step = 42, 16
 	case menuBindings:

@@ -744,7 +744,7 @@ func (sg *sessionGame) tickFrontend() error {
 		sessionflow.FrontendConfig{
 			ReadThisPageCount: len(sg.readThisPageNames()),
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
-			OptionRows:        frontendOptionsSelectableRows[:],
+			OptionRows:        frontendOptionRows(sg.opts.SourcePortMode),
 			VoiceMenuCount:    frontendVoiceMenuRowCount,
 			SoundMenuCount:    frontendSoundMenuRowCount,
 			MainMenuCount:     sg.frontendMainMenuCount(),
@@ -768,6 +768,15 @@ func (sg *sessionGame) tickFrontend() error {
 	}
 	if result.StatusMessage != "" {
 		sg.frontendStatus(result.StatusMessage, result.StatusMessageTic)
+	}
+	if result.ChangeCameraBob || result.ChangeWeaponBob {
+		row := 8
+		if result.ChangeWeaponBob {
+			row = 9
+		}
+		sg.g.toggleBobOption(row)
+		sg.settings.DisableCameraBob, sg.settings.DisableWeaponBob = sg.g.opts.DisableCameraBob, sg.g.opts.DisableWeaponBob
+		sg.opts.DisableCameraBob, sg.opts.DisableWeaponBob = sg.g.opts.DisableCameraBob, sg.g.opts.DisableWeaponBob
 	}
 	if result.ChangeMessages {
 		sg.frontendChangeMessages()
@@ -1284,48 +1293,26 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	if sg == nil || sg.g == nil {
 		return
 	}
-	sig := sg.g.sessionSignals()
-	const menuX = 36
-	const menuY = 37
-	const lineHeight = 16
+	const menuX, menuY = 36, 37
 	_ = sg.drawMenuPatch(screen, "M_OPTTTL", menuX, 15, scale, ox, oy, false)
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
-	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(17)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "MESSAGES", ox+float64(menuX)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "STATUS BAR MODE", ox+float64(menuX)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	msgLabel := "OFF"
-	if sig.HUDMessages {
-		msgLabel = "ON"
-	}
-	sg.drawFrontendTextAt(screen, msgLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, sg.g.screenSizeLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "HUD SIZE", ox+float64(menuX)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, sg.g.hudScaleLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "FPS", ox+float64(menuX)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	fpsLabel := "OFF"
-	if sig.ShowPerf {
-		fpsLabel = "ON"
-	}
-	sg.drawFrontendTextAt(screen, fpsLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "MOUSE SENSITIVITY", ox+float64(menuX)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	optionsSkullX := sg.frontendOptionsSkullX(menuX)
-	sg.drawFrontendTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "SOUND OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	bindingsRow, selectedRow := 7, sg.frontend.OptionsOn
-	if sg.nativeHideVoiceOptions {
-		bindingsRow = 6
-		if selectedRow >= 7 {
-			selectedRow--
+	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+17*scale, scale*1.2, scale*1.2)
+	labels, values, spacing := sg.g.optionsMenuLabels()
+	row, selectedRow := 0, sg.frontend.OptionsOn
+	for i, label := range labels {
+		if sg.nativeHideVoiceOptions && i == 6 {
+			continue
 		}
-	} else {
-		sg.drawFrontendTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-		sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+		y := oy + float64(menuY+row*spacing+2)*scale
+		sg.drawFrontendTextAt(screen, label, ox+menuX*scale, y, scale*1.2, scale*1.2)
+		sg.drawFrontendTextAt(screen, values[i], ox+(menuX+215)*scale, y, scale*1.2, scale*1.2)
+		row++
 	}
-	sg.drawFrontendTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+bindingsRow*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawFrontendTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+bindingsRow*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.drawMenuSkull(screen, optionsSkullX, menuY+selectedRow*lineHeight, scale, ox, oy)
+	if sg.nativeHideVoiceOptions && selectedRow >= 7 {
+		selectedRow--
+	}
+	sg.drawMenuSkull(screen, sg.frontendOptionsSkullX(menuX), menuY+selectedRow*spacing, scale, ox, oy)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 		sg.drawIntermissionText(screen, sg.ellipsizeIntermissionText(msg, 288), 160, 182, scale, ox, oy, true)
 	}

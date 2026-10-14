@@ -41,6 +41,8 @@ type authoritativePlayerState struct {
 	weaponFlashState            weaponPspriteState
 	weaponFlashTics             int
 	weaponPSpriteY              int
+	weaponPose                  weaponPresentationPose
+	prevWeaponPose              weaponPresentationPose
 	stats                       playerStats
 	playerKillCount             int
 	playerItemCount             int
@@ -104,6 +106,8 @@ func (g *game) captureAuthoritativePlayer() authoritativePlayerState {
 		weaponFlashState:            g.weaponFlashState,
 		weaponFlashTics:             g.weaponFlashTics,
 		weaponPSpriteY:              g.weaponPSpriteY,
+		weaponPose:                  g.weaponPose,
+		prevWeaponPose:              g.prevWeaponPose,
 		stats:                       g.stats,
 		playerKillCount:             g.playerKillCount,
 		playerItemCount:             g.playerItemCount,
@@ -167,6 +171,8 @@ func (g *game) applyAuthoritativePlayer(state authoritativePlayerState) {
 	g.weaponFlashState = state.weaponFlashState
 	g.weaponFlashTics = state.weaponFlashTics
 	g.weaponPSpriteY = state.weaponPSpriteY
+	g.weaponPose = state.weaponPose
+	g.prevWeaponPose = state.prevWeaponPose
 	g.stats = state.stats
 	g.playerKillCount = state.playerKillCount
 	g.playerItemCount = state.playerItemCount

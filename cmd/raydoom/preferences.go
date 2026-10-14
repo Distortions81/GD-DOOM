@@ -76,6 +76,7 @@ func applyNativeConfig(fs *flag.FlagSet) (*configfile.Config, error) {
 		str("music-backend", cfg.MusicBackend), str("soundfont", cfg.SoundFont), number("mus-pan-max", cfg.MUSPanMax), boolean("pc-speaker", cfg.PCSpeaker), number("pc-speaker-volume", cfg.PCSpeakerVolume), str("pc-speaker-variant", cfg.PCSpeakerVariant),
 		number("mouse-speed", cfg.MouseLookSpeed), number("keyboard-speed", cfg.KeyboardTurnSpeed), boolean("mouselook", cfg.MouseLook),
 		boolean("smooth-camera-yaw", cfg.SmoothCameraYaw),
+		boolean("disable-camera-bob", cfg.DisableCameraBob), boolean("disable-weapon-bob", cfg.DisableWeaponBob),
 		integer("gamma-level", cfg.GammaLevel),
 		integer("detail-level", cfg.DetailLevelSourcePort), boolean("auto-detail", cfg.AutoDetail),
 		boolean("crt-effect", cfg.CRTEffect), boolean("no-aspect-correction", cfg.NoAspectCorrection),
@@ -149,6 +150,7 @@ func saveNativePreferences(path string, s nativeSettings, bindings runtimecfg.In
 	cfg.PCSpeaker = &s.pcSpeaker
 	cfg.MouseLookSpeed, cfg.KeyboardTurnSpeed = &s.mouseSensitivity, &s.keyboardSpeed
 	cfg.MouseLook, cfg.MouseInvert = &s.mouseLook, &s.mouseInvert
+	cfg.DisableCameraBob, cfg.DisableWeaponBob = &s.disableCameraBob, &s.disableWeaponBob
 	cfg.SmoothCameraYaw = &s.smoothCameraYaw
 	cfg.GammaLevel = &s.gammaLevel
 	cfg.CRTEffect = &s.crtEffect

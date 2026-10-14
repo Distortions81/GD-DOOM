@@ -116,7 +116,7 @@ func TestNativeOptionsRemoveVoiceAndKeepActionsAndMouseAligned(t *testing.T) {
 	s := nativeSettings{}
 	m.open(menuOptions)
 	rows := m.rows(s)
-	if len(rows) != 8 {
+	if len(rows) != 10 {
 		t.Fatalf("options rows=%d", len(rows))
 	}
 	for _, row := range rows {
@@ -138,11 +138,11 @@ func TestNativeOptionsRemoveVoiceAndKeepActionsAndMouseAligned(t *testing.T) {
 	if m.page != menuOptions || m.row != 6 {
 		t.Fatal("binding back did not restore the key bindings row")
 	}
-	m.row = 7
-	// The graphics row now occupies the eighth row, including hit testing.
+	m.row = 9
+	// The graphics row now occupies the tenth row, including hit testing.
 	scale, ox, oy := raymesh.MenuTransform(1280, 800)
-	row := m.rowAt(ox+100*scale, oy+(37+7*16+3)*scale, 1280, 800)
-	if row != 7 {
+	row := m.rowAt(ox+100*scale, oy+(37+9*14+3)*scale, 1280, 800)
+	if row != 9 {
 		t.Fatalf("graphics mouse row=%d", row)
 	}
 	m.update(menuInput{confirm: true, mouseRow: row}, &s)
@@ -150,7 +150,7 @@ func TestNativeOptionsRemoveVoiceAndKeepActionsAndMouseAligned(t *testing.T) {
 		t.Fatal("graphics row opened the wrong menu")
 	}
 	m.update(menuInput{back: true, mouseRow: -1}, &s)
-	if m.page != menuOptions || m.row != 7 {
+	if m.page != menuOptions || m.row != 9 {
 		t.Fatal("graphics back did not restore the Raylib options row")
 	}
 }

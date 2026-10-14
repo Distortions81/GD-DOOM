@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 26
+	saveGameVersion     = 28
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 13
+	keyframeVersion     = 15
 	saveGameDirName     = "saves"
 )
 
@@ -179,6 +179,7 @@ type gameSaveState struct {
 	WeaponFlashState     int
 	WeaponFlashTics      int
 	WeaponPSpriteY       int
+	WeaponPose           weaponPresentationPose
 	Stats                playerStats
 	WorldTic             int
 	LevelKillsTotal      int
@@ -240,6 +241,7 @@ type playerSaveState struct {
 }
 
 type playerInventorySaveState struct {
+	SkullKeys     [3]bool // Blue, yellow, red; independent of door-access colors.
 	BlueKey       bool
 	RedKey        bool
 	YellowKey     bool
@@ -1120,7 +1122,8 @@ func (sg *sessionGame) loadSnapshot(data []byte, magic []byte, version int) (sav
 	if err != nil {
 		return saveFile{}, err
 	}
-	if file.Version != version {
+	// The two previous versions lack only weapon pose and/or key artwork.
+	if file.Version < version-2 || file.Version > version {
 		return saveFile{}, fmt.Errorf("incompatible save version: %d", file.Version)
 	}
 	return file, nil
@@ -1153,6 +1156,9 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	}
 	g := sg.buildGame(loadedMap, sg.opts)
 	restoreGameSaveState(g, file.Game)
+	if file.Version == saveGameVersion-1 || file.Version == saveGameVersion-2 || file.Version == keyframeVersion-1 || file.Version == keyframeVersion-2 {
+		g.inventory.SkullKeys = g.collectedSkullKeys()
+	}
 	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
 
 	sg.transition.Clear()
@@ -1311,6 +1317,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		WeaponFlashState:     int(g.weaponFlashState),
 		WeaponFlashTics:      g.weaponFlashTics,
 		WeaponPSpriteY:       g.weaponPSpriteY,
+		WeaponPose:           g.weaponPose,
 		Stats:                g.stats,
 		WorldTic:             g.worldTic,
 		LevelKillsTotal:      g.levelKillsTotal,
@@ -1445,6 +1452,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.weaponFlashState = weaponPspriteState(s.WeaponFlashState)
 	g.weaponFlashTics = s.WeaponFlashTics
 	g.weaponPSpriteY = s.WeaponPSpriteY
+	g.weaponPose = s.WeaponPose
 	g.stats = s.Stats
 	g.worldTic = s.WorldTic
 	g.levelKillsTotal = s.LevelKillsTotal
@@ -1546,6 +1554,7 @@ func restorePlayerSaveState(s playerSaveState) player {
 
 func capturePlayerInventorySaveState(inv playerInventory) playerInventorySaveState {
 	return playerInventorySaveState{
+		SkullKeys:     inv.SkullKeys,
 		BlueKey:       inv.BlueKey,
 		RedKey:        inv.RedKey,
 		YellowKey:     inv.YellowKey,
@@ -1565,6 +1574,7 @@ func capturePlayerInventorySaveState(inv playerInventory) playerInventorySaveSta
 
 func restorePlayerInventorySaveState(s playerInventorySaveState) playerInventory {
 	return playerInventory{
+		SkullKeys:     s.SkullKeys,
 		BlueKey:       s.BlueKey,
 		RedKey:        s.RedKey,
 		YellowKey:     s.YellowKey,

@@ -106,3 +106,25 @@ func bleedTransparentRGB(tex levelmesh.Texture) []byte {
 	}
 	return pixels
 }
+
+// Shared artwork uses premultiplied RGBA (including interpolated weapon edges).
+// Raylib's standard texture blend expects straight RGB and multiplies it by A.
+func straightAlphaPatch(tex levelmesh.Texture) levelmesh.Texture {
+	for i := 3; i < len(tex.RGBA); i += 4 {
+		if a := tex.RGBA[i]; a != 0 && a != 255 {
+			out := append([]byte(nil), tex.RGBA...)
+			for j := 0; j < len(out); j += 4 {
+				alpha := int(out[j+3])
+				if alpha == 0 || alpha == 255 {
+					continue
+				}
+				for c := 0; c < 3; c++ {
+					out[j+c] = byte(min(255, (int(out[j+c])*255+alpha/2)/alpha))
+				}
+			}
+			tex.RGBA = out
+			break
+		}
+	}
+	return tex
+}

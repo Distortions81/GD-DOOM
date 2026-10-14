@@ -536,7 +536,7 @@ func gpuCompareMaps(t *testing.T, path string) {
 	if lump, ok := wf.LumpByName("COLORMAP"); ok {
 		colormap, _ = wf.LumpData(lump)
 	}
-	for _, name := range []mapdata.MapName{"E1M1", "E1M5", "MAP11", "MAP26"} {
+	for _, name := range []mapdata.MapName{"E1M1", "E1M5", "E2M4", "MAP02", "MAP11", "MAP26"} {
 		m, err := mapdata.LoadMap(wf, name)
 		if err != nil {
 			continue
@@ -545,9 +545,10 @@ func gpuCompareMaps(t *testing.T, path string) {
 			name                  string
 			sourcePort            bool
 			width, height, detail int
-		}{{"source-port", true, 640, 400, 0}, {"faithful", false, 320, 200, 0}, {"faithful-low", false, 320, 200, 1}} {
+			fullbright            bool
+		}{{"source-port", true, 640, 400, 0, false}, {"source-port-wide", true, 960, 540, 0, false}, {"source-port-hd", true, 1280, 720, 0, false}, {"source-port-fullbright", true, 960, 540, 0, true}, {"faithful", false, 320, 200, 0, false}, {"faithful-low", false, 320, 200, 1, false}} {
 			w, h := mode.width, mode.height
-			g := newGame(m, Options{Width: w, Height: h, SourcePortMode: mode.sourcePort, InitialDetailLevel: mode.detail, SourcePortSectorLighting: true, PlayerSlot: 1, SkillLevel: 4, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: flatIndexed, SpritePatchBank: sprites})
+			g := newGame(m, Options{Width: w, Height: h, SourcePortMode: mode.sourcePort, DisableDoomLighting: mode.fullbright, InitialDetailLevel: mode.detail, SourcePortSectorLighting: true, PlayerSlot: 1, SkillLevel: 4, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: flatIndexed, SpritePatchBank: sprites})
 			g.syncRenderState()
 			g.prepareRenderState()
 			g.viewW, g.viewH = w, h

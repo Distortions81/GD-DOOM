@@ -76,6 +76,7 @@ void main() {
 
 type spectreFuzz struct {
 	shader          rl.Shader
+	weaponBlit      rl.Shader
 	snapshot, layer rl.RenderTexture2D
 	posts           rl.Texture2D
 	pixels          []byte
@@ -172,6 +173,9 @@ func (f *spectreFuzz) draw(p *Presentation, spans []levelmesh.FuzzSpan, colors l
 }
 
 func (f *spectreFuzz) close() {
+	if f.weaponBlit.ID != 0 {
+		rl.UnloadShader(f.weaponBlit)
+	}
 	if f.snapshot.ID != 0 {
 		rl.UnloadRenderTexture(f.snapshot)
 	}
@@ -183,3 +187,50 @@ func (f *spectreFuzz) close() {
 	}
 	rl.UnloadShader(f.shader)
 }
+
+// DrawWeaponFuzz overlays the logical fuzz mask directly, after world drawing.
+func (p *Presentation) DrawWeaponFuzz(spans []levelmesh.FuzzSpan, colors levelmesh.FuzzColors, width, height int) error {
+	if len(spans) == 0 {
+		return nil
+	}
+	if p.fuzz == nil {
+		var err error
+		p.fuzz, err = newSpectreFuzz()
+		if err != nil {
+			return err
+		}
+	}
+	sw, sh := p.sceneWidth, p.sceneHeight
+	p.sceneWidth, p.sceneHeight = int(rl.GetRenderWidth()), int(rl.GetRenderHeight())
+	err := p.fuzz.draw(p, spans, colors, width, height)
+	p.sceneWidth, p.sceneHeight = sw, sh
+	if err != nil {
+		return err
+	}
+	if p.fuzz.weaponBlit.ID == 0 {
+		p.fuzz.weaponBlit = rl.LoadShaderFromMemory("", weaponFuzzBlitShader)
+		if !rl.IsShaderValid(p.fuzz.weaponBlit) || p.fuzz.weaponBlit.ID == rl.GetShaderIdDefault() {
+			return fmt.Errorf("weapon fuzz blit shader could not compile")
+		}
+	}
+	blit := p.fuzz.weaponBlit
+	rl.BeginShaderMode(blit)
+	rl.SetShaderValue(blit, rl.GetShaderLocation(blit, "viewport"), []float32{float32(width), float32(height)}, rl.ShaderUniformVec2)
+	rl.SetShaderValue(blit, rl.GetShaderLocation(blit, "originY"), []float32{float32(rl.GetRenderHeight() - height)}, rl.ShaderUniformFloat)
+	t := p.fuzz.layer.Texture
+	rl.DrawTexturePro(t, rl.NewRectangle(0, 0, float32(t.Width), -float32(t.Height)), rl.NewRectangle(0, 0, float32(width), float32(height)), rl.Vector2{}, 0, rl.White)
+	rl.EndShaderMode()
+	return nil
+}
+
+const weaponFuzzBlitShader = `#version 330
+uniform sampler2D texture0;
+uniform vec2 viewport;
+uniform float originY;
+out vec4 finalColor;
+void main() {
+    vec2 p=floor(vec2(gl_FragCoord.x,viewport.y-(gl_FragCoord.y-originY)));
+    ivec2 size=textureSize(texture0,0);
+    ivec2 cell=clamp(ivec2(floor(p*vec2(size)/viewport)),ivec2(0),size-1);
+    finalColor=texelFetch(texture0,ivec2(cell.x,size.y-1-cell.y),0);
+}`

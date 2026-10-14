@@ -380,6 +380,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultShowNoSkillItems := false
 	defaultShowAllItems := false
 	defaultMouseLook := true
+	defaultDisableCameraBob, defaultDisableWeaponBob := false, false
 	defaultMouseInvert := false
 	defaultSmoothCameraYaw := runtimecfg.DefaultSmoothCameraYaw
 	defaultMouseLookSpeed := runtimecfg.DefaultMouseLookSpeed
@@ -487,6 +488,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.MouseLook != nil {
 			defaultMouseLook = *cfg.MouseLook
+		}
+		if cfg.DisableCameraBob != nil {
+			defaultDisableCameraBob = *cfg.DisableCameraBob
+		}
+		if cfg.DisableWeaponBob != nil {
+			defaultDisableWeaponBob = *cfg.DisableWeaponBob
 		}
 		if cfg.MouseInvert != nil {
 			defaultMouseInvert = *cfg.MouseInvert
@@ -610,6 +617,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	noMonsters := fs.Bool("no-monsters", defaultNoMonsters, "disable monster spawns")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
+	disableCameraBob := fs.Bool("disable-camera-bob", defaultDisableCameraBob, "disable camera bob in Modern mode")
+	disableWeaponBob := fs.Bool("disable-weapon-bob", defaultDisableWeaponBob, "disable weapon bob in Modern mode")
 	mouseInvert := fs.Bool("mouse-invert", defaultMouseInvert, "invert mouse movement")
 	smoothCameraYaw := fs.Bool("smooth-camera-yaw", defaultSmoothCameraYaw, "smooth interpolated player camera yaw between sim ticks")
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
@@ -944,6 +953,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			noMonsters:                 *noMonsters,
 			mouseLook:                  *mouseLook,
 			mouseInvert:                *mouseInvert,
+			disableCameraBob:           *disableCameraBob,
+			disableWeaponBob:           *disableWeaponBob,
 			mouseLookSpeed:             *mouseLookSpeed,
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                *musicVolume,
@@ -1129,6 +1140,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
+	doomPalettesRGBA := make([][]byte, 14)
+	for i := range doomPalettesRGBA {
+		doomPalettesRGBA[i], _ = doomtex.LoadPaletteRGBA(wf, i)
+	}
 	doomColorMap := []byte(nil)
 	doomColorMapRows := 0
 	menuPatchBank := map[string]media.WallTexture(nil)
@@ -1296,6 +1311,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			NoMonsters:                 *noMonsters,
 			MouseLook:                  *mouseLook,
 			MouseInvert:                *mouseInvert,
+			DisableCameraBob:           *disableCameraBob,
+			DisableWeaponBob:           *disableWeaponBob,
 			SmoothCameraYaw:            *smoothCameraYaw,
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
@@ -1351,6 +1368,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			FlatTextureAnimSequences:   flatTextureAnimSequences,
 			BootSplash:                 bootSplash,
 			DoomPaletteRGBA:            doomPaletteRGBA,
+			DoomPalettesRGBA:           doomPalettesRGBA,
 			DoomColorMap:               doomColorMap,
 			DoomColorMapRows:           doomColorMapRows,
 			MenuPatchBank:              menuPatchBank,
@@ -1671,6 +1689,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			noMonsters:                 *noMonsters,
 			mouseLook:                  *mouseLook,
 			mouseInvert:                *mouseInvert,
+			disableCameraBob:           *disableCameraBob,
+			disableWeaponBob:           *disableWeaponBob,
 			mouseLookSpeed:             *mouseLookSpeed,
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                0,
@@ -1899,6 +1919,8 @@ type renderBuildConfig struct {
 	noMonsters                 bool
 	mouseLook                  bool
 	mouseInvert                bool
+	disableCameraBob           bool
+	disableWeaponBob           bool
 	mouseLookSpeed             float64
 	keyboardTurnSpeed          float64
 	musicVolume                float64
@@ -2129,6 +2151,10 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
+	doomPalettesRGBA := make([][]byte, 14)
+	for i := range doomPalettesRGBA {
+		doomPalettesRGBA[i], _ = doomtex.LoadPaletteRGBA(wf, i)
+	}
 	doomColorMap := []byte(nil)
 	doomColorMapRows := 0
 	menuPatchBank := map[string]media.WallTexture(nil)
@@ -2236,6 +2262,8 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		NoMonsters:                 cfg.noMonsters,
 		MouseLook:                  cfg.mouseLook,
 		MouseInvert:                cfg.mouseInvert,
+		DisableCameraBob:           cfg.disableCameraBob,
+		DisableWeaponBob:           cfg.disableWeaponBob,
 		MouseLookSpeed:             cfg.mouseLookSpeed,
 		KeyboardTurnSpeed:          cfg.keyboardTurnSpeed,
 		MusicVolume:                cfg.musicVolume,
@@ -2288,6 +2316,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		FlatTextureAnimSequences:   flatTextureAnimSequences,
 		BootSplash:                 bootSplash,
 		DoomPaletteRGBA:            doomPaletteRGBA,
+		DoomPalettesRGBA:           doomPalettesRGBA,
 		DoomColorMap:               doomColorMap,
 		DoomColorMapRows:           doomColorMapRows,
 		MenuPatchBank:              menuPatchBank,
@@ -3906,14 +3935,18 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	}
 	add("STBAR")
 	add("STARMS")
+	for i := 0; i < 4; i++ {
+		add(fmt.Sprintf("STFB%d", i))
+	}
 	add("STTPRCNT")
+	add("STTMINUS")
 	add("STFGOD0")
 	add("STFDEAD0")
 	for i := 0; i < 10; i++ {
 		add(fmt.Sprintf("STTNUM%d", i))
 		add(fmt.Sprintf("STYSNUM%d", i))
 	}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 6; i++ {
 		add(fmt.Sprintf("STKEYS%d", i))
 	}
 	for i := 0; i < 6; i++ {
@@ -4184,7 +4217,13 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
+		indexed, _, _, _, _, _, _ := ts.BuildPatchIndexedView(name)
+		var posts [][]media.WallPost
+		if len(name) >= 4 && strings.Contains("|PUNG|PISG|PISF|SHTG|SHTF|SHT2|CHGG|CHGF|MISG|MISF|SAWG|PLSG|PLSF|BFGG|BFGF|", "|"+name[:4]+"|") {
+			posts = ts.BuildPatchMaskedPosts(name)
+		}
 		out[name] = prepareOpaquePatchTexture(media.WallTexture{
+			Indexed: indexed, ClassicMasked: posts,
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,

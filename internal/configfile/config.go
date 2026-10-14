@@ -29,6 +29,8 @@ type Config struct {
 	ShowAllItems               *bool                             `toml:"show_all_items"`
 	MouseLook                  *bool                             `toml:"mouselook"`
 	MouseInvert                *bool                             `toml:"mouse_invert"`
+	DisableCameraBob           *bool                             `toml:"disable_camera_bob"`
+	DisableWeaponBob           *bool                             `toml:"disable_weapon_bob"`
 	MouseInvertHorizontal      *bool                             `toml:"mouse_invert_horizontal"`
 	SmoothCameraYaw            *bool                             `toml:"smooth_camera_yaw"`
 	MouseLookSpeed             *float64                          `toml:"mouselook_speed"`

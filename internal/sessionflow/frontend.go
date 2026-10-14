@@ -87,6 +87,8 @@ type FrontendResult struct {
 	State                    Frontend
 	Sound                    FrontendSound
 	AdvanceAttract           bool
+	ChangeCameraBob          bool
+	ChangeWeaponBob          bool
 	ChangeMessages           bool
 	ChangePerf               bool
 	ChangeDetail             bool
@@ -631,6 +633,10 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		}
 		if input.Left {
 			switch state.OptionsOn {
+			case 8:
+				result.ChangeCameraBob = true
+			case 9:
+				result.ChangeWeaponBob = true
 			case 0:
 				result.ChangeMessages = true
 			case 1, 2:
@@ -641,6 +647,10 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		}
 		if input.Right {
 			switch state.OptionsOn {
+			case 8:
+				result.ChangeCameraBob = true
+			case 9:
+				result.ChangeWeaponBob = true
 			case 0:
 				result.ChangeMessages = true
 			case 1, 2:
@@ -651,6 +661,10 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		}
 		if input.Select {
 			switch state.OptionsOn {
+			case 8:
+				result.ChangeCameraBob = true
+			case 9:
+				result.ChangeWeaponBob = true
 			case 0:
 				result.ChangeMessages = true
 				result.Sound = FrontendSoundConfirm

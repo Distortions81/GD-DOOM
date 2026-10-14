@@ -40,6 +40,11 @@ def build_reference(source, work, out, width=320, height=200):
     shutil.copy(ROOT / "scripts/visual_compare/sampling_probe.inc", target)
     shutil.copy(ROOT / "scripts/visual_compare/camera_probe.inc", target)
     shutil.copy(ROOT / "scripts/visual_compare/span_trace.inc", target)
+    for include in ("presentation_probe.inc", "status_probe.inc"):
+        shutil.copy(ROOT / "scripts/visual_compare" / include, target)
+    with (target / "st_stuff.c").open("a") as stream:
+        stream.write('\n#include "status_probe.inc"\n')
+    replace_once(target / "i_video.c", "void I_SetPalette (byte* palette)\n{", 'void I_SetPalette (byte* palette)\n{\n    if (M_CheckParm("-visualprobe")) return;')
     # Vanilla has a fixed 320x200 framebuffer. For other sizes, enlarge only
     # storage/viewport bounds, keeping its 320-pixel lighting and sky baseline.
     # This is a resolution-adapted oracle, explicitly recorded in provenance.

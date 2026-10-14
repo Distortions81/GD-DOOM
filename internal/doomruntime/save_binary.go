@@ -738,7 +738,28 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 	if err := w.int(v.RNG.PlayIndex); err != nil {
 		return err
 	}
-	return w.gameSaveState(v.Game)
+	if err := w.gameSaveState(v.Game); err != nil {
+		return err
+	}
+	if v.Version == saveGameVersion || v.Version == saveGameVersion-1 || v.Version == keyframeVersion || v.Version == keyframeVersion-1 {
+		for _, n := range []int64{v.Game.WeaponPose.X, v.Game.WeaponPose.FractionY, v.Game.WeaponPose.BobY} {
+			if err := w.i64(n); err != nil {
+				return err
+			}
+		}
+		if err := w.bool(v.Game.WeaponPose.Valid); err != nil {
+			return err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, b := range v.Game.Inventory.SkullKeys {
+			if err := w.bool(b); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 func (w saveBinaryWriter) boolSlice(v []bool) error {
@@ -1601,6 +1622,24 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 	if v.Game, err = r.gameSaveState(); err != nil {
 		return v, err
 	}
+	if v.Version == saveGameVersion || v.Version == saveGameVersion-1 || v.Version == keyframeVersion || v.Version == keyframeVersion-1 {
+		for _, dst := range []*int64{&v.Game.WeaponPose.X, &v.Game.WeaponPose.FractionY, &v.Game.WeaponPose.BobY} {
+			if *dst, err = r.i64(); err != nil {
+				return v, err
+			}
+		}
+		if v.Game.WeaponPose.Valid, err = r.bool(); err != nil {
+			return v, err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for i := range v.Game.Inventory.SkullKeys {
+			if v.Game.Inventory.SkullKeys[i], err = r.bool(); err != nil {
+				return v, err
+			}
+		}
+	}
+
 	return v, nil
 }
 

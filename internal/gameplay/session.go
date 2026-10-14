@@ -8,6 +8,8 @@ import (
 type OptionState struct {
 	MouseLook        bool
 	MouseInvert      bool
+	DisableCameraBob bool
+	DisableWeaponBob bool
 	MouseLookSpeed   float64
 	MusicVolume      float64
 	OPLVolume        float64
@@ -21,6 +23,8 @@ type OptionState struct {
 func ApplyPersistentSettingsToOptions(cur OptionState, s PersistentSettings, maxOPLGain float64) OptionState {
 	cur.MouseLook = s.MouseLook
 	cur.MouseInvert = s.MouseInvert
+	cur.DisableCameraBob = s.DisableCameraBob
+	cur.DisableWeaponBob = s.DisableWeaponBob
 	cur.MouseLookSpeed = s.MouseLookSpeed
 	cur.MusicVolume = ClampVolume(s.MusicVolume)
 	cur.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)

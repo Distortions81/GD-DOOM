@@ -7,6 +7,7 @@ extern int numtextures, numflats, skytexture;
 #include "camera_probe.inc"
 void G_DoPlayDemo(void);
 #include "span_trace.inc"
+#include "presentation_probe.inc"
 
 static void VisualProbe(void)
 {
@@ -134,6 +135,7 @@ static void VisualProbe(void)
     if (!feof(input)) I_Error("Malformed visual probe manifest");
     fclose(input);
     fclose(cameras);
+    PresentationProbe(myargv[p+2]);
     VisualSamplingProbe(myargv[p+2]);
     VisualCameraProbe(myargv[p+2]);
     exit(0);

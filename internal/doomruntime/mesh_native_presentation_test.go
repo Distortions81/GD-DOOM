@@ -104,8 +104,15 @@ func TestNativeMeshCombatPresentation(t *testing.T) {
 		t.Fatal("native firing did not emit its shared Doom sound")
 	}
 	n.g.isDead = true
-	if len(n.Frame(1).WeaponPatches) != 0 {
-		t.Fatal("dead player retained weapon overlay")
+	if len(n.Frame(1).WeaponPatches) == 0 {
+		t.Fatal("death hid weapon before lowering animation")
+	}
+	n.g.setWeaponPSpriteState(weaponStatePistolDown, false)
+	for range 80 {
+		n.Tick(NativeMeshInput{})
+	}
+	if len(n.Frame(1).WeaponPatches) != 0 || n.g.weaponPSpriteY != weaponBottomY {
+		t.Fatal("dead weapon did not stay lowered")
 	}
 	// The host advances the same overlay counters as the main update loop.
 	n.g.damageFlashTic, n.g.bonusFlashTic, n.g.useFlash = 3, 3, 3

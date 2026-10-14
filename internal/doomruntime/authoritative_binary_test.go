@@ -321,6 +321,8 @@ func TestAuthorityBinaryGeneratedInventoryComparisonMatchesEveryField(t *testing
 		changed := original
 		value := reflect.ValueOf(&changed).Elem().Field(i)
 		switch value.Kind() {
+		case reflect.Array:
+			value.Index(0).SetBool(!value.Index(0).Bool())
 		case reflect.Bool:
 			value.SetBool(!value.Bool())
 		case reflect.Int:

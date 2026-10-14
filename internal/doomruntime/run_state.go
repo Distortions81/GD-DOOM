@@ -262,6 +262,8 @@ func (sg *sessionGame) capturePersistentSettings() {
 		RotateView:       g.rotateView,
 		MouseLook:        g.opts.MouseLook,
 		MouseInvert:      g.opts.MouseInvert,
+		DisableCameraBob: g.opts.DisableCameraBob,
+		DisableWeaponBob: g.opts.DisableWeaponBob,
 		MouseLookSpeed:   g.opts.MouseLookSpeed,
 		MusicVolume:      g.opts.MusicVolume,
 		OPLVolume:        g.opts.OPLVolume,
@@ -305,6 +307,8 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.rotateView = applied.RotateView
 	g.opts.MouseLook = applied.MouseLook
 	g.opts.MouseInvert = applied.MouseInvert
+	g.opts.DisableCameraBob = applied.DisableCameraBob
+	g.opts.DisableWeaponBob = applied.DisableWeaponBob
 	g.opts.MouseLookSpeed = applied.MouseLookSpeed
 	g.opts.MusicVolume = applied.MusicVolume
 	g.opts.OPLVolume = applied.OPLVolume
@@ -354,6 +358,8 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.settings.AutoDetail = next.AutoDetail
 	sg.settings.MouseLook = next.MouseLook
 	sg.settings.MouseInvert = next.MouseInvert
+	sg.settings.DisableCameraBob = next.DisableCameraBob
+	sg.settings.DisableWeaponBob = next.DisableWeaponBob
 	sg.settings.MusicVolume = next.MusicVolume
 	sg.settings.OPLVolume = next.OPLVolume
 	sg.settings.SFXVolume = next.SFXVolume
@@ -420,6 +426,8 @@ func (sg *sessionGame) runtimeSettingsSnapshot() RuntimeSettings {
 		HUDMessages:        sg.settings.HUDMessages,
 		MouseLook:          sg.opts.MouseLook,
 		MouseInvert:        sg.opts.MouseInvert,
+		DisableCameraBob:   sg.opts.DisableCameraBob,
+		DisableWeaponBob:   sg.opts.DisableWeaponBob,
 		AlwaysRun:          sg.opts.AlwaysRun,
 		AutoWeaponSwitch:   sg.opts.AutoWeaponSwitch,
 		ThingRenderMode:    sg.opts.SourcePortThingRenderMode,
@@ -639,6 +647,8 @@ func (sg *sessionGame) optionState() gameplay.OptionState {
 	return gameplay.OptionState{
 		MouseLook:        sg.opts.MouseLook,
 		MouseInvert:      sg.opts.MouseInvert,
+		DisableCameraBob: sg.opts.DisableCameraBob,
+		DisableWeaponBob: sg.opts.DisableWeaponBob,
 		MouseLookSpeed:   sg.opts.MouseLookSpeed,
 		MusicVolume:      sg.opts.MusicVolume,
 		OPLVolume:        sg.opts.OPLVolume,
@@ -656,6 +666,8 @@ func applyOptionStateToOptions(opts *Options, state gameplay.OptionState) {
 	}
 	opts.MouseLook = state.MouseLook
 	opts.MouseInvert = state.MouseInvert
+	opts.DisableCameraBob = state.DisableCameraBob
+	opts.DisableWeaponBob = state.DisableWeaponBob
 	opts.MouseLookSpeed = state.MouseLookSpeed
 	opts.MusicVolume = state.MusicVolume
 	opts.OPLVolume = state.OPLVolume

@@ -251,3 +251,173 @@ differences are proven out-of-buffer classic reads. The full Go suite, both IWAD
 GPU framebuffer suites, 96 sky shader cases, ten Python harness tests and 15
 browser launcher tests also pass. The optional commercial-WAD campaign test now
 recognizes wrapped missing-file errors and correctly skips when its WAD is absent.
+
+## Continuous camera bob in Source Port mode
+
+Source Port rendering evaluates bob at fractional simulation time, using
+`amplitude * sin(2*pi*(409*t + 0.5)/8192)`. The 409-angle step and half-table-entry
+phase match classic's sine-table construction; using an exact 20-tic period
+would drift. Base eye height, amplitude and ceiling limit interpolate between
+the same tick endpoints used by horizontal movement. Inputs are captured during
+`P_CalcHeight`, before body movement and friction change them. The sine itself
+is evaluated continuously, rather than linearly blending its sampled heights.
+
+Rendering never changes the fixed-point simulation eye or advances the phase
+using display-frame counts. Pauses hold the phase; teleport, load and restart
+cut the camera history. Faithful mode retains exact fixed-point tick samples.
+Authoritative multiplayer retains its existing bob-free camera and separate
+reconciliation/moving-floor presentation. Tests cover 30/60/144/240 Hz sampling,
+phase wrapping, long-running clocks, amplitude changes, ceilings, airborne and
+dead players, camera cuts, and the shared native renderer camera.
+
+## Weapon and status-bar comparison
+
+Run the focused presentation oracle independently of the world-only harness:
+
+```sh
+python3 scripts/presentation_compare.py --wad wads/DOOMU.WAD --out tmp/presentation-doom1
+python3 scripts/presentation_compare.py --wad wads/DOOM2.WAD --out tmp/presentation-doom2
+```
+
+This compiles another private copy of the reference. It calls the original
+`R_DrawPlayerSprites`, `P_CalcHeight`, `P_MovePsprites` and status-bar widgets.
+The 320×200 weapon cases cover every available psprite state at three signed,
+fractional positions and five sector light levels. Each WAD also gets 72 HUD
+fixtures (all faces, health/armor, ammunition, weapon ownership, card/skull
+combinations), 520 bob-coordinate checks and a 100-frame sequence spanning
+raising, movement, pistol fire, and death lowering. The fixture face is selected
+explicitly; this tests face artwork/layout, not its random selection history.
+
+The October 14 audit passes 1,573 Doom I and 1,828 Doom II RGB comparisons
+exactly. The report retains classic, GD and amplified difference images and
+fails on any differing pixel. Weapon rendering is shared by the CPU and shader
+world paths. The native mesh host shares positions, lighting and HUD patch
+layout; its textured-quad rasterization is not the classic rasterization oracle.
+
+Corrections from this audit:
+
+- Retain the `A_WeaponReady` horizontal coordinate and fractional vertical bob
+  throughout attacks; use the original quadratic momentum amplitude and phase.
+- Preserve the pose through saves, keyframes and authoritative player snapshots.
+  Save version 28 reads versions 26–27; keyframe version 15 reads versions
+  13–14. Versions 26/13 use the legacy pose fallback; older key artwork is
+  recovered from collected map items.
+  The authoritative binary schema changed, so connected peers need this build.
+- Faithful weapon projection now uses classic fixed-point edge/post sampling,
+  preserves adjacent patch posts, and uses the original fullscreen anchor.
+- Apply sector colormaps to the gun and full brightness to muzzle flashes;
+  composite those layers after lighting. Show the death lowering animation and
+  keep the weapon down afterward.
+- Put yellow/red keys in their original rows, show skull artwork when collected,
+  load all six key patches and the minus sign, and match negative-number and
+  shotgun-ownership widgets.
+
+Modern Options now contains independent **CAMERA BOB** and **WEAPON BOB** on/off
+settings, both on by default. The preferences persist as `disable_camera_bob`
+and `disable_weapon_bob` (matching CLI flags use hyphens). They affect
+presentation only, preserve weapon raising/lowering, and are ignored in Faithful
+mode. Both desktop hosts and the WASM settings path use these preferences.
+
+The expanded power-up/HUD audit adds 64 co-op/deathmatch fixtures covering all
+four player backgrounds, positive/negative frags, suicide subtraction, and
+number truncation. Eighty weapon frames cover invulnerability, infrared,
+invisibility, muzzle flashes, combinations, and expiration boundaries. Ninety-six
+flash cases cover damage, bonuses, berserk fading, radiation-suit blinking and
+priority, displaying all 256 palette indices. Those run through both the CPU and
+Kage flash paths (192 captures). All 3,401 captures across the two WADs match.
+
+Additional corrections:
+
+- Use PLAYPAL channel tables for exact red/gold/green flashes, including classic's
+  palette-selection offsets and integer values, in both desktop hosts and WASM.
+  Non-palette modern colors interpolate the tables. Missing or nonseparable custom
+  PLAYPAL transforms retain the previous overlay fallback.
+- Use colormap row 1 for infrared, including muzzle flashes. Invulnerability
+  suppresses infrared even during its blink-off ticks.
+- Render invisible weapons with ordered row-6 fuzz, including feedback, clipping,
+  the original posts in Faithful mode, and the expiration blink. Modern hosts
+  use a logical fuzz grid; native scaling floors pixel coordinates before mapping
+  that grid so noninteger resolutions do not shift its rows.
+- Draw the player's STFB background in multiplayer and replace arms with frags in
+  deathmatch. Cache keys now include viewer color, mode and score.
+- Store skull-key artwork in player inventory, saves and authoritative replicas;
+  share variants with co-op keys and grant all variants at deathmatch spawn/IDKFA.
+  Another player's collected map objects no longer alter a player's HUD artwork.
+
+Native framebuffer tests cover 48 palette/death/message composites and 18 weapon
+fuzz cases at 320×200, 640×400 and 960×540. The latter compare GPU samples with an
+ordered CPU column reference, including simultaneous invulnerability. Run them:
+
+```sh
+GD_RAYLIB_OVERLAY_INTEGRATION=1 xvfb-run -a go test -tags 'raylib integration' ./internal/doomruntime -run '^TestNativeHUDOverlayFramebuffersMatchMain$' -count=1
+GD_RAYLIB_INTEGRATION=1 xvfb-run -a go test -tags 'raylib integration' ./internal/doomruntime -run '^TestNativeWeaponFuzzMatchesClassicColumnSampling$' -count=1
+```
+
+The focused classic suite uses raw palette RGB at 320×200. It does not validate
+face-selection history, gamma/CRT postprocessing, every custom WAD, or all
+world/sprite occlusion combinations. Native textured-quad projection remains
+separately tested rather than claimed pixel-identical to classic.
+
+## Modern accuracy contract
+
+Modern is judged by preserved artwork, placement, lighting and gameplay cues.
+Its higher resolution, 1.2 pixel-aspect correction, fullscreen weapon lift,
+continuous camera motion, interpolated weapon poses and frame crossfades are
+intentional. These differences must not move the aim anchor, change brightness
+when resizing, remove artwork, or change simulation state/timing.
+
+Run the normalized presentation audit after generating the matching classic
+report above:
+
+```sh
+python3 scripts/modern_presentation_compare.py --wad wads/DOOMU.WAD --reference tmp/presentation-doom1 --out tmp/modern-doom1 --native
+python3 scripts/modern_presentation_compare.py --wad wads/DOOM2.WAD --reference tmp/presentation-doom2 --out tmp/modern-doom2 --native
+python3 scripts/test_modern_presentation_compare.py
+```
+
+The audit covers representative ready, attack/reload and flash artwork for every
+weapon: 16 frames in Doom I and 18 in Doom II, two sector lights, lighting on/off,
+a fractional bob pose, and 640×480, 960×540 and 1280×720 output. It captures the
+main CPU/shader settings and native host. The weapon overlay is shared between
+the main world backends; separate world tests below exercise actual GPU drawing.
+
+Normalization analytically reverses aspect, centering, bottom anchoring and the
+eight-unit Modern lift, accounting for classic's half-unit sampling anchor. It
+never searches for an alignment that makes the comparison pass. Modern RGB must
+occur within one logical texel of its classic location, and the classic
+silhouette must remain within that allowance. Coverage includes the resampling
+footprint so tiny muzzle-flash flecks cannot disappear solely from picking one
+normalization sample. Classic colors absent after downsampling are reported
+separately; preserving every original texel is not a Modern requirement.
+Regression tests prove that this rule rejects wrong brightness, an eight-unit
+anchor error, a missing weapon, and missing internal artwork.
+
+All 576 Doom I and 648 Doom II comparisons pass this contract. This audit found
+and corrected three Modern-specific issues:
+
+- Weapon colormaps depended on framebuffer width. Modern now shades the logical
+  weapon consistently at any resolution; Faithful projection keeps its own math.
+- Native fullscreen weapons omitted the main host's eight-unit lift. Both hosts
+  now use one logical vertical placement rule, including interpolated poses.
+- Native weapon crossfades multiplied alpha twice. Only the native overlay
+  upload converts shared premultiplied pixels to straight alpha, preserving the
+  shared images and their Ebiten rendering. A real GPU test checks all 256 alpha
+  values over a colored background (one-byte blend-rounding tolerance).
+
+World CPU/GPU comparisons now cover E1M1, E1M5, E2M4, MAP02, MAP11 and MAP26;
+Modern runs at 640×400, 960×540 and 1280×720, plus 960×540 with lighting disabled.
+They retain multiple viewpoints, close monster/barrel/spectre views, power-up
+and gamma changes, and Faithful regressions. The October 14 run passed 216 Modern
+views: the largest fraction of pixels differing by more than two RGB levels was
+0.411%, below the existing 1% structural-error limit. These are backend-consistency
+checks, not proof that Modern's world projection is identical to classic.
+
+```sh
+GD_GPU_INTEGRATION=1 GD_GPU_WAD="$PWD/wads/DOOM2.WAD" xvfb-run -a go test -tags integration ./internal/doomruntime -run '^TestGPUFramebufferComparison$' -count=1 -v
+GD_RAYLIB_INTEGRATION=1 xvfb-run -a go test -tags 'raylib integration' ./internal/doomruntime -run '^TestNativeModernCrossfadePreservesBrightness$' -count=1 -v
+```
+
+The static artwork report excludes gamma/CRT and animation transitions; separate
+camera/bob, psprite-state, simulation-invariance, crossfade, native gamma, HUD and
+power-up tests cover those behaviors to their stated scopes. This is a bounded
+Modern accuracy audit, not an exhaustive gameplay or visual-quality certification.

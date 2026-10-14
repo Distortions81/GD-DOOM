@@ -8,6 +8,7 @@ import (
 )
 
 type playerInventory struct {
+	SkullKeys     [3]bool // Blue, yellow, red; independent of door-access colors.
 	BlueKey       bool
 	RedKey        bool
 	YellowKey     bool
@@ -103,6 +104,7 @@ func (g *game) finishLevelForCarryover() {
 	if g == nil {
 		return
 	}
+	g.inventory.SkullKeys = [3]bool{}
 	g.inventory.BlueKey = false
 	g.inventory.RedKey = false
 	g.inventory.YellowKey = false
@@ -272,12 +274,24 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	switch typ {
 	case 5, 40:
 		g.inventory.BlueKey = true
+		if typ == 40 {
+			g.inventory.SkullKeys[0] = true
+			return "Picked up a blue skull key.", soundEventItemUp, true
+		}
 		return "Picked up a blue keycard.", soundEventItemUp, true
 	case 13, 38:
 		g.inventory.RedKey = true
+		if typ == 38 {
+			g.inventory.SkullKeys[2] = true
+			return "Picked up a red skull key.", soundEventItemUp, true
+		}
 		return "Picked up a red keycard.", soundEventItemUp, true
 	case 6, 39:
 		g.inventory.YellowKey = true
+		if typ == 39 {
+			g.inventory.SkullKeys[1] = true
+			return "Picked up a yellow skull key.", soundEventItemUp, true
+		}
 		return "Picked up a yellow keycard.", soundEventItemUp, true
 	case 2011:
 		return g.gainHealth(10, 100, "Picked up a stimpack")

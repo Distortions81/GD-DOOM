@@ -123,7 +123,14 @@ func TestNativeHUDOverlayFramebuffersMatchMain(t *testing.T) {
 		death := c.DeathOverlay(s.width, s.height)
 		raymesh.DrawScreenTint(death.Tint, s.width, s.height)
 		p.DrawScreenPatches(death.Patches)
-		raymesh.DrawScreenTint(c.Game.Frame(1).FlashOverlay, s.width, s.height)
+		frame := c.Game.Frame(1)
+		if len(frame.FlashPalette) > 0 {
+			if err := p.DrawPaletteFlash(frame.FlashPalette, s.width, s.height); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			raymesh.DrawScreenTint(frame.FlashOverlay, s.width, s.height)
+		}
 		p.DrawScreenPatches(c.MessagePatches(s.width, s.height))
 		img, err := raymesh.CaptureWindow()
 		if err != nil {

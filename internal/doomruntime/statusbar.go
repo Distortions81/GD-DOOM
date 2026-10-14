@@ -29,9 +29,14 @@ type statusBarCacheState struct {
 	hasReadyAmmo bool
 	weaponOwned  [6]bool
 	keyOn        [3]bool
+	keySkull     [3]bool
 	ammoCur      [4]int
 	ammoMax      [4]int
 	facePatch    string
+	multiplayer  bool
+	deathmatch   bool
+	playerColor  int
+	frags        int
 }
 
 func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
@@ -48,7 +53,15 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 func (g *game) statusBarState() statusBarCacheState {
 	maxBullets, maxShells, maxRockets, maxCells := ammoCaps(g.inventory.Backpack)
 	readyAmmo, hasReadyAmmo := g.statusReadyAmmo()
+	frags := 0
+	if g.authorityRules != nil && g.localSlot >= 1 && g.localSlot <= 4 {
+		frags = g.authorityRules.Scores[g.localSlot].Frags
+	}
 	return statusBarCacheState{
+		multiplayer:  normalizeGameMode(g.opts.GameMode) != gameModeSingle,
+		deathmatch:   g.opts.GameMode == gameModeDeathmatch,
+		playerColor:  min(3, max(0, g.localSlot-1)),
+		frags:        frags,
 		mode:         g.statusBarDisplayMode(),
 		hudScale:     g.hudScaleValue(),
 		health:       g.stats.Health,
@@ -63,7 +76,8 @@ func (g *game) statusBarState() statusBarCacheState {
 			g.statusWeaponOwned(6),
 			g.statusWeaponOwned(7),
 		},
-		keyOn:     [3]bool{g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey},
+		keyOn:     [3]bool{g.inventory.BlueKey, g.inventory.YellowKey, g.inventory.RedKey},
+		keySkull:  g.inventory.SkullKeys,
 		ammoCur:   [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Cells, g.stats.Rockets},
 		ammoMax:   [4]int{maxBullets, maxShells, maxCells, maxRockets},
 		facePatch: g.statusFacePatchName(),
@@ -160,13 +174,20 @@ func (g *game) statusBarPatchDraws(state statusBarCacheState) []statusPatchDraw 
 	}
 
 	drawPatch("STBAR", 0, 168)
-	drawPatch("STARMS", 104, 168)
+	if state.multiplayer {
+		drawPatch(fmt.Sprintf("STFB%d", state.playerColor), 143, 168)
+	}
+	if !state.deathmatch {
+		drawPatch("STARMS", 104, 168)
+	} else {
+		drawTallNum(state.frags, 2, 138, 171)
+	}
 	if state.hasReadyAmmo {
 		drawTallNum(state.readyAmmo, 3, 44, 171)
 	}
 	drawPercent(state.health, 90, 171)
 	drawPercent(state.armor, 221, 171)
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 6 && !state.deathmatch; i++ {
 		slot := i + 2
 		x := float64(111 + (i%3)*12)
 		y := float64(172 + (i/3)*10)
@@ -176,7 +197,12 @@ func (g *game) statusBarPatchDraws(state statusBarCacheState) []statusPatchDraw 
 		}
 		drawPatch(name, x, y)
 	}
-	keyNames := [3]string{"STKEYS0", "STKEYS2", "STKEYS1"}
+	keyNames := [3]string{"STKEYS0", "STKEYS1", "STKEYS2"}
+	for i, skull := range state.keySkull {
+		if skull {
+			keyNames[i] = fmt.Sprintf("STKEYS%d", i+3)
+		}
+	}
 	keyY := [3]float64{171, 181, 191}
 	for i := 0; i < 3; i++ {
 		if state.keyOn[i] {
@@ -244,8 +270,17 @@ func (g *game) statusDigitWidth(prefix string) (int, bool) {
 }
 
 func (g *game) statusDigitDraws(prefix string, value, digits int, rightX, sx float64) []statusDigitDraw {
-	if value < 0 {
-		value = 0
+	negative := value < 0
+	if negative {
+		if digits == 2 {
+			value = max(value, -9)
+		} else if digits == 3 {
+			value = max(value, -99)
+		}
+		value = -value
+	}
+	if value == 1994 {
+		return nil
 	}
 	s := strconv.Itoa(value)
 	if len(s) > digits {
@@ -264,6 +299,9 @@ func (g *game) statusDigitDraws(prefix string, value, digits int, rightX, sx flo
 		}
 		x -= float64(cellW) * sx
 		draws = append(draws, statusDigitDraw{name: name, x: x})
+	}
+	if negative {
+		draws = append(draws, statusDigitDraw{name: "STTMINUS", x: x - 8*sx})
 	}
 	return draws
 }
@@ -348,7 +386,7 @@ func (g *game) statusWeaponOwned(slot int) bool {
 	case 2:
 		return true
 	case 3:
-		return g.weaponOwned(weaponShotgun) || g.weaponOwned(weaponSuperShotgun)
+		return g.weaponOwned(weaponShotgun)
 	case 4:
 		return g.weaponOwned(weaponChaingun)
 	case 5:
@@ -574,4 +612,26 @@ func (g *game) statusFacePatchName() string {
 	default:
 		return "STFST00"
 	}
+}
+
+// Migrate saves written before key variants were stored in player inventory.
+func (g *game) collectedSkullKeys() [3]bool {
+	var skull [3]bool
+	if g.m == nil {
+		return skull
+	}
+	for i, th := range g.m.Things {
+		if i >= len(g.thingCollected) || !g.thingCollected[i] {
+			continue
+		}
+		switch th.Type {
+		case 40:
+			skull[0] = true
+		case 39:
+			skull[1] = true
+		case 38:
+			skull[2] = true
+		}
+	}
+	return skull
 }

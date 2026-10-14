@@ -40,6 +40,8 @@ func nativePreferenceFlags(path string) *flag.FlagSet {
 	fs.Float64("keyboard-speed", runtimecfg.DefaultKeyboardTurnSpeed, "")
 	fs.Float64("music-volume", runtimecfg.DefaultMusicVolume, "")
 	fs.Float64("sfx-volume", runtimecfg.DefaultSFXVolume, "")
+	fs.Bool("disable-camera-bob", false, "")
+	fs.Bool("disable-weapon-bob", false, "")
 	fs.Bool("smooth-camera-yaw", runtimecfg.DefaultSmoothCameraYaw, "")
 	fs.Int("gamma-level", -1, "")
 	fs.Int("detail-level", 0, "")
@@ -84,7 +86,7 @@ func TestNativePreferencesRoundTripPreservesMainAndOverrides(t *testing.T) {
 	if err != nil || !bytes.Equal(after, original) {
 		t.Fatal("loading native preferences rewrote config")
 	}
-	s := nativeSettings{messages: true, showFPS: true, screenBlocks: 2, hudScale: 6, pcSpeaker: true, musicBackend: music.BackendMeltySynth, soundFont: "changed.sf2", musicPan: .6, speakerVolume: .3, speakerVariant: "small-buzzer", sfxVolume: .6, musicVolume: .2, mouseSensitivity: 2, keyboardSpeed: 1.5, mouseLook: false, mouseInvert: true, alwaysRun: true, autoWeaponSwitch: false, fullscreen: true, fps: 240, textureFilter: raymesh.Trilinear, lighting: raymesh.SectorLighting}
+	s := nativeSettings{disableCameraBob: true, disableWeaponBob: true, messages: true, showFPS: true, screenBlocks: 2, hudScale: 6, pcSpeaker: true, musicBackend: music.BackendMeltySynth, soundFont: "changed.sf2", musicPan: .6, speakerVolume: .3, speakerVariant: "small-buzzer", sfxVolume: .6, musicVolume: .2, mouseSensitivity: 2, keyboardSpeed: 1.5, mouseLook: false, mouseInvert: true, alwaysRun: true, autoWeaponSwitch: false, fullscreen: true, fps: 240, textureFilter: raymesh.Trilinear, lighting: raymesh.SectorLighting}
 	binds := runtimecfg.NormalizeInputBindings(*cfg.Keybinds)
 	binds.MoveForward = runtimecfg.KeyBinding{"I", "UP"}
 	if err := saveNativePreferences(path, s, binds, 1600, 1000, 2, true, "wireframe"); err != nil {
@@ -96,6 +98,9 @@ func TestNativePreferencesRoundTripPreservesMainAndOverrides(t *testing.T) {
 	}
 	if *loaded.MusicBackend != "meltysynth" || *loaded.SoundFont != "changed.sf2" || *loaded.MUSPanMax != .6 || *loaded.PCSpeakerVolume != .3 || *loaded.PCSpeakerVariant != "small-buzzer" || *loaded.DetailLevelFaithful != 2 || *loaded.Map != "E1M3" {
 		t.Fatal("native save destroyed unrelated main settings")
+	}
+	if loaded.DisableCameraBob == nil || !*loaded.DisableCameraBob || loaded.DisableWeaponBob == nil || !*loaded.DisableWeaponBob {
+		t.Fatal("bob preferences did not persist")
 	}
 	if *loaded.MusicVolume != .2 || *loaded.MouseLookSpeed != 2 || *loaded.KeyboardTurnSpeed != 1.5 || !*loaded.MouseInvert || *loaded.AutoWeaponSwitch || loaded.Keybinds.MoveForward != binds.MoveForward {
 		t.Fatal("common preferences did not round trip")

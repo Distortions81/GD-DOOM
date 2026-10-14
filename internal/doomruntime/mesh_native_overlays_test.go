@@ -2,6 +2,8 @@ package doomruntime
 
 import (
 	"fmt"
+	"gddoom/internal/render/doomtex"
+	"gddoom/internal/wad"
 	"image/color"
 	"path/filepath"
 	"testing"
@@ -11,6 +13,15 @@ func nativeOverlayFixture(t *testing.T) *NativeCampaign {
 	t.Helper()
 	c := nativeCampaignFixture(t, "E1M1")
 	g := c.Game.g
+	wf, err := wad.Open(findDOOM1WAD(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.opts.DoomPalettesRGBA = make([][]byte, 14)
+	for i := range g.opts.DoomPalettesRGBA {
+		g.opts.DoomPalettesRGBA[i], _ = doomtex.LoadPaletteRGBA(wf, i)
+	}
+	g.opts.DoomPaletteRGBA = g.opts.DoomPalettesRGBA[0]
 	g.opts.MessageFontBank = make(map[rune]WallTexture)
 	for ch := rune(33); ch <= 95; ch++ {
 		if tex, ok := g.opts.StatusPatchBank[fmt.Sprintf("STCFN%03d", ch)]; ok {

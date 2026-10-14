@@ -21,7 +21,7 @@ func (m *nativeMenu) isSharedPage() bool {
 
 // Shared actions retain their original IDs; native removes the voice row from
 // drawing, keyboard navigation and mouse hit testing without changing main.
-var nativeOptionActions = [...]int{0, 1, 2, 3, 4, 5, 7, 8}
+var nativeOptionActions = [...]int{0, 1, 2, 3, 4, 5, 7, 8, 9, 10}
 
 func nativeOptionRow(action int) int {
 	for row, id := range nativeOptionActions {
@@ -124,6 +124,12 @@ func (m *nativeMenu) updateShared(in menuInput, s *nativeSettings) menuCommand {
 	input := sessionflow.FrontendInput{Escape: in.back, Up: in.up, Down: in.down, Left: in.left, Right: in.right, Select: in.confirm, Skip: in.back || in.up || in.down || in.left || in.right || in.confirm || in.anyKey}
 	result := sessionflow.StepFrontend(old, input, cfg)
 	m.applySharedState(result.State)
+	if result.ChangeCameraBob {
+		s.disableCameraBob = !s.disableCameraBob
+	}
+	if result.ChangeWeaponBob {
+		s.disableWeaponBob = !s.disableWeaponBob
+	}
 	if result.ChangeMessages {
 		s.messages = !s.messages
 		message := "MESSAGES OFF"
@@ -243,6 +249,7 @@ func (m *nativeMenu) drawShared(s nativeSettings, frame int) []levelmesh.Patch {
 		m.shared = doomruntime.NewNativeMenuRenderer()
 	}
 	opts := m.opts
+	opts.DisableCameraBob, opts.DisableWeaponBob = s.disableCameraBob, s.disableWeaponBob
 	opts.SourcePortMode, opts.SFXVolume, opts.MusicVolume = true, s.sfxVolume, s.musicPlaybackVolume()
 	opts.MusicBackend, opts.MusicSoundFontPath, opts.PCSpeakerVolume, opts.MouseLookSpeed, opts.InputBindings = s.musicBackend, s.soundFont, s.speakerVolume, s.mouseSensitivity, s.bindings
 	v := doomruntime.NativeMenuView{State: m.sharedState(), Frame: frame, BindingRow: m.row, BindingSlot: m.bindingSlot, BindingCapture: m.capture, MusicRow: m.row, MusicWAD: m.musicWAD, MusicGroup: m.musicGroup, MusicTrack: m.musicTrack, NowPlaying: m.nowPlaying, Slots: m.saveSlots, Messages: s.messages, ShowFPS: s.showFPS, ScreenBlocks: s.screenBlocks, HUDScale: s.hudScale}
@@ -264,8 +271,8 @@ func (m *nativeMenu) drawShared(s nativeSettings, frame int) []levelmesh.Patch {
 	}
 	m.patches = append(m.patches[:0], m.shared.Draw(opts, v)...)
 	if m.page == menuOptions {
-		m.textScaled("RAYLIB OPTIONS", 36, 151, 1.2)
-		m.textScaled("OPEN", 251, 151, 1.2)
+		m.textScaled("RAYLIB OPTIONS", 36, 165, 1.2)
+		m.textScaled("OPEN", 251, 165, 1.2)
 	}
 	return m.patches
 }

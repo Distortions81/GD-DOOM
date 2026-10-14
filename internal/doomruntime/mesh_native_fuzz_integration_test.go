@@ -148,3 +148,103 @@ func TestNativeSpectreFuzzMatchesMainFramebuffer(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeWeaponFuzzMatchesClassicColumnSampling(t *testing.T) {
+	if os.Getenv("GD_RAYLIB_INTEGRATION") == "" {
+		t.Skip("set GD_RAYLIB_INTEGRATION=1")
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	rl.SetTraceLogLevel(rl.LogWarning)
+	rl.SetConfigFlags(rl.FlagWindowHidden)
+	rl.InitWindow(320, 200, "Weapon fuzz parity")
+	defer rl.CloseWindow()
+	p, err := raymesh.NewPresentation(raymesh.TextureOptions{Scale: 1, Filter: raymesh.Nearest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	palette := make([]byte, 1024)
+	cm := make([]byte, 33*256)
+	for i := 0; i < 256; i++ {
+		palette[i*4], palette[i*4+1], palette[i*4+2], palette[i*4+3] = byte(i), byte(i*53), byte(255-i), 255
+		for row := 0; row < 33; row++ {
+			cm[row*256+i] = byte(i*73 + row*19)
+		}
+	}
+	mask := make([]byte, 24*180*4)
+	for i := 0; i < 24*180; i++ {
+		if i/24 != 48 {
+			mask[i*4+3] = 255
+		}
+	}
+	for _, size := range [][2]int{{320, 200}, {640, 400}, {960, 540}} {
+		w, h := size[0], size[1]
+		rl.SetWindowSize(w, h)
+		for range 2 {
+			rl.BeginDrawing()
+			rl.EndDrawing()
+		}
+		g := newGame(&mapdata.Map{Name: "E1M1"}, Options{Width: w, Height: h, SourcePortMode: true, DoomPaletteRGBA: palette, DoomColorMap: cm, DoomColorMapRows: 33})
+		g.setGammaLevel(0)
+		n := &NativeMeshGame{g: g, weapon: []levelmesh.Patch{{Texture: levelmesh.Texture{RGBA: mask, Width: 24, Height: 180}, X: 120, Y: 20, W: 24, H: 180}}}
+		g.inventory.InvisTics = 129
+		bg := make([]byte, w*h*4)
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				i := (x*320/w*17 + y*200/h*31) % 256
+				copy(bg[(y*w+x)*4:], palette[i*4:i*4+4])
+			}
+		}
+		texture := rl.LoadTextureFromImage(rl.NewImage(bg, int32(w), int32(h), 1, rl.UncompressedR8g8b8a8))
+		for _, phase := range []int{0, 16, 48} {
+			for _, inv := range []int{0, 129} {
+				g.inventory.InvulnTics = inv
+				g.spectreFuzzPos = phase
+				spans := n.WeaponFuzz(w, h)
+				logical := make([]byte, 320*200*4)
+				for y := 0; y < 200; y++ {
+					for x := 0; x < 320; x++ {
+						i := (fuzzSamplePixel(y, h, 200)*w + fuzzSamplePixel(x, w, 320)) * 4
+						copy(logical[(y*320+x)*4:], bg[i:i+4])
+					}
+				}
+				expected := append([]byte(nil), bg...)
+				for _, s := range spans {
+					g.spectreFuzzPos = s.Phase
+					for y := s.Y0; y <= s.Y1; y++ {
+						g.fuzzWeaponPixel(logical, 320, s.X, y)
+						x0, x1 := fuzzCellBounds(s.X, w, 320)
+						y0, y1 := fuzzCellBounds(y, h, 200)
+						for yy := y0; yy <= y1; yy++ {
+							for xx := x0; xx <= x1; xx++ {
+								copy(expected[(yy*w+xx)*4:], logical[(y*320+s.X)*4:(y*320+s.X)*4+4])
+							}
+						}
+					}
+				}
+				rl.BeginDrawing()
+				rl.ClearBackground(rl.Black)
+				rl.DrawTexture(texture, 0, 0, rl.White)
+				if err := p.DrawWeaponFuzz(spans, n.WeaponFuzzColors(), w, h); err != nil {
+					t.Fatal(err)
+				}
+				img, err := raymesh.CaptureWindow()
+				if err != nil {
+					t.Fatal(err)
+				}
+				colors := rl.LoadImageColors(img)
+				for i, c := range colors {
+					v := expected[i*4:]
+					if c.R != v[0] || c.G != v[1] || c.B != v[2] {
+						t.Fatalf("%v phase=%d invuln=%d pixel %d,%d: %v want %v", size, phase, inv, i%w, i/w, c, v[:4])
+					}
+				}
+				rl.UnloadImageColors(colors)
+				rl.UnloadImage(img)
+				rl.EndDrawing()
+			}
+		}
+		rl.UnloadTexture(texture)
+	}
+}

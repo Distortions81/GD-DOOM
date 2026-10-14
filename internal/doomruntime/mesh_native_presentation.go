@@ -98,11 +98,11 @@ func (n *NativeMeshGame) buildPresentation() {
 		n.hudState, n.haveHUD = state, true
 	}
 	n.weapon = n.weapon[:0]
-	if g.isDead {
+	if g.isDead && g.weaponPSpriteY >= weaponBottomY {
 		return
 	}
 	name, prevName, flash, prevFlash, y, alpha := g.renderWeaponOverlayState()
-	current, previous := weaponCompositePatchToken(name, flash), weaponCompositePatchToken(prevName, prevFlash)
+	current, previous := g.weaponCompositeToken(name, flash), g.weaponCompositeToken(prevName, prevFlash)
 	token := current
 	if token == "" {
 		token = previous
@@ -122,9 +122,7 @@ func (n *NativeMeshGame) buildPresentation() {
 	if !ok {
 		return
 	}
-	if y == 0 {
-		y = weaponTopY
-	}
+	y = g.weaponOverlayLogicalY(y)
 	bx, _ := g.weaponBob()
 	n.weapon = append(n.weapon, levelmesh.Patch{Texture: nativeTexture(&tex), X: 1 + bx - float64(tex.OffsetX), Y: y - float64(tex.OffsetY), W: float64(tex.Width), H: float64(tex.Height)})
 }

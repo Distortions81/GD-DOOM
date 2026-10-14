@@ -63,3 +63,16 @@ func (n *NativeMeshGame) MouseTurn(dx int) float64 {
 	raw := mouseLookTurnRawScaled(dx, n.g.opts.MouseLookSpeed, 1, n.g.opts.MouseInvert)
 	return float64(raw) * (2 * math.Pi / 4294967296)
 }
+
+// SetBobPreferences changes presentation only, including future campaign maps.
+func (c *NativeCampaign) SetBobPreferences(disableCamera, disableWeapon bool) {
+	for _, opts := range []*Options{&c.session.opts, &c.Game.g.opts} {
+		opts.DisableCameraBob, opts.DisableWeaponBob = disableCamera, disableWeapon
+	}
+}
+
+// SetPresentationLighting keeps weapon patches in sync with the native host's
+// fullbright setting. Simulation and the stored patch artwork are unchanged.
+func (n *NativeMeshGame) SetPresentationLighting(enabled bool) {
+	n.g.opts.DisableDoomLighting = !enabled
+}

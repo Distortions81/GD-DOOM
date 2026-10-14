@@ -38,6 +38,8 @@ func run() (runErr error) {
 	configPath := flag.String("config", "config.toml", "preferences path (empty disables loading and saving)")
 	mouseSpeed := flag.Float64("mouse-speed", runtimecfg.DefaultMouseLookSpeed, "mouse sensitivity (positive multiplier)")
 	keyboardSpeed := flag.Float64("keyboard-speed", runtimecfg.DefaultKeyboardTurnSpeed, "keyboard turn speed (positive multiplier)")
+	disableCameraBob := flag.Bool("disable-camera-bob", false, "disable camera bob")
+	disableWeaponBob := flag.Bool("disable-weapon-bob", false, "disable weapon bob")
 	smoothCameraYaw := flag.Bool("smooth-camera-yaw", runtimecfg.DefaultSmoothCameraYaw, "smooth interpolated player camera yaw between sim ticks")
 	gammaLevel := flag.Int("gamma-level", -1, "startup gamma level (-1 keeps mode default)")
 	detailLevel := flag.Int("detail-level", 0, "source-port resolution divisor: 0=1x, 1=1/2, 2=1/3, 3=1/4")
@@ -221,6 +223,7 @@ func run() (runErr error) {
 	opts.AlwaysRun, opts.AutoWeaponSwitch = *alwaysRun, *autoWeaponSwitch
 	opts.MouseLook, opts.MouseInvert, opts.MouseLookSpeed, opts.KeyboardTurnSpeed = *mouseLook, *mouseInvert, *mouseSpeed, *keyboardSpeed
 	opts.SmoothCameraYaw = *smoothCameraYaw
+	opts.DisableCameraBob, opts.DisableWeaponBob = *disableCameraBob, *disableWeaponBob
 	opts.InitialGammaLevel = *gammaLevel
 	opts.InitialDetailLevel, opts.AutoDetail = *detailLevel, *autoDetail
 	opts.CRTEffect, opts.DisableAspectCorrection = *crtEffect, *noAspectCorrection
@@ -269,6 +272,7 @@ func run() (runErr error) {
 	settings.detailLevel, settings.autoDetail = opts.InitialDetailLevel, opts.AutoDetail
 	settings.musicCompression = opts.MUSVolumeCompression
 	settings.smoothCameraYaw = *smoothCameraYaw
+	settings.disableCameraBob, settings.disableWeaponBob = *disableCameraBob, *disableWeaponBob
 	settings.autoWeaponSwitch = opts.AutoWeaponSwitch
 	settings.screenBlocks, settings.hudScale = doomruntime.NativeDefaultMenuHUD(opts)
 	if cfg.Raylib != nil {
@@ -466,6 +470,7 @@ func run() (runErr error) {
 		opts.InputBindings = settings.bindings
 		opts.MouseLook, opts.MouseInvert, opts.KeyboardTurnSpeed, opts.AutoWeaponSwitch = settings.mouseLook, settings.mouseInvert, settings.keyboardSpeed, settings.autoWeaponSwitch
 		opts.SmoothCameraYaw = settings.smoothCameraYaw
+		opts.DisableCameraBob, opts.DisableWeaponBob = settings.disableCameraBob, settings.disableWeaponBob
 		opts.InitialDetailLevel, opts.AutoDetail = settings.detailLevel, settings.autoDetail
 		m = fresh
 		game = doomruntime.NewNativeMeshGame(fresh, opts)
@@ -543,6 +548,7 @@ func run() (runErr error) {
 		}
 		campaign.SetControls(settings.alwaysRun, settings.mouseSensitivity)
 		campaign.SetCameraSmoothing(settings.smoothCameraYaw)
+		campaign.SetBobPreferences(settings.disableCameraBob, settings.disableWeaponBob)
 		if err := campaign.SaveSlot(slot); err != nil {
 			menu.setStatus("SAVE FAILED", 70)
 			game.Notify("SAVE FAILED: " + err.Error())
@@ -928,6 +934,7 @@ func run() (runErr error) {
 		}
 		campaign.SetControls(settings.alwaysRun, settings.mouseSensitivity)
 		campaign.SetCameraSmoothing(settings.smoothCameraYaw)
+		campaign.SetBobPreferences(settings.disableCameraBob, settings.disableWeaponBob)
 		campaign.SetInputPreferences(settings.bindings, settings.mouseLook, settings.mouseInvert, settings.autoWeaponSwitch, settings.keyboardSpeed)
 		campaign.SetGammaLevel(settings.gammaLevel)
 		campaign.SetCRTEnabled(settings.crtEffect)
@@ -1174,6 +1181,7 @@ func run() (runErr error) {
 		frontendPage := campaign.FrontendStatus().Page
 		showScene := !menu.frontend || frontendPage == ""
 		game.SetMenuHUDSettings(settings.messages, settings.screenBlocks, settings.hudScale)
+		game.SetPresentationLighting(lightingMode != raymesh.FullbrightLighting)
 		snapshot := game.Frame(alpha)
 		audio.Update(game)
 		if needScene && !automap && showScene && campaign.Phase() == doomruntime.NativeCampaignPlaying {
@@ -1244,7 +1252,13 @@ func run() (runErr error) {
 					if err := detail.Present(sceneW, sceneH, w, h); err != nil {
 						return err
 					}
-					presentation.DrawWeapon(snapshot.WeaponPatches, w, viewH)
+					if snapshot.WeaponInvisible {
+						if err := presentation.DrawWeaponFuzz(campaign.Game.WeaponFuzz(w, viewH), campaign.Game.WeaponFuzzColors(), w, viewH); err != nil {
+							return err
+						}
+					} else {
+						presentation.DrawWeapon(snapshot.WeaponPatches, w, viewH)
+					}
 				}
 				presentation.DrawHUDLayout(snapshot.HUD, w, h, snapshot.HUDMode, snapshot.HUDScale)
 				if automap {
@@ -1254,7 +1268,13 @@ func run() (runErr error) {
 				death := campaign.DeathOverlay(w, h)
 				raymesh.DrawScreenTint(death.Tint, w, h)
 				presentation.DrawScreenPatches(death.Patches)
-				raymesh.DrawScreenTint(snapshot.FlashOverlay, w, h)
+				if len(snapshot.FlashPalette) > 0 {
+					if err := presentation.DrawPaletteFlash(snapshot.FlashPalette, w, h); err != nil {
+						return err
+					}
+				} else {
+					raymesh.DrawScreenTint(snapshot.FlashOverlay, w, h)
+				}
 				if !automap {
 					presentation.DrawScreenPatches(campaign.MessagePatches(w, h))
 					presentation.DrawScreenPatches(campaign.ChatPatches(w, viewH))

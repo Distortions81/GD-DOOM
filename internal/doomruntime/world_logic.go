@@ -302,6 +302,7 @@ func (g *game) tickPlayerViewHeight() {
 	if g.p.z > g.p.floorz {
 		// Original P_CalcHeight returns before bob and ceiling clipping here.
 		g.playerViewZ = g.p.z + g.p.viewHeight
+		g.recordCameraBob(0, false)
 		return
 	}
 	if !g.isDead {
@@ -323,15 +324,18 @@ func (g *game) tickPlayerViewHeight() {
 		}
 	}
 	var bobOffset int64
+	var bobAmplitude int64
 	// Authoritative prediction has a separate command clock; retain its
 	// existing bob-free eye so snapshots cannot introduce phase corrections.
 	if g.authorityRules == nil && !g.predictionMovement {
 		bob := int64(int32(fixedMul(g.p.momx, g.p.momx)+fixedMul(g.p.momy, g.p.momy))) >> 2
-		bob = min(bob, 0x100000)
-		angle := (doomFineAngles / 20 * g.worldTic) & doomFineMask
-		bobOffset = fixedMul(bob/2, doomFineSine[angle])
+		bob = min(bob, playerMaxBob)
+		angle := (playerBobPhaseStep * g.worldTic) & doomFineMask
+		bobAmplitude = bob / 2
+		bobOffset = fixedMul(bobAmplitude, doomFineSine[angle])
 	}
 	g.playerViewZ = min(g.p.z+g.p.viewHeight+bobOffset, g.p.ceilz-4*fracUnit)
+	g.recordCameraBob(bobAmplitude, true)
 }
 
 func (g *game) trackSecrets() {

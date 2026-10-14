@@ -751,9 +751,10 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		PCSpeakerVolume:    0.6,
 		MouseLook:          false,
 		MouseInvert:        true,
-		AlwaysRun:          true,
-		AutoWeaponSwitch:   false,
-		CRTEffect:          true,
+		DisableCameraBob:   true, DisableWeaponBob: true,
+		AlwaysRun:        true,
+		AutoWeaponSwitch: false,
+		CRTEffect:        true,
 	}
 	if err := saveRuntimeSettings(cfgPath, in, true); err != nil {
 		t.Fatalf("saveRuntimeSettings() error: %v", err)
@@ -791,6 +792,9 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.MouseLook == nil || *cfg.MouseLook != in.MouseLook {
 		t.Fatalf("mouselook=%v want %v", cfg.MouseLook, in.MouseLook)
+	}
+	if cfg.DisableCameraBob == nil || !*cfg.DisableCameraBob || cfg.DisableWeaponBob == nil || !*cfg.DisableWeaponBob {
+		t.Fatal("bob preferences did not persist")
 	}
 	if cfg.MouseInvert == nil || *cfg.MouseInvert != in.MouseInvert {
 		t.Fatalf("mouse_invert=%v want %v", cfg.MouseInvert, in.MouseInvert)

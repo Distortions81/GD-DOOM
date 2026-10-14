@@ -46,6 +46,13 @@ func (n *NativeMeshGame) SpectreFuzzColors() levelmesh.FuzzColors {
 	} else {
 		data.RemapEnabled = doomColormapEnabled || (doomLightingEnabled && n.g.opts.DoomColorMapRows > 6)
 	}
+	return n.fuzzColorsForRow(row, data.RemapEnabled)
+}
+func (n *NativeMeshGame) fuzzColorsForRow(row int, enabled bool) levelmesh.FuzzColors {
+	data := levelmesh.FuzzColors{Offsets: gpuFuzzOffsets, Shade: 1, RemapEnabled: enabled}
+	if doomLightingEnabled {
+		data.Shade = float32(doomShadeMulFromRow(6)) / 256
+	}
 	if !data.RemapEnabled || len(n.g.opts.DoomColorMap) < (row+1)*256 || len(doomPalIndexLUT32) != 32768 {
 		data.RemapEnabled = false
 		return data
@@ -81,3 +88,31 @@ func (n *NativeMeshGame) SpectreFuzzColors() levelmesh.FuzzColors {
 	data.Palette, data.Lookup, data.Remap, data.Probes = bank.palette, bank.lookup, remap, bank.probes
 	return data
 }
+
+// WeaponFuzz uses the same physical weapon placement as Raylib's DrawWeapon.
+func (n *NativeMeshGame) WeaponFuzz(width, height int) []levelmesh.FuzzSpan {
+	n.fuzzSpans = n.fuzzSpans[:0]
+	if !n.g.weaponInvisible() {
+		return n.fuzzSpans
+	}
+	scale := math.Min(float64(width)/320, float64(height)/240)
+	sx, sy := scale, scale*1.2
+	ox, oy := (float64(width)-320*sx)/2, float64(height)-200*sy
+	g := n.g
+	w, h := g.viewW, g.viewH
+	g.viewW, g.viewH = width, height
+	defer func() { g.viewW, g.viewH = w, h }()
+	for _, patch := range n.weapon {
+		tex := WallTexture{RGBA: patch.Texture.RGBA, Width: patch.Texture.Width, Height: patch.Texture.Height}
+		x, y := ox+patch.X*sx, oy+patch.Y*sy
+		it := cutoutItem{tex: &tex, scale: sx, scaleY: sy, dstX: x, dstY: y,
+			x0: max(0, int(math.Floor(x))), x1: min(width-1, int(math.Ceil(x+patch.W*sx))-1),
+			y0: max(0, int(math.Floor(y))), y1: min(height-1, int(math.Ceil(y+patch.H*sy))-1)}
+		g.walkSpectreFuzzSpans(it, func(span spectreFuzzSpan) {
+			n.fuzzSpans = append(n.fuzzSpans, levelmesh.FuzzSpan{X: span.cx, Y0: span.cy, Y1: span.y1 * min(height, 200) / height, Phase: span.phase})
+		})
+	}
+	return n.fuzzSpans
+}
+
+func (n *NativeMeshGame) WeaponFuzzColors() levelmesh.FuzzColors { return n.fuzzColorsForRow(6, true) }

@@ -118,11 +118,16 @@ func (a *Authority) spawnAuthoritativePlayer(id byte, respawn bool) error {
 	})
 	g.initPlayerState()
 	if g.opts.GameMode == gameModeDeathmatch {
+		g.inventory.SkullKeys = [3]bool{true, true, true}
 		g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey = true, true, true
 	} else {
 		keys := rules.TeamKeys
+		g.inventory.SkullKeys = rules.TeamSkullKeys
 		g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey = keys.Blue, keys.Red, keys.Yellow
 		if oldPlayer != nil {
+			for i := range g.inventory.SkullKeys {
+				g.inventory.SkullKeys[i] = g.inventory.SkullKeys[i] || oldPlayer.inventory.SkullKeys[i]
+			}
 			g.inventory.BlueKey = g.inventory.BlueKey || oldPlayer.inventory.BlueKey
 			g.inventory.RedKey = g.inventory.RedKey || oldPlayer.inventory.RedKey
 			g.inventory.YellowKey = g.inventory.YellowKey || oldPlayer.inventory.YellowKey

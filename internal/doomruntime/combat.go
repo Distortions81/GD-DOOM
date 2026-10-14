@@ -276,7 +276,9 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		// P_CheckAmmo runs in P_FireWeapon and A_ReFire, not A_WeaponReady.
 		// An empty weapon stays ready until the player attempts to fire.
 	}
-	_, bobY := g.weaponBobDoom()
+	bobXFixed, bobYFixed := g.weaponBobFixed()
+	bobY := int(bobYFixed >> fracBits)
+	g.weaponPose = weaponPresentationPose{X: fracUnit + bobXFixed, FractionY: bobYFixed & (fracUnit - 1), BobY: bobYFixed, Valid: true}
 	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -354,7 +356,7 @@ func (g *game) weaponActionLower(_ weaponPspriteState) {
 	}
 	if g.isDead {
 		g.weaponPSpriteY = weaponBottomY
-		g.setWeaponPSpriteState(weaponStateNone, false)
+		g.weaponPose.FractionY, g.weaponPose.BobY = 0, 0
 		return
 	}
 	if g.inventory.PendingWeapon == 0 {
@@ -373,6 +375,7 @@ func (g *game) weaponActionRaise(_ weaponPspriteState) {
 		return
 	}
 	g.weaponPSpriteY = weaponTopY
+	g.weaponPose.FractionY, g.weaponPose.BobY = 0, 0
 	g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).readystate, false)
 }
 

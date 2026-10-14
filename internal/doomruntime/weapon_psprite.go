@@ -299,6 +299,7 @@ func (g *game) clearWeaponOverlay() {
 	g.weaponFlashState = weaponStateNone
 	g.weaponFlashTics = 0
 	g.weaponPSpriteY = weaponTopY
+	g.weaponPose = weaponPresentationPose{}
 }
 
 func (g *game) startWeaponOverlayFire(id weaponID) {
@@ -331,6 +332,10 @@ func (g *game) bringUpWeapon() {
 		}
 	}
 	g.weaponPSpriteY = weaponBottomY
+	if !g.weaponPose.Valid {
+		g.weaponPose = weaponPresentationPose{Valid: true}
+	}
+	g.weaponPose.FractionY, g.weaponPose.BobY = 0, 0
 	g.inventory.PendingWeapon = 0
 	g.setWeaponPSpriteState(weaponInfo(next).upstate, false)
 }
@@ -526,9 +531,9 @@ func (g *game) renderWeaponOverlayState() (string, string, string, string, float
 	currFlash := g.weaponFlashSpriteNameForState(g.weaponFlashState)
 	prevFlash := g.weaponFlashSpriteNameForState(g.prevWeaponFlashState)
 	if alpha >= 1 {
-		return currName, "", currFlash, "", float64(g.weaponPSpriteY), 1
+		return currName, "", currFlash, "", g.weaponPresentationY(g.weaponPSpriteY, g.weaponPose), 1
 	}
-	y := lerp(float64(g.prevWeaponPSpriteY), float64(g.weaponPSpriteY), alpha)
+	y := lerp(g.weaponPresentationY(g.prevWeaponPSpriteY, g.prevWeaponPose), g.weaponPresentationY(g.weaponPSpriteY, g.weaponPose), alpha)
 	if prevName == currName && prevFlash == currFlash {
 		prevName = ""
 		prevFlash = ""
@@ -550,33 +555,29 @@ func abs64(v int64) int64 {
 	return v
 }
 
+// P_MovePsprites retains sx/sy throughout an attack; only A_WeaponReady
+// updates bob. Never recompute horizontal sway from post-thinker momentum.
 func (g *game) weaponBob() (float64, float64) {
-	if g == nil || g.isDead {
+	if g == nil {
 		return 0, 0
 	}
-	bob := float64(abs64(g.p.momx)+abs64(g.p.momy)) / float64(fracUnit)
-	bob *= 0.25
-	if bob > 8 {
-		bob = 8
-	}
-	t := (2 * math.Pi * float64(g.worldTic&63)) / 35.0
-	return math.Cos(t) * bob * 0.5, math.Sin(t*2) * bob * 0.5
+	x, _ := g.weaponPresentationPosition()
+	return x - 1, 0
+}
+
+func (g *game) weaponBobFixed() (int64, int64) {
+	bob := int64(int32(fixedMul(g.p.momx, g.p.momx)+fixedMul(g.p.momy, g.p.momy))) >> 2
+	bob = min(bob, playerMaxBob)
+	idx := (128 * g.worldTic) & doomFineMask
+	return fixedMul(bob, doomFineSine[idx+doomFineAngles/4]), fixedMul(bob, doomFineSine[idx&(doomFineAngles/2-1)])
 }
 
 func (g *game) weaponBobDoom() (int, int) {
 	if g == nil || g.isDead {
 		return 0, 0
 	}
-	bob := fixedMul(g.p.momx, g.p.momx) + fixedMul(g.p.momy, g.p.momy)
-	bob >>= 2
-	const maxBob = 0x100000
-	if bob > maxBob {
-		bob = maxBob
-	}
-	idx := (128 * g.worldTic) & doomFineMask
-	x := fixedMul(bob, doomFineSine[idx+doomFineAngles/4]) >> fracBits
-	y := fixedMul(bob, doomFineSine[idx&(doomFineAngles/2-1)]) >> fracBits
-	return int(x), int(y)
+	x, y := g.weaponBobFixed()
+	return int(x >> fracBits), int(y >> fracBits)
 }
 
 func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool) {
@@ -610,6 +611,10 @@ func (g *game) resolveSpritePatchTexture(name string) (string, WallTexture, bool
 		if tex, ok := g.spritePatchResolvedCache[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
 			return key, tex, true
 		}
+	}
+	if tex, ok := g.litWeaponPatch(key); ok {
+		g.cacheResolvedSpritePatch(key, tex)
+		return key, tex, true
 	}
 	if tex, ok := g.blendedSpritePatch(key); ok {
 		g.cacheResolvedSpritePatch(key, tex)
@@ -908,22 +913,27 @@ func quantizeWeaponBlendAlpha(alpha float64) float64 {
 }
 
 func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
-	if g == nil || g.mode != viewWalk || g.isDead {
+	if g != nil && g.opts.SourcePortMode && g.weaponInvisible() {
+		g.drawModernInvisibleWeapon(screen)
+		return
+	}
+	g.drawWeaponOverlayImage(screen)
+}
+
+func (g *game) drawWeaponOverlayImage(screen *ebiten.Image) {
+	if g == nil || g.mode != viewWalk || (g.isDead && g.weaponPSpriteY >= weaponBottomY) {
+		return
+	}
+	if !g.opts.SourcePortMode && g.drawClassicWeaponOverlay(screen) {
 		return
 	}
 	name, prevName, flash, prevFlash, logicalY, alpha := g.renderWeaponOverlayState()
-	currComposite := weaponCompositePatchToken(name, flash)
-	prevComposite := weaponCompositePatchToken(prevName, prevFlash)
+	currComposite := g.weaponCompositeToken(name, flash)
+	prevComposite := g.weaponCompositeToken(prevName, prevFlash)
 	if currComposite == "" && prevComposite == "" {
 		return
 	}
-	if logicalY == 0 {
-		logicalY = weaponTopY
-	}
-	switch g.statusBarDisplayMode() {
-	case statusBarDisplayOverlay, statusBarDisplayHidden:
-		logicalY -= 8
-	}
+	logicalY = g.weaponOverlayLogicalY(logicalY)
 	rect := g.walkWeaponViewportRect()
 	target := screen
 	if rect.Dx() < g.viewW || rect.Dy() < g.viewH || rect.Min.X != 0 || rect.Min.Y != 0 {

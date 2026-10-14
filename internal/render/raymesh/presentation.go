@@ -28,6 +28,7 @@ void main() {
 }`
 
 type Presentation struct {
+	paletteFlash                                *paletteFlash
 	Sprites                                     *Renderer
 	triangles                                   []levelmesh.Triangle
 	patches                                     map[presentationTextureKey]rl.Texture2D
@@ -72,7 +73,7 @@ func (p *Presentation) texture(tex levelmesh.Texture, padded bool) (rl.Texture2D
 		return cached, true
 	}
 	if padded {
-		tex = padPatchTexture(tex)
+		tex = padPatchTexture(straightAlphaPatch(tex))
 	}
 	img := rl.NewImage(tex.RGBA, int32(tex.Width), int32(tex.Height), 1, rl.UncompressedR8g8b8a8)
 	texture := rl.LoadTextureFromImage(img)
@@ -275,6 +276,9 @@ func (p *Presentation) DrawScreenPatches(patches []levelmesh.Patch) {
 }
 
 func (p *Presentation) Close() {
+	if p.paletteFlash != nil {
+		p.paletteFlash.close()
+	}
 	if p.fuzz != nil {
 		p.fuzz.close()
 	}

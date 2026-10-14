@@ -14,6 +14,8 @@ type RuntimeSettings struct {
 	HUDMessages        bool
 	MouseLook          bool
 	MouseInvert        bool
+	DisableCameraBob   bool
+	DisableWeaponBob   bool
 	AlwaysRun          bool
 	AutoWeaponSwitch   bool
 	ThingRenderMode    string
@@ -40,6 +42,8 @@ func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort 
 	next.AutoDetail = s.AutoDetail
 	next.MouseLook = s.MouseLook
 	next.MouseInvert = s.MouseInvert
+	next.DisableCameraBob = s.DisableCameraBob
+	next.DisableWeaponBob = s.DisableWeaponBob
 	next.MusicVolume = ClampVolume(s.MusicVolume)
 	next.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)
 	next.SFXVolume = ClampVolume(s.SFXVolume)

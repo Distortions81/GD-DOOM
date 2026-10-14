@@ -64,6 +64,47 @@ var frontendOptionsTextLabels = [...]string{
 
 var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
 
+func frontendOptionRows(modern bool) []int {
+	if modern {
+		return []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	}
+	return frontendOptionsSelectableRows[:]
+}
+
+func bobOptionLabel(disabled bool) string {
+	if disabled {
+		return "OFF"
+	}
+	return "ON"
+}
+
+func (g *game) toggleBobOption(row int) {
+	if !g.opts.SourcePortMode {
+		return
+	}
+	switch row {
+	case 8:
+		g.opts.DisableCameraBob = !g.opts.DisableCameraBob
+	case 9:
+		g.opts.DisableWeaponBob = !g.opts.DisableWeaponBob
+	default:
+		return
+	}
+	g.publishRuntimeSettingsIfChanged()
+}
+
+func (g *game) optionsMenuLabels() ([]string, []string, int) {
+	labels := append([]string(nil), frontendOptionsTextLabels[:]...)
+	values := []string{bobOptionLabel(!g.hudMessagesEnabled), g.screenSizeLabel(), g.hudScaleLabel(), bobOptionLabel(g.opts.NoFPS), formatFloat2(g.opts.MouseLookSpeed), "OPEN", "OPEN", "OPEN"}
+	spacing := 16
+	if g.opts.SourcePortMode {
+		labels = append(labels, "CAMERA BOB", "WEAPON BOB")
+		values = append(values, bobOptionLabel(g.opts.DisableCameraBob), bobOptionLabel(g.opts.DisableWeaponBob))
+		spacing = 14
+	}
+	return labels, values, spacing
+}
+
 func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (session.Runtime, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
 		Base: func() *sessionGame {

@@ -277,6 +277,8 @@ type Options struct {
 	ShowAllItems                 bool
 	MouseLook                    bool
 	MouseInvert                  bool
+	DisableCameraBob             bool
+	DisableWeaponBob             bool
 	SmoothCameraYaw              bool
 	MouseLookSpeed               float64
 	KeyboardTurnSpeed            float64
@@ -335,6 +337,7 @@ type Options struct {
 	FlatTextureAnimSequences     map[string][]string
 	BootSplash                   media.WallTexture
 	DoomPaletteRGBA              []byte
+	DoomPalettesRGBA             [][]byte
 	DoomColorMap                 []byte
 	DoomColorMapRows             int
 	MenuPatchBank                map[string]media.WallTexture

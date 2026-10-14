@@ -107,6 +107,8 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.PCSpeakerVolume = floatPtr(s.PCSpeakerVolume)
 	cfg.MouseLook = boolPtr(s.MouseLook)
 	cfg.MouseInvert = boolPtr(s.MouseInvert)
+	cfg.DisableCameraBob = boolPtr(s.DisableCameraBob)
+	cfg.DisableWeaponBob = boolPtr(s.DisableWeaponBob)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
 	cfg.CRTEffect = boolPtr(s.CRTEffect)

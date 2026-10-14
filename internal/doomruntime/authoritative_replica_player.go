@@ -29,6 +29,8 @@ type authorityReplicaPlayer struct {
 	WeaponFlashState            weaponPspriteState
 	WeaponFlashTics             int
 	WeaponPSpriteY              int
+	WeaponPose                  weaponPresentationPose
+	PrevWeaponPose              weaponPresentationPose
 	Stats                       playerStats
 	PlayerKillCount             int
 	PlayerItemCount             int
@@ -97,6 +99,8 @@ func captureReplicaPlayer(p authoritativePlayerState) authorityReplicaPlayer {
 		WeaponFlashState:            p.weaponFlashState,
 		WeaponFlashTics:             p.weaponFlashTics,
 		WeaponPSpriteY:              p.weaponPSpriteY,
+		WeaponPose:                  p.weaponPose,
+		PrevWeaponPose:              p.prevWeaponPose,
 		Stats:                       p.stats,
 		PlayerKillCount:             p.playerKillCount,
 		PlayerItemCount:             p.playerItemCount,
@@ -159,6 +163,8 @@ func restoreReplicaPlayer(p authorityReplicaPlayer) authoritativePlayerState {
 		weaponFlashState:            p.WeaponFlashState,
 		weaponFlashTics:             p.WeaponFlashTics,
 		weaponPSpriteY:              p.WeaponPSpriteY,
+		weaponPose:                  p.WeaponPose,
+		prevWeaponPose:              p.PrevWeaponPose,
 		stats:                       p.Stats,
 		playerKillCount:             p.PlayerKillCount,
 		playerItemCount:             p.PlayerItemCount,

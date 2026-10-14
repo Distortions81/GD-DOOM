@@ -35,14 +35,15 @@ type authorityScoreState struct {
 }
 
 type authorityRulesState struct {
-	Config      AuthorityRules
-	Scores      [5]authorityScoreState
-	SpawnCursor int
-	StartedTic  uint32
-	Ended       bool
-	EndReason   string
-	WinnerID    byte
-	TeamKeys    mapdata.KeyRing
+	Config        AuthorityRules
+	Scores        [5]authorityScoreState
+	SpawnCursor   int
+	StartedTic    uint32
+	Ended         bool
+	EndReason     string
+	WinnerID      byte
+	TeamKeys      mapdata.KeyRing
+	TeamSkullKeys [3]bool
 }
 
 type AuthorityScore struct {
@@ -169,8 +170,12 @@ func (a *Authority) finishAuthoritativeRulesTic() {
 
 func (a *Authority) shareAuthoritativeCoopKeys() {
 	keys := &a.g.authorityRules.TeamKeys
+	skulls := &a.g.authorityRules.TeamSkullKeys
 	for _, p := range a.players {
 		if p != nil {
+			for i := range skulls {
+				skulls[i] = skulls[i] || p.inventory.SkullKeys[i]
+			}
 			keys.Blue = keys.Blue || p.inventory.BlueKey
 			keys.Red = keys.Red || p.inventory.RedKey
 			keys.Yellow = keys.Yellow || p.inventory.YellowKey
@@ -178,6 +183,7 @@ func (a *Authority) shareAuthoritativeCoopKeys() {
 	}
 	for _, p := range a.players {
 		if p != nil {
+			p.inventory.SkullKeys = *skulls
 			p.inventory.BlueKey, p.inventory.RedKey, p.inventory.YellowKey = keys.Blue, keys.Red, keys.Yellow
 		}
 	}

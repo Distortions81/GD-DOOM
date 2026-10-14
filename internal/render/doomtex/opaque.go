@@ -85,3 +85,21 @@ func (s *Set) BuildTextureOpaqueIndexed(name string) ([]byte, error) {
 	}
 	return out, nil
 }
+
+// BuildPatchMaskedPosts keeps adjacent posts distinct. Their individual origins
+// matter because classic's sprite column reader masks the post-relative row.
+func (s *Set) BuildPatchMaskedPosts(name string) [][]media.WallPost {
+	p, err := s.loadPatch(name)
+	if err != nil {
+		return nil
+	}
+	out := make([][]media.WallPost, p.width)
+	for x := range out {
+		for _, post := range p.columnPosts(x) {
+			data := make([]byte, 128)
+			copy(data, post.pixels[:min(128, cap(post.pixels))])
+			out[x] = append(out[x], media.WallPost{Top: post.top, Length: len(post.pixels), Indexed: data})
+		}
+	}
+	return out
+}

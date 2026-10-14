@@ -29,6 +29,10 @@ Multiplayer uses GDMP protocol version 3 with binary roster updates and the
 binary-only `gd-doom-authority-dev-3` simulation. The simulation revision adds
 vanilla repeatable fast floor raises used by Freedoom. Update `gdserver`,
 `gdlobby`, the deployment probe and browser assets together, and restart the lobby to replace existing room workers.
+The v0.1.8 presentation release also changes the authoritative snapshot schema
+to retain weapon poses and skull-key variants. All clients and room workers must
+use this build together; save version 28 still reads versions 26–27 and keyframe
+version 15 still reads versions 13–14.
 Players with an older browser build must reload before joining. The release also
 includes adaptive browser audio buffering and default deathmatch map progression
 when no explicit rotation is configured.

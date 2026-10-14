@@ -25,6 +25,7 @@ import (
 	"gddoom/internal/render/mapview/presenter"
 	"gddoom/internal/render/scene"
 	"gddoom/internal/runtimecfg"
+	"gddoom/internal/sessionflow"
 
 	"github.com/dustin/go-humanize"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -577,6 +578,8 @@ type game struct {
 	prevPY        int64
 	prevPrevAngle uint32
 	prevAngle     uint32
+	cameraBob     cameraBobFrame
+	prevCameraBob cameraBobFrame
 
 	renderPX             float64
 	renderPY             float64
@@ -713,6 +716,15 @@ type game struct {
 	weaponFlashState           weaponPspriteState
 	weaponFlashTics            int
 	weaponPSpriteY             int
+	weaponPose, prevWeaponPose weaponPresentationPose
+	weaponClassicImage         *ebiten.Image
+	paletteFlash               paletteFlashState
+	weaponClassicPixels        []byte
+	weaponFuzzPixels           []byte
+	weaponFuzzLogical          []byte
+	weaponFuzzPalette          map[uint32]byte
+	weaponFuzzColors           []byte
+	weaponFuzzGamma            int
 	stats                      playerStats
 	worldTic                   int
 	levelKillsTotal            int
@@ -1137,6 +1149,9 @@ func (g *game) playerInfraredBright() bool {
 	if g == nil {
 		return false
 	}
+	if g.inventory.InvulnTics > 0 {
+		return false
+	}
 	tics := g.inventory.LightAmpTics
 	return tics > 4*32 || (tics&8) != 0
 }
@@ -1146,6 +1161,9 @@ func (g *game) playerFixedColormapRow() (int, bool) {
 		return 0, false
 	}
 	active := g.playerPowerupInvulnerabilityVisualActive()
+	if !active && g.playerInfraredBright() && doomColormapRowCount() > 1 {
+		return 1, true
+	}
 	if !active || doomColormapRowCount() <= doomNumColorMaps {
 		return 0, false
 	}
@@ -2579,6 +2597,8 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		HUDMessages:        g.hudMessagesEnabled,
 		MouseLook:          g.opts.MouseLook,
 		MouseInvert:        g.opts.MouseInvert,
+		DisableCameraBob:   g.opts.DisableCameraBob,
+		DisableWeaponBob:   g.opts.DisableWeaponBob,
 		AlwaysRun:          g.alwaysRun,
 		AutoWeaponSwitch:   g.autoWeaponSwitch,
 		ThingRenderMode:    g.opts.SourcePortThingRenderMode,
@@ -4051,10 +4071,10 @@ func (g *game) tickPauseMenu() {
 	switch g.pauseMenuMode {
 	case pauseMenuModeOptions:
 		if g.keyJustPressed(ebiten.KeyArrowUp) {
-			g.pauseMenuOptionsOn = frontendNextSelectableOptionRow(g.pauseMenuOptionsOn, -1)
+			g.pauseMenuOptionsOn = sessionflow.NextSelectableOptionRow(frontendOptionRows(g.opts.SourcePortMode), g.pauseMenuOptionsOn, -1)
 		}
 		if g.keyJustPressed(ebiten.KeyArrowDown) {
-			g.pauseMenuOptionsOn = frontendNextSelectableOptionRow(g.pauseMenuOptionsOn, 1)
+			g.pauseMenuOptionsOn = sessionflow.NextSelectableOptionRow(frontendOptionRows(g.opts.SourcePortMode), g.pauseMenuOptionsOn, 1)
 		}
 		if g.keyJustPressed(ebiten.KeyArrowLeft) {
 			g.adjustPauseOption(-1)
@@ -4247,6 +4267,8 @@ func (g *game) adjustPauseOption(dir int) {
 		return
 	}
 	switch g.pauseMenuOptionsOn {
+	case 8, 9:
+		g.toggleBobOption(g.pauseMenuOptionsOn)
 	case 0:
 		g.hudMessagesEnabled = !g.hudMessagesEnabled
 		g.publishRuntimeSettingsIfChanged()
@@ -4273,6 +4295,8 @@ func (g *game) cyclePauseOption() {
 		return
 	}
 	switch g.pauseMenuOptionsOn {
+	case 8, 9:
+		g.toggleBobOption(g.pauseMenuOptionsOn)
 	case 0:
 		g.hudMessagesEnabled = !g.hudMessagesEnabled
 		g.publishRuntimeSettingsIfChanged()
@@ -7387,12 +7411,6 @@ func (g *game) writeFuzzPixel(x, y, i int) {
 		delta := doomFuzzOffsets[g.spectreFuzzPos%len(doomFuzzOffsets)]
 		g.spectreFuzzPos++
 		srcY := y + delta
-		if srcY < 1 {
-			srcY = 1
-		}
-		if srcY >= g.viewH-1 {
-			srcY = g.viewH - 2
-		}
 		srcI := srcY*g.viewW + x
 		if srcI < 0 || srcI >= len(g.wallPix32) {
 			srcI = i
@@ -13554,7 +13572,7 @@ func normalizeDeg360(deg float64) float64 {
 }
 
 func (g *game) playerEyeZ() float64 {
-	z := g.playerBaseEyeZ()
+	z := g.renderCameraEyeZ()
 	if g.opts.SourcePortMode && g.clientPrediction != nil {
 		z += g.clientPrediction.renderEyeOffset
 	}
@@ -13641,6 +13659,9 @@ func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {
+	if g.drawPaletteFlash(screen) {
+		return
+	}
 	hud.DrawFlashOverlay(
 		screen,
 		g.viewW,
@@ -19687,6 +19708,7 @@ func isSkyFlatName(name string) bool {
 
 func (g *game) capturePrevState() {
 	g.State.CapturePrev()
+	g.prevCameraBob = g.cameraBobRenderFrame()
 	g.prevPX = g.p.x
 	g.prevPY = g.p.y
 	g.prevPrevAngle = g.prevAngle
@@ -19698,6 +19720,8 @@ func (g *game) capturePrevState() {
 }
 
 func (g *game) syncRenderState() {
+	// Camera cuts (load, restart, reconciliation) discard the old bob curve.
+	g.cameraBob = cameraBobFrame{}
 	g.capturePrevState()
 	g.State.SyncRender()
 	g.renderPX = float64(g.p.x) / fracUnit
@@ -19721,6 +19745,7 @@ func (g *game) capturePrevWeaponRenderState() {
 	g.prevWeaponState = g.weaponState
 	g.prevWeaponFlashState = g.weaponFlashState
 	g.prevWeaponPSpriteY = g.weaponPSpriteY
+	g.prevWeaponPose = g.weaponPose
 }
 
 func (g *game) capturePrevSectorLightState() {
@@ -20986,38 +21011,18 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 
 	switch g.pauseMenuMode {
 	case pauseMenuModeOptions:
-		const menuX = 36
-		const menuY = 37
-		const lineHeight = 16
+		const menuX, menuY = 36, 37
 		drawPatch("M_OPTTTL", menuX, 15)
 		backLabel := "BACK: ESC"
 		backX := 320 - 8 - int(math.Ceil(float64(g.huTextWidth(backLabel))*1.2))
 		drawText(backLabel, float64(backX), 17, 1.2)
-		drawText("MESSAGES", menuX, menuY+0*lineHeight+2, 1.2)
-		drawText("STATUS BAR MODE", menuX, menuY+1*lineHeight+2, 1.2)
-		msgLabel := "OFF"
-		if g.hudMessagesEnabled {
-			msgLabel = "ON"
+		labels, values, spacing := g.optionsMenuLabels()
+		for i, label := range labels {
+			y := float64(menuY + i*spacing + 2)
+			drawText(label, menuX, y, 1.2)
+			drawText(values[i], menuX+215, y, 1.2)
 		}
-		drawText(msgLabel, menuX+215, menuY+0*lineHeight+2, 1.2)
-		drawText(g.screenSizeLabel(), menuX+215, menuY+1*lineHeight+2, 1.2)
-		drawText("HUD SIZE", menuX, menuY+2*lineHeight+2, 1.2)
-		drawText(g.hudScaleLabel(), menuX+215, menuY+2*lineHeight+2, 1.2)
-		drawText("FPS", menuX, menuY+3*lineHeight+2, 1.2)
-		fpsLabel := "OFF"
-		if !g.opts.NoFPS {
-			fpsLabel = "ON"
-		}
-		drawText(fpsLabel, menuX+215, menuY+3*lineHeight+2, 1.2)
-		drawText("MOUSE SENSITIVITY", menuX, menuY+4*lineHeight+2, 1.2)
-		drawText(formatFloat2(g.opts.MouseLookSpeed), menuX+215, menuY+4*lineHeight+2, 1.2)
-		drawText("SOUND OPTIONS", menuX, menuY+5*lineHeight+2, 1.2)
-		drawText("OPEN", menuX+215, menuY+5*lineHeight+2, 1.2)
-		drawText("VOICE OPTIONS", menuX, menuY+6*lineHeight+2, 1.2)
-		drawText("OPEN", menuX+215, menuY+6*lineHeight+2, 1.2)
-		drawText("KEY BINDINGS", menuX, menuY+7*lineHeight+2, 1.2)
-		drawText("OPEN", menuX+215, menuY+7*lineHeight+2, 1.2)
-		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*lineHeight)
+		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*spacing)
 	case pauseMenuModeSound:
 		const menuX = 80
 		const menuY = 64
