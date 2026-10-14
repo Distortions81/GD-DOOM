@@ -153,6 +153,9 @@ func TestDamagePlayerFrom_FatalHitConsumesDoomDeathTicRandom(t *testing.T) {
 		stats:            playerStats{Health: 5},
 		playerMobjHealth: 5,
 		soundQueue:       make([]soundEvent, 0, 2),
+		inventory:        playerInventory{ReadyWeapon: weaponPistol},
+		weaponState:      weaponStatePistolAtk1,
+		weaponStateTics:  1,
 	}
 	_, before := doomrand.State()
 	g.damagePlayerFrom(12, "ouch", 0, 0, false, -1)
@@ -162,6 +165,9 @@ func TestDamagePlayerFrom_FatalHitConsumesDoomDeathTicRandom(t *testing.T) {
 	}
 	if !g.isDead {
 		t.Fatal("player should be dead after fatal hit")
+	}
+	if g.weaponState != weaponStatePistolDown {
+		t.Fatalf("weapon state=%d want immediate lowering after death", g.weaponState)
 	}
 	if g.playerMobjState != 0 || g.playerMobjTics != 0 {
 		t.Fatalf("player mobj state/tics=%d/%d want=0/0 on fatal hit", g.playerMobjState, g.playerMobjTics)
@@ -494,11 +500,12 @@ func TestDamagePlayerFromAppliesThrustFromAttacker(t *testing.T) {
 	}
 }
 
-func TestPlayerDeathViewFallsTowardFloor(t *testing.T) {
+func TestPlayerDeathViewFallsToSixUnitsAboveBody(t *testing.T) {
 	g := &game{
 		p: player{
 			z:      0,
 			floorz: 0,
+			ceilz:  128 * fracUnit,
 		},
 		playerViewZ: 41 * fracUnit,
 		isDead:      true,
@@ -510,8 +517,8 @@ func TestPlayerDeathViewFallsTowardFloor(t *testing.T) {
 	for i := 0; i < 80; i++ {
 		g.tickPlayerViewHeight()
 	}
-	if got := g.playerViewZ; got != 0 {
-		t.Fatalf("view z=%d want=%d at death floor target", got, 0)
+	if got := g.playerViewZ; got != 6*fracUnit {
+		t.Fatalf("view z=%d want=%d at death view target", got, 6*fracUnit)
 	}
 }
 

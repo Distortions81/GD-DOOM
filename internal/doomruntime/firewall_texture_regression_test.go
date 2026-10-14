@@ -79,6 +79,12 @@ func buildWallTextureBankForTest(t *testing.T, ts *doomtex.Set) map[string]WallT
 			Width:           w,
 			Height:          h,
 		}
+		if opaque, err := ts.BuildTextureOpaqueIndexed(name); err == nil {
+			tex := bank[name]
+			tex.SetClassicOpaque(opaque)
+			tex.ClassicMasked = ts.BuildTextureMaskedPosts(name)
+			bank[name] = tex
+		}
 	}
 	return bank
 }

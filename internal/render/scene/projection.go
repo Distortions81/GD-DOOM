@@ -51,10 +51,10 @@ type MaskedMidSeg struct {
 }
 
 func NewWallPrepassWorldInput(x1w, y1w, x2w, y2w, uBase, segLen float64, frontSide int) WallPrepassWorldInput {
+	// SEGS endpoints already follow the viewed sidedef's direction. Doom adds
+	// curline->offset to the distance along that directed seg on either side.
+	// Reversing U again for side 1 mirrors textures and breaks split-seg seams.
 	u2 := uBase + segLen
-	if frontSide == 1 {
-		u2 = uBase - segLen
-	}
 	return WallPrepassWorldInput{
 		X1W: x1w, Y1W: y1w, U1: uBase,
 		X2W: x2w, Y2W: y2w, U2: u2,

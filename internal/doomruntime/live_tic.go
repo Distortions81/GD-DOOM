@@ -128,6 +128,7 @@ func (g *game) respawnDemoPlayer() {
 	}
 	reloaded := newGameWithRNG(cloneMapForRestart(template), reloadOpts, false)
 	reloaded.opts.DemoTracePath = old.opts.DemoTracePath
+	reloaded.setGammaLevel(old.gammaLevel)
 
 	reloaded.inheritDemoPlayback(&old)
 	if old.snd != nil && old.snd.nativePlay != nil {

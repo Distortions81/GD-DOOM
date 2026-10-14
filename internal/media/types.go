@@ -1,6 +1,12 @@
 package media
 
+import "bytes"
+
 type WallTexture struct {
+	// Classic's opaque column reader wraps at 128 rows and directly reads
+	// patch bytes; masked posts keep the normal decoded texture below.
+	ClassicOpaque   *WallTexture
+	ClassicMasked   [][]WallPost
 	RGBA            []byte
 	RGBA32          []uint32
 	ColMajor        []uint32
@@ -18,6 +24,28 @@ type WallTexture struct {
 	OffsetX         int
 	OffsetY         int
 	MaskedMidClass  uint8
+}
+
+type WallPost struct {
+	Top, Length int
+	// 128 bounded source bytes for classic's post-relative row mask.
+	Indexed []byte
+}
+
+func (t *WallTexture) SetClassicOpaque(indexed []byte) {
+	if t.Width <= 0 || len(indexed) != t.Width*128 {
+		return
+	}
+	if t.Height == 128 && bytes.Equal(indexed, t.Indexed) {
+		return
+	}
+	col := make([]byte, len(indexed))
+	for x := 0; x < t.Width; x++ {
+		for y := 0; y < 128; y++ {
+			col[x*128+y] = indexed[y*t.Width+x]
+		}
+	}
+	t.ClassicOpaque = &WallTexture{Width: t.Width, Height: 128, Indexed: indexed, IndexedColMajor: col}
 }
 
 func PackOpaqueRun(start, end int) uint32 {

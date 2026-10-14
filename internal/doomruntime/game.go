@@ -319,9 +319,12 @@ const (
 )
 
 type maskedMidSeg struct {
+	classic                   classicWallSampler
+	classicTop, classicBottom []int16
 	scene.MaskedMidSeg
 	tex              wallTextureBlendSample
 	light            int16
+	lightBias        int
 	occlusionY0      int16
 	occlusionY1      int16
 	occlusionDepthQ  uint16
@@ -429,6 +432,9 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	wallRangeTrace           func(seg, x1, x2 int, sampler classicWallSampler)
+	maskedClassicClipScratch []int16
+
 	meshExperiment    *experimentalMeshRenderer
 	gpu               *gpuRenderer
 	gpuFrame          *gpuRenderer
@@ -1184,6 +1190,7 @@ type mapTexDiagStats struct {
 }
 
 type wallSegPrepass struct {
+	classic         classicWallSampler
 	segIdx          int
 	ld              mapdata.Linedef
 	frontSideDefIdx int
@@ -1191,6 +1198,7 @@ type wallSegPrepass struct {
 }
 
 type wallSegStatic struct {
+	subSectorIdx      int
 	valid             bool
 	ld                mapdata.Linedef
 	frontSide         int
@@ -5078,6 +5086,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.addRenderStageDur(renderStageWallPrepass, time.Since(stageStart))
 	maskedMids := g.ensureMaskedMidSegScratch(len(prepass))
 	stageStart = time.Now()
+	classicSubsector := -int(^uint(0) >> 1)
+	var classicFloor, classicCeil *plane3DVisplane
 	for _, pp := range prepass {
 		si := pp.segIdx
 		if si < 0 || si >= len(g.m.Segs) {
@@ -5091,6 +5101,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 		ld := pp.ld
 		wallLightBias := doomWallLightBias(&ld, g.m.Vertexes)
+		if !g.opts.SourcePortMode {
+			seg := g.m.Segs[si]
+			axis := mapdata.Linedef{V1: seg.StartVertex, V2: seg.EndVertex}
+			wallLightBias = doomWallLightBias(&axis, g.m.Vertexes)
+		}
 		var frontSideDef *mapdata.Sidedef
 		if pp.frontSideDefIdx >= 0 && pp.frontSideDefIdx < len(g.m.Sidedefs) {
 			frontSideDef = &g.m.Sidedefs[pp.frontSideDefIdx]
@@ -5099,7 +5114,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if front == nil {
 			continue
 		}
-		frontIdx, backIdx := g.segSectorIndices(si)
+		frontIdx, backIdx := g.wallRenderSectorIndices(si)
+		front = &g.m.Sectors[frontIdx]
 		frontLight := g.sectorLightForRender(frontIdx, front)
 		frontFloor := float64(front.FloorHeight)
 		frontCeil := float64(front.CeilingHeight)
@@ -5116,6 +5132,26 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				backFloor = float64(fz) / fracUnit
 				backCeil = float64(cz) / fracUnit
 			}
+		}
+		if planesEnabled && !g.opts.SourcePortMode {
+			ss := g.segSubsectorIndex(si)
+			if ss != classicSubsector {
+				classicSubsector = ss
+				classicFloor, classicCeil = nil, nil
+				if frontFloor < eyeZ {
+					classicFloor = g.findClassicPlane(g.plane3DKeyForSectorCached(frontIdx, front, true), &planeOrder)
+				}
+				if frontCeil > eyeZ || isSkyFlatName(front.CeilingPic) {
+					classicCeil = g.findClassicPlane(g.plane3DKeyForSectorCached(frontIdx, front, false), &planeOrder)
+				}
+			}
+		}
+		if !g.opts.SourcePortMode && back != nil && frontFloor == backFloor && frontCeil == backCeil &&
+			front.FloorPic == back.FloorPic && front.CeilingPic == back.CeilingPic &&
+			frontLight == g.sectorLightForRender(backIdx, back) && (frontSideDef == nil || frontSideDef.Mid == "" || frontSideDef.Mid == "-") {
+			// R_AddLine ignores identical-sector trigger lines. Processing one
+			// can change the current visplane and later sky/flat coverage.
+			continue
 		}
 		ws := g.classifyWallPortalCached(frontIdx, front, back, backIdx, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 		worldTop := ws.WorldTop
@@ -5142,7 +5178,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		midTexMid := 0.0
 		topTexMid := 0.0
 		botTexMid := 0.0
-		texUOffset := wallSpecialScrollXOffset(ld.Special, g.worldTic)
+		texUOffset := 0.0
+		// P_UpdateSpecials advances only sidenum[0], including when a seg
+		// views the other side of a two-sided scrolling linedef.
+		if pp.frontSideDefIdx == int(ld.SideNum[0]) {
+			texUOffset = wallSpecialScrollXOffset(ld.Special, g.worldTic)
+		}
 		if frontSideDef != nil {
 			texUOffset += float64(frontSideDef.TextureOffset)
 			rowOffset := float64(frontSideDef.RowOffset)
@@ -5179,6 +5220,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				if hasBotTex && botTex.from != nil {
 					if (ld.Flags & mlDontPegBottom) != 0 {
 						botTexMid = frontCeil - eyeZ
+						if !g.opts.SourcePortMode {
+							// R_StoreWallRange anchors unpegged lower walls to
+							// worldtop after the shared-sky height substitution.
+							botTexMid = worldTop
+						}
 					} else if back != nil {
 						botTexMid = backFloor - eyeZ
 					} else {
@@ -5191,7 +5237,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 		var floorPlane *plane3DVisplane
 		var ceilPlane *plane3DVisplane
-		if planesEnabled {
+		if planesEnabled && g.opts.SourcePortMode {
 			var created bool
 			floorPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSectorCached(frontIdx, front, true), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 			if created && floorPlane != nil {
@@ -5204,7 +5250,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 
 		visibleRanges := g.solidClipScratch[:0]
-		if solidWall && g.wallSpanClipEnabled() {
+		if (solidWall || !g.opts.SourcePortMode) && g.wallSpanClipEnabled() {
 			visibleRanges = clipRangeAgainstSolidSpans(pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, solid, visibleRanges)
 		} else {
 			visibleRanges = append(visibleRanges, solidSpan{L: pp.prepass.Projection.MinX, R: pp.prepass.Projection.MaxX})
@@ -5214,7 +5260,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.logWallCull(si, "OCCLUDED", pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 			continue
 		}
-		if solidWall && g.wallSliceOcclusionEnabled() {
+		// Classic still processes walls whose vertical face is hidden: their
+		// floor/ceiling ranges can remain visible, and they update clip state
+		// and the current visplane. Skipping them changes later span origins.
+		if g.opts.SourcePortMode && solidWall && g.wallSliceOcclusionEnabled() {
 			allOcc := true
 			for _, vis := range visibleRanges {
 				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.L, vis.R, worldTop, worldBottom, focalV)
@@ -5229,15 +5278,31 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 		for _, vis := range visibleRanges {
+			if planesEnabled && !g.opts.SourcePortMode {
+				if markFloor {
+					classicFloor = g.checkClassicPlane(classicFloor, vis.L, vis.R, &planeOrder)
+				}
+				if markCeiling {
+					classicCeil = g.checkClassicPlane(classicCeil, vis.L, vis.R, &planeOrder)
+				}
+				floorPlane, ceilPlane = classicFloor, classicCeil
+			}
 			proj := wallSegPrepassProjection(pp)
+			classic := pp.classic.forRange(vis.L, vis.R)
+			if g.wallRangeTrace != nil {
+				trace := classic
+				trace.offset += floorFixed(texUOffset)
+				g.wallRangeTrace(si, vis.L, vis.R, trace)
+			}
 			for x := vis.L; x <= vis.R; x++ {
 				f, texU, ok := scene.ProjectedWallSampleAtX(proj, x)
 				if !ok {
 					continue
 				}
+				f, texU = classic.sample(x, f, texU)
 				texU += texUOffset
 
-				yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focalV))
+				yl := classic.edgeY(x, g.viewH, worldTop, focalV, f, true)
 				if yl < ceilingClip[x]+1 {
 					yl = ceilingClip[x] + 1
 				}
@@ -5250,7 +5315,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					markPlane3DColumnRange(ceilPlane, x, top, bottom, ceilingClip, floorClip)
 				}
 
-				yh := int(math.Floor(float64(g.viewH)/2 - (worldBottom/f)*focalV))
+				yh := classic.edgeY(x, g.viewH, worldBottom, focalV, f, false)
 				if yh >= floorClip[x] {
 					yh = floorClip[x] - 1
 				}
@@ -5310,8 +5375,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					floorClip[x] = -1
 					continue
 				}
-				if topWall {
-					mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focalV))
+				if topWall && (hasTopTex || g.opts.SourcePortMode) {
+					mid := classic.edgeY(x, g.viewH, worldHigh, focalV, f, false)
 					if mid >= floorClip[x] {
 						mid = floorClip[x] - 1
 					}
@@ -5335,8 +5400,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					ceilingClip[x] = yl - 1
 				}
 
-				if bottomWall {
-					mid := int(math.Ceil(float64(g.viewH)/2 - (worldLow/f)*focalV))
+				if bottomWall && (hasBotTex || g.opts.SourcePortMode) {
+					mid := classic.edgeY(x, g.viewH, worldLow, focalV, f, true)
 					if mid <= ceilingClip[x] {
 						mid = ceilingClip[x] + 1
 					}
@@ -5389,7 +5454,17 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				if occOK && g.wallClipBBoxFullyOccludedByWallsOnly(vis.L, vis.R, occY0, occY1, encodeDepthQ(centerDepth)) {
 					continue
 				}
+				var classicTop, classicBottom []int16
+				if !g.opts.SourcePortMode {
+					classicTop, classicBottom = g.classicMaskedClipBuffers(vis.R - vis.L + 1)
+					for x := vis.L; x <= vis.R; x++ {
+						classicTop[x-vis.L] = int16(ceilingClip[x] + 1)
+						classicBottom[x-vis.L] = int16(floorClip[x] - 1)
+					}
+				}
 				maskedMids = append(maskedMids, maskedMidSeg{
+					classic:    pp.classic.forRange(vis.L, vis.R),
+					classicTop: classicTop, classicBottom: classicBottom,
 					MaskedMidSeg: scene.MaskedMidSeg{
 						Dist:       dist,
 						X0:         vis.L,
@@ -5402,6 +5477,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					},
 					tex:              midTex,
 					light:            frontLight,
+					lightBias:        wallLightBias,
 					occlusionY0:      int16(occY0),
 					occlusionY1:      int16(occY1),
 					occlusionDepthQ:  encodeDepthQ(centerDepth),
@@ -5464,7 +5540,7 @@ func (g *game) sectorLightForRender(secIdx int, sec *mapdata.Sector) int16 {
 }
 
 func (g *game) sectorsLightDifferForRender(frontSectorIdx, backSectorIdx int, front, back *mapdata.Sector) bool {
-	if !doomSectorLighting {
+	if !doomSectorLighting && g != nil && g.opts.SourcePortMode {
 		return false
 	}
 	return g.sectorLightForRender(frontSectorIdx, front) != g.sectorLightForRender(backSectorIdx, back)
@@ -5484,7 +5560,7 @@ func (g *game) classifyWallPortalCached(frontIdx int, front, back *mapdata.Secto
 		FrontCeilingFlat:   normalizeFlatName(front.CeilingPic),
 		FrontLight:         g.sectorLightForRender(frontIdx, front),
 		BackExists:         back != nil,
-		DoomSectorLighting: doomSectorLighting,
+		DoomSectorLighting: doomSectorLighting || g == nil || !g.opts.SourcePortMode,
 		IsFrontCeilingSky:  isSkyFlatName(front.CeilingPic),
 	}
 	if back != nil {
@@ -5493,7 +5569,14 @@ func (g *game) classifyWallPortalCached(frontIdx int, front, back *mapdata.Secto
 		in.BackLight = g.sectorLightForRender(backIdx, back)
 		in.IsBackCeilingSky = isSkyFlatName(back.CeilingPic)
 	}
-	return scene.ClassifyWallPortal(in)
+	state := scene.ClassifyWallPortal(in)
+	if (g == nil || !g.opts.SourcePortMode) && in.BackExists && in.IsFrontCeilingSky && in.IsBackCeilingSky &&
+		backCeil > frontFloor && backFloor < frontCeil {
+		// R_StoreWallRange substitutes the back sky height before deciding
+		// whether to mark the ceiling; a sky height change alone is not a seam.
+		state.MarkCeiling = in.DoomSectorLighting && in.FrontLight != in.BackLight
+	}
+	return state
 }
 
 func (g *game) lowDetailMode() bool {
@@ -5562,7 +5645,7 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 			}
 		}
 	}
-	if !floor && isSkyFlatName(pic) {
+	if (!floor || !g.opts.SourcePortMode) && isSkyFlatName(pic) {
 		key.sky = true
 		key.height = 0
 		key.light = 0
@@ -5598,7 +5681,11 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	shadeMul := sectorDistanceShadeMul(sectorLight, depth, doomLightingEnabled)
 	doomRow := 0
 	if doomLightingEnabled {
-		doomRow = doomWallLightRow(sectorLight, lightBias, depth, focal)
+		if g.opts.SourcePortMode {
+			doomRow = doomClampColorMapRow(int(doomWallLightRowF(sectorLight, lightBias, depth, focal)))
+		} else {
+			doomRow = doomWallLightRow(sectorLight, lightBias, depth, float64(g.viewW)/2)
+		}
 		if !doomColormapEnabled {
 			if g != nil && !g.opts.SourcePortMode {
 				shadeMul = doomShadeMulFromRow(doomRow)
@@ -5814,6 +5901,9 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 	}
 	g.frameSkyTex32 = skyTex32
 	g.frameSkyIndexed = skyTex.Indexed
+	if !g.opts.SourcePortMode && skyTex.ClassicOpaque != nil {
+		g.frameSkyIndexed = skyTex.ClassicOpaque.Indexed
+	}
 	g.frameSkyTexW = skyTex.Width
 	g.frameSkyColU = skyColU
 	g.frameSkyRowV = skyRowV
@@ -5822,7 +5912,7 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 
 func (g *game) frameSkyPixel(i int) uint32 {
 	if !g.opts.SourcePortMode {
-		if len(g.frameSkyIndexed) == len(g.frameSkyTex32) {
+		if i >= 0 && i < len(g.frameSkyIndexed) {
 			return shadePaletteIndexPacked(g.frameSkyIndexed[i], 256)
 		}
 		if index, ok := packedColorPaletteIndex(g.frameSkyTex32[i]); ok {
@@ -6524,6 +6614,9 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	if tex.from == nil {
 		return
 	}
+	if !g.opts.SourcePortMode && tex.from.ClassicOpaque != nil {
+		tex.from = tex.from.ClassicOpaque
+	}
 	base := tex.from
 	if g.gpuFrame != nil {
 		if !doomColormapEnabled && shadeMul <= 0 {
@@ -6556,11 +6649,7 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	} else {
 		tx = wrapIndex(txi, base.Width)
 	}
-	rowScale := depth / focal
-	cy := float64(g.viewH) * 0.5
-	texV := texMid - ((cy - (float64(y0) + 0.5)) * rowScale)
-	texVFixed := floorFixed(texV)
-	texVStepFixed := floorFixed(rowScale)
+	texVFixed, texVStepFixed := g.wallColumnTextureStep(y0, texMid, depth, focal)
 	pow2H := base.Height > 0 && (base.Height&(base.Height-1)) == 0
 	hmask := base.Height - 1
 	colBase := tx * base.Height
@@ -6632,6 +6721,10 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	if y0 > y1 || base.Width <= 0 || base.Height <= 0 {
 		return
 	}
+	if !g.opts.SourcePortMode && len(base.ClassicMasked) == base.Width {
+		g.drawClassicMaskedColumn(x, y0, y1, depth, texU, texMid, focal, base, shadeMul, doomRow)
+		return
+	}
 	if g.gpuFrame != nil {
 		g.gpuWallColumn(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul, doomRow, true)
 		return
@@ -6658,18 +6751,16 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	} else {
 		tx = wrapIndex(txi, base.Width)
 	}
-	rowScale := depth / focal
-	cy := float64(g.viewH) * 0.5
-	texV := texMid - ((cy - (float64(y0) + 0.5)) * rowScale)
-	texVFixed := floorFixed(texV)
-	texVStepFixed := floorFixed(rowScale)
+	texVFixed, texVStepFixed := g.wallColumnTextureStep(y0, texMid, depth, focal)
 	depthQ := encodeDepthQ(depth)
-	if len(base.OpaqueColumnTop) == base.Width && len(base.OpaqueColumnBot) == base.Width {
-		var ok bool
-		y0, y1, texVFixed, ok = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, base.Height, int(base.OpaqueColumnTop[tx]), int(base.OpaqueColumnBot[tx]))
-		if !ok {
-			return
-		}
+	top, bottom := 0, base.Height-1
+	if tex.alpha == 0 && len(base.OpaqueColumnTop) == base.Width && len(base.OpaqueColumnBot) == base.Width {
+		top, bottom = int(base.OpaqueColumnTop[tx]), int(base.OpaqueColumnBot[tx])
+	}
+	var boundsOK bool
+	y0, y1, texVFixed, boundsOK = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, base.Height, top, bottom)
+	if !boundsOK {
+		return
 	}
 	visible := g.maskedColumnVisibleSpans(x, y0, y1, depthQ)
 	if len(visible) == 0 {
@@ -7037,29 +7128,21 @@ func clipVerticalSpansByMasked(in []solidSpan, masked []scene.MaskedClipSpan, de
 }
 
 func trimMaskedColumnToOpaqueBounds(y0, y1 int, texVFixed, texVStepFixed int64, texHeight, top, bottom int) (int, int, int64, bool) {
-	if y0 > y1 || texHeight <= 0 || top < 0 || bottom < top {
+	if y0 > y1 || texHeight <= 0 || top < 0 || bottom < top || texVStepFixed < 0 {
 		return 0, -1, texVFixed, false
 	}
-	if texVStepFixed < 0 {
-		return y0, y1, texVFixed, true
-	}
+	// R_DrawMaskedColumn draws each texture post once. Unlike opaque walls,
+	// a two-sided middle texture must never tile outside its own height.
+	bottom = min(bottom, texHeight-1)
 	startTy := int(texVFixed >> fracBits)
 	if texVStepFixed == 0 {
-		ty := wrapIndex(startTy, texHeight)
-		if ty < top || ty > bottom {
+		if startTy < top || startTy > bottom {
 			return 0, -1, texVFixed, false
 		}
 		return y0, y1, texVFixed, true
 	}
-	endTy := int((texVFixed + int64(y1-y0)*texVStepFixed) >> fracBits)
-	if floorDiv(startTy, texHeight) != floorDiv(endTy, texHeight) {
-		return y0, y1, texVFixed, true
-	}
-	cycleBase := floorDiv(startTy, texHeight) * texHeight
-	targetTop := cycleBase + top
-	targetBottom := cycleBase + bottom
-	first := ceilDiv(max64(0, int64(targetTop<<fracBits)-texVFixed), texVStepFixed)
-	lastPlusOne := ceilDiv(max64(0, int64((targetBottom+1)<<fracBits)-texVFixed), texVStepFixed)
+	first := ceilDiv(max64(0, int64(top)*fracUnit-texVFixed), texVStepFixed)
+	lastPlusOne := ceilDiv(max64(0, int64(bottom+1)*fracUnit-texVFixed), texVStepFixed)
 	last := lastPlusOne - 1
 	if first > int64(y1-y0) || last < first {
 		return 0, -1, texVFixed, false
@@ -8174,6 +8257,7 @@ func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT, txRunEndLU
 }
 
 func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
+	g.maskedClassicClipScratch = g.maskedClassicClipScratch[:0]
 	if n <= 0 {
 		return nil
 	}
@@ -8207,7 +8291,7 @@ func (g *game) drawMaskedMidSegRange(ms maskedMidSeg, x0, x1 int, focal float64,
 	if g.maskedMidSegFullyOccluded(ms, focal, halfH) {
 		return
 	}
-	if g.opts.DisableMaskedMidFastPaths || g.gpuFrame != nil {
+	if g.opts.DisableMaskedMidFastPaths || g.gpuFrame != nil || (!g.opts.SourcePortMode && ms.tex.from.ClassicMasked != nil) {
 		g.drawMaskedMidSegColumns(ms, focal, halfH, int(shadeMul), doomRow)
 		return
 	}
@@ -8381,7 +8465,10 @@ func (g *game) drawMaskedMidSegLargeOpaque(ms maskedMidSeg, focal, halfH float64
 	used := false
 	for x := ms.X0; x <= ms.X1; x++ {
 		depth, texU, ok := stepper.Sample()
+		depth, texU = ms.classic.sample(x, depth, texU)
+		shadeMul, doomRow := g.maskedMidColumnShade(ms, depth, shadeMul, doomRow)
 		y0, y1, envOK := envelope.Sample()
+		y0, y1, envOK = ms.classicClip(x, y0, y1, envOK)
 		stepper.Next()
 		envelope.Next()
 		if !ok || !envOK || depth <= 0 || !isFinite(depth) || y0 > y1 {
@@ -8406,10 +8493,7 @@ func (g *game) drawMaskedMidSegLargeOpaque(ms maskedMidSeg, focal, halfH float64
 		if tx < 0 || tx >= base.Width {
 			continue
 		}
-		rowScale := depth / focal
-		texV := ms.TexMid - ((halfH - (float64(y0) + 0.5)) * rowScale)
-		texVFixed := floorFixed(texV)
-		texVStepFixed := floorFixed(rowScale)
+		texVFixed, texVStepFixed := g.wallColumnTextureStep(y0, ms.TexMid, depth, focal)
 		if texVStepFixed <= 0 {
 			continue
 		}
@@ -8457,7 +8541,10 @@ func (g *game) drawMaskedMidSegSparseFence(ms maskedMidSeg, focal, halfH float64
 	used := false
 	for x := ms.X0; x <= ms.X1; x++ {
 		depth, texU, ok := stepper.Sample()
+		depth, texU = ms.classic.sample(x, depth, texU)
+		shadeMul, doomRow := g.maskedMidColumnShade(ms, depth, shadeMul, doomRow)
 		y0, y1, envOK := envelope.Sample()
+		y0, y1, envOK = ms.classicClip(x, y0, y1, envOK)
 		stepper.Next()
 		envelope.Next()
 		if !ok || !envOK || depth <= 0 || !isFinite(depth) || y0 > y1 {
@@ -8477,10 +8564,7 @@ func (g *game) drawMaskedMidSegSparseFence(ms maskedMidSeg, focal, halfH float64
 		if tx < 0 || tx >= base.Width {
 			continue
 		}
-		rowScale := depth / focal
-		texV := ms.TexMid - ((halfH - (float64(y0) + 0.5)) * rowScale)
-		texVFixed := floorFixed(texV)
-		texVStepFixed := floorFixed(rowScale)
+		texVFixed, texVStepFixed := g.wallColumnTextureStep(y0, ms.TexMid, depth, focal)
 		if texVStepFixed <= 0 {
 			continue
 		}
@@ -8509,7 +8593,10 @@ func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, sh
 	envelope := newMaskedMidEnvelopeStepper(ms.Projection, ms.X0, ms.WorldHigh, ms.WorldLow, focal, halfH)
 	for x := ms.X0; x <= ms.X1; x++ {
 		f, texU, ok := stepper.Sample()
+		f, texU = ms.classic.sample(x, f, texU)
+		shadeMul, doomRow := g.maskedMidColumnShade(ms, f, shadeMul, doomRow)
 		y0, y1, envOK := envelope.Sample()
+		y0, y1, envOK = ms.classicClip(x, y0, y1, envOK)
 		stepper.Next()
 		envelope.Next()
 		if !ok {
@@ -8565,6 +8652,21 @@ func maskedWallShadePackedRow(shadeMul, doomRow int) []uint32 {
 		shadeMul = 256
 	}
 	return wallShadePackedLUT[shadeMul][:]
+}
+
+// Faithful masked walls use the same per-column scalelight as opaque walls.
+func (g *game) maskedMidColumnShade(ms maskedMidSeg, depth float64, shadeMul, row int) (int, int) {
+	if g.opts.SourcePortMode || !doomLightingEnabled {
+		return shadeMul, row
+	}
+	row = doomWallLightRow(ms.light, ms.lightBias, depth, float64(g.viewW)/2)
+	if fixed, ok := g.playerFixedColormapRow(); ok {
+		row = fixed
+	}
+	if !doomColormapEnabled {
+		shadeMul = doomShadeMulFromRow(row)
+	}
+	return shadeMul, row
 }
 
 func (g *game) maskedMidShade(light int16) (int, int) {
@@ -9176,7 +9278,7 @@ func (g *game) finalizeMaskedClipColumns() {
 }
 
 func wallSpecialScrollXOffset(special uint16, worldTic int) float64 {
-	// Doom linedef special 48: first-column wall scroll.
+	// Doom linedef special 48: add one texel per world tic to the first sidedef.
 	if special == 48 {
 		return float64(worldTic)
 	}
@@ -9538,6 +9640,9 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	if g.gpuFrame != nil && !g.opts.SourcePortMode && skyTexReady {
 		_, skyTex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name)
 		if ok {
+			if !g.opts.SourcePortMode && skyTex.ClassicOpaque != nil {
+				skyTex = skyTex.ClassicOpaque
+			}
 			gpuSky, skyTexReady = g.gpuFrame.wallTexture(skyTex)
 		}
 	}
@@ -9634,7 +9739,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		if !ok {
 			return planeClipScratch
 		}
-		if g.rowFullyOccludedByWallsFastDepthQ(rowState.depthQ, rowPix, x1, x2) {
+		// Faithful visplane coverage is already clipped by R_StoreWallRange
+		// rules. A quantized depth test can misclassify its boundary row as
+		// behind the adjoining wall and leave a black seam.
+		if g.opts.SourcePortMode && g.rowFullyOccludedByWallsFastDepthQ(rowState.depthQ, rowPix, x1, x2) {
 			return planeClipScratch
 		}
 		if len(rowOccluders) != 0 {
@@ -13457,7 +13565,7 @@ func (g *game) playerEyeZ() float64 {
 // The body/view height changes immediately on authoritative reconciliation.
 // The separate render offset above must never alter collision or view physics.
 func (g *game) playerBaseEyeZ() float64 {
-	if g.playerViewZ == 0 {
+	if g.playerViewZ == 0 && g.p.viewHeight == 0 {
 		return float64(g.p.z)/fracUnit + 41.0
 	}
 	return float64(g.playerViewZ) / fracUnit
@@ -14308,6 +14416,22 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 	}
 	prepass := scene.BuildWallPrepassFromWorld(input, camX, camY, ca, sa, g.viewW, focal, near)
 	pp.prepass = prepass
+	if !g.opts.SourcePortMode && si >= 0 && si < len(g.m.Segs) {
+		pp.classic = newClassicWallSampler(input, uint32(uint16(g.m.Segs[si].Angle))<<16, camX, camY, ca, sa, g.viewW)
+		left, right, visible := pp.classic.projection.wallBounds(input, camX, camY, pp.classic.view)
+		if !visible {
+			pp.prepass.OK = false
+			return pp
+		}
+		if !pp.prepass.OK && pp.prepass.LogReason == "OFFSCREEN" {
+			// The quantized angle table can retain an edge column whose float
+			// projection lies just outside the viewport (E1M2 SEG 587).
+			pp.prepass = scene.BuildWallPrepassFromWorld(input, camX, camY, ca, sa, g.viewW+2, focal, near)
+			pp.prepass.Projection.SX1--
+			pp.prepass.Projection.SX2--
+		}
+		pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX = left, right
+	}
 	if !pp.prepass.OK {
 		return pp
 	}
@@ -14426,6 +14550,11 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	}
 	for x := 0; x < viewW; x++ {
 		sampleX := scene.ProjectedSampleIndex(x, viewW, sampleW)
+		if !g.opts.SourcePortMode {
+			angle := radiansToDoomAngle(camAngle) + classicProjectionForWidth(sampleW).angles[sampleX]
+			col[x] = wrapIndex(int(angle>>22), texW)
+			continue
+		}
 		angle := camAngle + angleOff[sampleX]
 		col[x] = wrapIndex(int(math.Floor(angle*float64(texW*4)/(2*math.Pi))), texW)
 	}
@@ -14470,6 +14599,11 @@ func (g *game) ensureSkyRowLookup(viewW, viewH, texH int) []int {
 		return nil
 	}
 	iscale := doomSkyIScale(viewW)
+	if !g.opts.SourcePortMode {
+		// pspriteiscale is integer 16.16 division. At non-integral scales,
+		// float 320/width crosses texture rows at different screen pixels.
+		iscale = float64(int64(320*fracUnit)/int64(viewW)) / fracUnit
+	}
 	if len(g.skyRowVCache) == viewH && g.skyRowViewH == viewH && g.skyRowTexH == texH && math.Abs(g.skyRowIScale-iscale) < 1e-9 {
 		return g.skyRowVCache
 	}
@@ -14640,7 +14774,16 @@ func doomClampColorMapRow(row int) int {
 }
 
 func doomWallLightRow(light int16, lightBias int, depth, focal float64) int {
-	return doomClampColorMapRow(int(doomWallLightRowF(light, lightBias, depth, focal)))
+	if !doomSectorLighting {
+		light = 255
+	}
+	start := doomStartMap(doomClampLightNum((int(light) >> doomLightSegShift) + lightBias))
+	if depth <= 0 || focal <= 0 {
+		return doomClampColorMapRow(start)
+	}
+	// R_RenderSegLoop quantizes rw_scale before looking up scalelight.
+	index := min(doomMaxLightScale-1, max(0, int(math.Round(focal/depth*fracUnit))>>12))
+	return doomClampColorMapRow(start - index*doomLogicalW/max(1, int(focal*2))/doomDistMap)
 }
 
 func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64 {
@@ -14686,7 +14829,14 @@ func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64
 }
 
 func doomPlaneLightRow(light int16, depth float64) int {
-	return doomClampColorMapRow(int(doomPlaneLightRowF(light, depth)))
+	if !doomSectorLighting {
+		light = 255
+	}
+	start := doomStartMap(doomClampLightNum(int(light) >> doomLightSegShift))
+	index := min(doomMaxLightZ-1, max(0, int(floorFixed(depth)>>20)))
+	// R_InitLightTables: FixedDiv(160*FRACUNIT,(index+1)<<20)>>12.
+	scale := (doomLogicalW / 2) / (index + 1)
+	return doomClampColorMapRow(start - scale/doomDistMap)
 }
 
 func doomPlaneLightRowF(light int16, depth float64) float64 {
@@ -16559,6 +16709,7 @@ func (g *game) buildWallSegStaticCache() {
 		}
 		portalSplitStatic, portalSplit := g.cachedSegPortalSplit(frontSectorIdx, backSectorIdx)
 		g.wallSegStaticCache[si] = wallSegStatic{
+			subSectorIdx:      -si - 1,
 			valid:             true,
 			ld:                ld,
 			frontSide:         frontSide,
@@ -16571,6 +16722,12 @@ func (g *game) buildWallSegStaticCache() {
 			portalSplit:       portalSplit,
 		}
 	}
+	for id, ss := range g.m.SubSectors {
+		for si := int(ss.FirstSeg); si < min(len(g.wallSegStaticCache), int(ss.FirstSeg)+int(ss.SegCount)); si++ {
+			g.wallSegStaticCache[si].subSectorIdx = id
+		}
+	}
+
 }
 
 func (g *game) cachedSegPortalSplit(frontSectorIdx, backSectorIdx int) (bool, bool) {
@@ -19361,9 +19518,8 @@ func buildTextureAnimRefs(seqs [][]string) map[string]textureAnimRef {
 		for i, frame := range frames {
 			refs[frame] = textureAnimRef{
 				frames: frames,
-				index:  0,
+				index:  i,
 			}
-			_ = i
 		}
 	}
 	return refs
@@ -19418,40 +19574,6 @@ func (g *game) resolveAnimatedFlatSample(name string) (string, bool) {
 	return sample.fromKey, sample.alpha != 0 && sample.toKey != ""
 }
 
-func resolveAnimatedTextureName(name string, worldTic int, refs map[string]textureAnimRef) string {
-	key := normalizeFlatName(name)
-	if key == "" {
-		return ""
-	}
-	ref, ok := refs[key]
-	if !ok || len(ref.frames) < 2 {
-		return key
-	}
-	ticks := worldTic / textureAnimTics
-	idx := (ref.index + ticks) % len(ref.frames)
-	if idx < 0 {
-		idx += len(ref.frames)
-	}
-	return ref.frames[idx]
-}
-
-func (g *game) resolveAnimatedTextureSample(name string, worldTic int, refs map[string]textureAnimRef) (string, bool) {
-	key := normalizeFlatName(name)
-	if key == "" {
-		return "", false
-	}
-	ref, ok := refs[key]
-	if !ok || len(ref.frames) < 2 {
-		return key, false
-	}
-	ticks := worldTic / textureAnimTics
-	idx := (ref.index + ticks) % len(ref.frames)
-	if idx < 0 {
-		idx += len(ref.frames)
-	}
-	return ref.frames[idx], false
-}
-
 func (g *game) textureBlendSample(name string, refs map[string]textureAnimRef) textureBlendSample {
 	key := normalizeFlatName(name)
 	if key == "" {
@@ -19461,9 +19583,17 @@ func (g *game) textureBlendSample(name string, refs map[string]textureAnimRef) t
 	if !ok || len(ref.frames) < 2 {
 		return textureBlendSample{fromKey: key}
 	}
+	// Before the first P_UpdateSpecials call, translation tables are identity.
+	if !g.opts.SourcePortMode && g.worldTic <= 0 {
+		return textureBlendSample{fromKey: key}
+	}
 	pos := float64(g.worldTic)
 	if g != nil && g.opts.SourcePortMode {
 		pos += g.renderAlpha
+	} else {
+		// P_UpdateSpecials sees leveltime before P_Ticker increments it.
+		// worldTic counts completed updates, so classic frame 1 starts at 9.
+		pos--
 	}
 	if pos < 0 {
 		pos = 0
@@ -19503,7 +19633,14 @@ func (g *game) textureBlendSample(name string, refs map[string]textureAnimRef) t
 }
 
 func (g *game) textureAnimTick() int {
-	return g.worldTic / textureAnimTics
+	tic := g.worldTic
+	if !g.opts.SourcePortMode {
+		if tic <= 0 {
+			return -1
+		} // identity translations are a separate cache state
+		tic--
+	}
+	return tic / textureAnimTics
 }
 
 func normalizeFlatName(name string) string {

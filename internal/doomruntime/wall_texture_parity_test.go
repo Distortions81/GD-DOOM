@@ -255,7 +255,7 @@ func syntheticParityMap(tc wallTextureParityInput) *mapdata.Map {
 		Sidedefs: sidedefs,
 		Sectors:  sectors,
 		Segs: []mapdata.Seg{
-			{StartVertex: 0, EndVertex: 1, Linedef: 0, Direction: uint16(tc.frontSide), Offset: uint16(math.Round(tc.segOffset))},
+			{StartVertex: 0, EndVertex: 1, Angle: uint16(radiansToDoomAngle(math.Atan2(tc.y2-tc.y1, tc.x2-tc.x1)) >> 16), Linedef: 0, Direction: uint16(tc.frontSide), Offset: uint16(math.Round(tc.segOffset))},
 		},
 	}
 }
@@ -302,10 +302,10 @@ func assertWallTextureParity(t *testing.T, tc wallTextureParityInput, proj scene
 	if tc.hasMid && !closeEnough(gotMid, wantMid) {
 		t.Fatalf("%s midTexMid=%.6f want %.6f", tc.name, gotMid, wantMid)
 	}
-	if tc.hasTop && tc.back != nil && !closeEnough(gotTop, wantTop) {
+	if tc.hasTop && tc.back != nil && tc.back.ceilHeight < tc.front.ceilHeight && !closeEnough(gotTop, wantTop) {
 		t.Fatalf("%s topTexMid=%.6f want %.6f", tc.name, gotTop, wantTop)
 	}
-	if tc.hasBottom && tc.back != nil && !closeEnough(gotBottom, wantBottom) {
+	if tc.hasBottom && tc.back != nil && tc.back.floorHeight > tc.front.floorHeight && !closeEnough(gotBottom, wantBottom) {
 		t.Fatalf("%s bottomTexMid=%.6f want %.6f", tc.name, gotBottom, wantBottom)
 	}
 }
@@ -335,9 +335,6 @@ func doomReferenceTexU(tc wallTextureParityInput, x int) (float64, bool) {
 		u = 1
 	}
 	along := math.Hypot(sx, sy) * u
-	if tc.frontSide == 1 {
-		return tc.segOffset + tc.textureOffset - along, true
-	}
 	return tc.segOffset + tc.textureOffset + along, true
 }
 
@@ -379,7 +376,29 @@ func currentTextureMids(tc wallTextureParityInput) (float64, float64, float64) {
 }
 
 func doomReferenceTextureMids(tc wallTextureParityInput) (float64, float64, float64) {
-	return currentTextureMids(tc)
+	// Independent transcription of r_segs.c's anchors, in world coordinates.
+	frontTop, frontBottom := float64(tc.front.ceilHeight), float64(tc.front.floorHeight)
+	midAnchor, topAnchor, bottomAnchor := frontTop, 0.0, 0.0
+	if tc.back == nil {
+		if tc.flags&mlDontPegBottom != 0 {
+			midAnchor = frontBottom + float64(tc.midHeight)
+		}
+	} else {
+		backTop, backBottom := float64(tc.back.ceilHeight), float64(tc.back.floorHeight)
+		midAnchor = math.Min(frontTop, backTop)
+		if tc.flags&mlDontPegBottom != 0 {
+			midAnchor = math.Max(frontBottom, backBottom) + float64(tc.midHeight)
+		}
+		topAnchor = backTop + float64(tc.topHeight)
+		if tc.flags&mlDontPegTop != 0 {
+			topAnchor = frontTop
+		}
+		bottomAnchor = backBottom
+		if tc.flags&mlDontPegBottom != 0 {
+			bottomAnchor = frontTop
+		}
+	}
+	return midAnchor - tc.eyeZ + tc.rowOffset, topAnchor - tc.eyeZ + tc.rowOffset, bottomAnchor - tc.eyeZ + tc.rowOffset
 }
 
 func realMapParityInput(t *testing.T, g *game, texSet *doomtex.Set, segIdx int, label string) wallTextureParityInput {

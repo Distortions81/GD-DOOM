@@ -440,10 +440,14 @@ func (g *game) gpuWallColumn(x, y0, y1 int, depth, texU, texMid, focal float64, 
 		}
 	}
 	tx := wrapIndex(int(floorFixed(texU)>>fracBits), tex.width)
-	step := floorFixed(depth / focal)
-	start := floorFixed(texMid - (float64(g.viewH)*0.5-float64(y0)-0.5)*depth/focal)
+	start, step := g.wallColumnTextureStep(y0, texMid, depth, focal)
 	light := gpuLightRow(shade, row)
 	if masked {
+		var visible bool
+		y0, y1, start, visible = trimMaskedColumnToOpaqueBounds(y0, y1, start, step, tex.height, 0, tex.height-1)
+		if !visible {
+			return
+		}
 		light = -light - 1
 		for _, span := range g.maskedColumnVisibleSpans(x, y0, y1, encodeDepthQ(depth)) {
 			v := start + int64(span.L-y0)*step
@@ -466,8 +470,7 @@ func (g *game) gpuPlaneSpan(rowPix, x1, x2 int, sample flatTextureBlendSample, s
 		return
 	}
 	// Match the CPU's current plane path, which samples only the active frame.
-	u := state.rowBaseWXFixed + int64(x1)*state.stepWXFixed
-	v := state.rowBaseWYFixed + int64(x1)*state.stepWYFixed
+	u, v := state.textureStart(x1)
 	r.rect(&r.baseCommands, x1, y, x2, y, tex, tex, 0, gpuLightRow(int(state.defaultShade), state.defaultRow), 0, gpuWrapFixed(u, 64), gpuWrapFixed(v, 64), gpuWrapFixed(state.stepWXFixed, 64), gpuWrapFixed(state.stepWYFixed, 64))
 }
 

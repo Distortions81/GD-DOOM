@@ -38,7 +38,7 @@ func TestPlanesFaceInteriorAndFollowHeight(t *testing.T) {
 				t.Fatal("floor faces out")
 			}
 			for _, v := range tri.Vertices {
-				if v.Z != z || v.U != v.X || v.V != v.Y {
+				if v.Z != z || v.U != v.X || v.V != -v.Y {
 					t.Fatalf("bad plane vertex %+v", v)
 				}
 			}
@@ -46,7 +46,7 @@ func TestPlanesFaceInteriorAndFollowHeight(t *testing.T) {
 	}
 }
 
-func TestPortalWallsAndRepeatingMaskedStrip(t *testing.T) {
+func TestPortalWallsAndMaskedStrip(t *testing.T) {
 	m := portalMap()
 	h := []Heights{{0, 128}, {32, 96}}
 	tris := Build(nil, m, nil, h, func(string, int, Kind) float64 { return 64 }, nil)
@@ -163,5 +163,39 @@ func TestSkyCeilingUsesBoundaryCurtainNotHorizontalPlane(t *testing.T) {
 	}
 	if floors != 1 || skies != 2 {
 		t.Fatalf("floors=%d skies=%d want 1/2", floors, skies)
+	}
+}
+
+func TestScrollOnlyChangesFirstSidedef(t *testing.T) {
+	m := portalMap()
+	m.Linedefs[0].Special = 48
+	m.Sidedefs[1].Mid = "FENCE"
+	m.Sidedefs[1].TextureOffset = -17
+	heights := []Heights{{0, 128}, {32, 96}}
+	before := Build(nil, m, nil, heights, nil, nil)
+	after := Build(nil, m, nil, heights, nil, func(special uint16) float64 {
+		if special == 48 {
+			return 35
+		}
+		return 0
+	})
+	if len(before) != len(after) {
+		t.Fatal("scroll changed geometry")
+	}
+	seen := [2]bool{}
+	for i, tri := range after {
+		seen[tri.Sidedef] = true
+		offset := 0.0
+		if tri.Sidedef == 0 {
+			offset = 35
+		}
+		for j, v := range tri.Vertices {
+			if v.U != before[i].Vertices[j].U+offset {
+				t.Fatalf("side %d U=%g want %g", tri.Sidedef, v.U, before[i].Vertices[j].U+offset)
+			}
+		}
+	}
+	if !seen[0] || !seen[1] {
+		t.Fatal("both sides must be exercised")
 	}
 }

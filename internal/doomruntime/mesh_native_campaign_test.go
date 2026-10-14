@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"errors"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/sessionflow"
 	"gddoom/internal/wad"
@@ -149,7 +150,7 @@ func TestNativeCampaignPatchCollectionDoesNotInitializeEbitenImages(t *testing.T
 func TestNativeCampaignDoomIIStoryAndSecretReturn(t *testing.T) {
 	wf, err := wad.Open("../../wads/DOOM2.WAD")
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			t.Skip("Doom II WAD unavailable")
 		}
 		t.Fatal(err)

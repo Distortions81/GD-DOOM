@@ -118,13 +118,13 @@ func TestBuildWallPrepassFromWorld_MatchesCameraSpaceBuild(t *testing.T) {
 	}
 }
 
-func TestNewWallPrepassWorldInput_ReversesUForBackSide(t *testing.T) {
+func TestNewWallPrepassWorldInput_BackSideUsesDirectedSeg(t *testing.T) {
 	got := NewWallPrepassWorldInput(1, 2, 3, 4, 10, 6, 1)
 	if got.U1 != 10 {
 		t.Fatalf("u1=%f want 10", got.U1)
 	}
-	if got.U2 != 4 {
-		t.Fatalf("u2=%f want 4", got.U2)
+	if got.U2 != 16 {
+		t.Fatalf("u2=%f want 16", got.U2)
 	}
 }
 

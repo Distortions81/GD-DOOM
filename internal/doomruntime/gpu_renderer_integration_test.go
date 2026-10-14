@@ -58,6 +58,7 @@ func runGPUFramebufferComparison(t *testing.T, includeFuzz bool) {
 	driver := &gpuComparisonDriver{t: t}
 	driver.run = func() {
 		gpuCompareSynthetic(t)
+		gpuCompareTextureCoordinates(t)
 		gpuCompareHiddenSky(t)
 		gpuCompareFaithfulPalette(t)
 		if includeFuzz {
@@ -486,6 +487,12 @@ func gpuCompareMaps(t *testing.T, path string) {
 			}
 		}
 		walls[name] = WallTexture{Width: w, Height: h, Indexed: indexed, IndexedColMajor: column, RGBA: rgba}
+		if opaque, err := ts.BuildTextureOpaqueIndexed(name); err == nil {
+			tex := walls[name]
+			tex.SetClassicOpaque(opaque)
+			tex.ClassicMasked = ts.BuildTextureMaskedPosts(name)
+			walls[name] = tex
+		}
 	}
 	sprites := map[string]WallTexture{}
 	inSprites := false

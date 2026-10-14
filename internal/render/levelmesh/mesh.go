@@ -71,7 +71,7 @@ func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []H
 				}
 				t := Triangle{Sector: sector, Sidedef: -1, Kind: kind, Texture: tex}
 				for i, p := range tri {
-					t.Vertices[i] = Vertex{p.X, p.Y, z, p.X, p.Y}
+					t.Vertices[i] = Vertex{p.X, p.Y, z, p.X, -p.Y}
 				}
 				if kind == Ceiling {
 					t.Vertices[1], t.Vertices[2] = t.Vertices[2], t.Vertices[1]
@@ -103,7 +103,7 @@ func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []H
 				continue
 			}
 			u := float64(sd.TextureOffset)
-			if scroll != nil {
+			if scroll != nil && idx == line.SideNum[0] {
 				u += scroll(line.Special)
 			}
 			texHeight := func(tex string, kind Kind) float64 {
@@ -119,9 +119,14 @@ func Build(dst []Triangle, m *mapdata.Map, planes [][]PlaneTriangle, heights []H
 					return
 				}
 				anchor += float64(sd.RowOffset)
-				// Masked mids use the whole portal envelope. The project's
-				// column renderer wraps V before alpha testing; truncating the
-				// mesh at one texture height leaves gaps (e.g. E1M3 BRNSMALC).
+				if masked {
+					// Doom draws masked posts once, clipped to the portal opening.
+					top = math.Min(top, anchor)
+					bottom = math.Max(bottom, anchor-texHeight(tex, kind))
+					if top <= bottom {
+						return
+					}
+				}
 				v := [4]Vertex{
 					{float64(a.X), float64(a.Y), bottom, u, anchor - bottom},
 					{float64(b.X), float64(b.Y), bottom, u + length, anchor - bottom},

@@ -141,6 +141,8 @@ func installTestWallShadeRow(t *testing.T) []uint32 {
 func TestDrawBasicWallColumnTexturedMasked_UsesIndexedShadeRow(t *testing.T) {
 	row := installTestWallShadeRow(t)
 	g := &game{
+		// This fixture uses the Source Port pixel-center grid.
+		opts:      Options{SourcePortMode: true},
 		viewW:     1,
 		viewH:     4,
 		wallPix32: make([]uint32, 4),
@@ -336,6 +338,8 @@ func TestClassifyMaskedMidTexture_SparseFence(t *testing.T) {
 func TestDrawMaskedMidSegLargeOpaque_PreservesTransparentHole(t *testing.T) {
 	row := installTestWallShadeRow(t)
 	g := &game{
+		// This fixture uses the Source Port pixel-center grid.
+		opts:               Options{SourcePortMode: true},
 		viewW:              1,
 		viewH:              8,
 		wallPix32:          make([]uint32, 8),
@@ -387,6 +391,8 @@ func TestDrawMaskedMidSegLargeOpaque_PreservesTransparentHole(t *testing.T) {
 func TestDrawMaskedMidSegSparseFence_SkipsTransparentGaps(t *testing.T) {
 	row := installTestWallShadeRow(t)
 	g := &game{
+		// This fixture uses the Source Port pixel-center grid.
+		opts:               Options{SourcePortMode: true},
 		viewW:              1,
 		viewH:              8,
 		wallPix32:          make([]uint32, 8),
@@ -438,6 +444,8 @@ func TestDrawMaskedMidSegSparseFence_SkipsTransparentGaps(t *testing.T) {
 func TestDrawBasicWallColumnTexturedMasked_FallbackUsesVisibleSpans(t *testing.T) {
 	row := installTestWallShadeRow(t)
 	g := &game{
+		// This fixture uses the Source Port pixel-center grid.
+		opts:               Options{SourcePortMode: true},
 		viewW:              1,
 		viewH:              6,
 		wallPix32:          make([]uint32, 6),

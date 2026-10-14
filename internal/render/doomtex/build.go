@@ -13,15 +13,7 @@ func (s *Set) BuildTextureIndexed(name string) ([]byte, int, int, error) {
 	if !ok {
 		return nil, 0, 0, parseErrorf("texture not found: %s", name)
 	}
-	pix := make([]byte, t.Width*t.Height)
-	alpha := make([]bool, t.Width*t.Height)
-	for _, ref := range t.Patches {
-		p, err := s.loadPatch(ref.PatchName)
-		if err != nil {
-			continue
-		}
-		blitPatch(pix, alpha, t.Width, t.Height, p, ref.OriginX, ref.OriginY)
-	}
+	pix, _ := s.composeTexture(t)
 	return pix, t.Width, t.Height, nil
 }
 
@@ -36,16 +28,7 @@ func (s *Set) BuildTextureRGBA(name string, palette int) ([]byte, int, int, erro
 	if !ok {
 		return nil, 0, 0, parseErrorf("texture not found: %s", name)
 	}
-	pix := make([]byte, t.Width*t.Height)
-	alpha := make([]bool, t.Width*t.Height)
-	for _, ref := range t.Patches {
-		p, err := s.loadPatch(ref.PatchName)
-		if err != nil {
-			// Keep going; Doom tolerates missing patches by leaving holes.
-			continue
-		}
-		blitPatch(pix, alpha, t.Width, t.Height, p, ref.OriginX, ref.OriginY)
-	}
+	pix, alpha := s.composeTexture(t)
 	pal := s.palettes[palette]
 	rgba := make([]byte, t.Width*t.Height*4)
 	for i := 0; i < len(pix); i++ {
@@ -205,6 +188,8 @@ func decodePatch(data []byte) (*decodedPatch, error) {
 		topOffset:  topOffset,
 		index:      make([]uint8, w*h),
 		opaque:     make([]bool, w*h),
+		columns:    make([][]patchPost, w),
+		raw:        data,
 	}
 	for x := 0; x < w; x++ {
 		co := int(binary.LittleEndian.Uint32(data[8+x*4 : 12+x*4]))
@@ -229,6 +214,7 @@ func decodePatch(data []byte) (*decodedPatch, error) {
 			if co+length+1 > len(data) {
 				return nil, parseErrorf("patch post pixels truncated")
 			}
+			p.columns[x] = append(p.columns[x], patchPost{top: int(top), pixels: data[co : co+length]})
 			for i := 0; i < length; i++ {
 				y := int(top) + i
 				if y < 0 || y >= h {
@@ -265,4 +251,74 @@ func blitPatch(dst []byte, alpha []bool, dw, dh int, p *decodedPatch, ox, oy int
 			alpha[di] = true
 		}
 	}
+}
+
+// composeTexture mirrors R_GenerateLookup/R_GenerateComposite. The decision to
+// composite is per column, not per texture: a single covering patch is read
+// directly and its texture-definition origin Y is ignored. Overlapping columns
+// apply each patch's origin Y, even when the overlapping post is transparent.
+func (s *Set) composeTexture(t TextureDef) ([]byte, []bool) {
+	pix := make([]byte, t.Width*t.Height)
+	alpha := make([]bool, len(pix))
+	patches := make([]*decodedPatch, len(t.Patches))
+	coverage := make([]int, t.Width)
+	for i, ref := range t.Patches {
+		p, err := s.loadPatch(ref.PatchName)
+		if err != nil {
+			continue
+		}
+		patches[i] = p
+		for x := max(0, ref.OriginX); x < min(t.Width, ref.OriginX+p.width); x++ {
+			coverage[x]++
+		}
+	}
+	for i, ref := range t.Patches {
+		p := patches[i]
+		if p == nil {
+			continue
+		}
+		for x := max(0, ref.OriginX); x < min(t.Width, ref.OriginX+p.width); x++ {
+			oy := ref.OriginY
+			if coverage[x] == 1 {
+				oy = 0
+			}
+			for _, post := range p.columnPosts(x - ref.OriginX) {
+				position, count := oy+post.top, len(post.pixels)
+				// R_DrawColumnInCache clips a negative destination by reducing
+				// the count without advancing the source pointer. TEKWALL1
+				// relies on this original behavior for its first 16 rows.
+				if position < 0 {
+					count += position
+					position = 0
+				}
+				count = min(count, t.Height-position)
+				for i := 0; i < count; i++ {
+					di := (position+i)*t.Width + x
+					pix[di], alpha[di] = post.pixels[i], true
+				}
+			}
+		}
+	}
+	return pix, alpha
+}
+
+func (p *decodedPatch) columnPosts(x int) []patchPost {
+	if len(p.columns) == p.width {
+		return p.columns[x]
+	}
+	// In-memory synthetic patches may contain only decoded pixels.
+	var posts []patchPost
+	for y := 0; y < p.height; {
+		if !p.opaque[y*p.width+x] {
+			y++
+			continue
+		}
+		post := patchPost{top: y}
+		for y < p.height && p.opaque[y*p.width+x] {
+			post.pixels = append(post.pixels, p.index[y*p.width+x])
+			y++
+		}
+		posts = append(posts, post)
+	}
+	return posts
 }

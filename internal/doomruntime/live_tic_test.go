@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gddoom/internal/demo"
+	"gddoom/internal/mapdata"
 	"gddoom/internal/runtimecfg"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -264,5 +265,14 @@ func TestUpdateWatchModeCatchesUpWhenBacklogGrows(t *testing.T) {
 	src := g.opts.LiveTicSource.(*testLiveTicSource)
 	if got := len(src.tics); got != 2 {
 		t.Fatalf("remaining queued tics=%d want=2", got)
+	}
+}
+
+func TestDemoRebirthPreservesGamma(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{})
+	g.setGammaLevel(0)
+	g.respawnDemoPlayer()
+	if g.gammaLevel != 0 {
+		t.Fatalf("rebirth gamma=%d, want 0", g.gammaLevel)
 	}
 }

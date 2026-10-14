@@ -79,7 +79,7 @@ func TestMeshExperimentE1M3ExitRoomBoundaries(t *testing.T) {
 			wantZ, wantTex = float64(g.m.Sectors[sector].CeilingHeight), g.m.Sectors[sector].CeilingPic
 		}
 		for _, v := range tri.Vertices {
-			if v.Z != wantZ || v.U != v.X || v.V != v.Y || tri.Texture != wantTex {
+			if v.Z != wantZ || v.U != v.X || v.V != -v.Y || tri.Texture != wantTex {
 				t.Fatalf("incorrect plane height, texture or UV: %+v", tri)
 			}
 		}
@@ -135,7 +135,7 @@ func TestMeshExperimentE1M3ExitRoomPlaneRaster(t *testing.T) {
 				}
 				// Skip texel boundaries where roundoff can select either neighbor.
 				if math.Abs(x-math.Round(x)) > 1e-7 && math.Abs(y-math.Round(y)) > 1e-7 {
-					ti := ((int(math.Floor(y))&63)*64 + (int(math.Floor(x)) & 63)) * 4
+					ti := ((int(math.Floor(-y))&63)*64 + (int(math.Floor(x)) & 63)) * 4
 					if !bytes.Equal(raster.Pixels[i*4:i*4+3], tex.RGBA[ti:ti+3]) {
 						t.Fatalf("kind %d incorrect UV at (%d,%d)", kind, px, py)
 					}

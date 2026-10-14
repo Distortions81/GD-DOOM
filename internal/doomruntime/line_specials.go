@@ -540,10 +540,10 @@ func (g *game) heightClipPlayer(oldFloorz int64) bool {
 	g.p.ceilz = tmceil
 	if onFloor {
 		g.p.z = g.p.floorz
-	} else if g.p.z+playerHeight > g.p.ceilz {
-		g.p.z = g.p.ceilz - playerHeight
+	} else if g.p.z+g.playerMobjHeight() > g.p.ceilz {
+		g.p.z = g.p.ceilz - g.playerMobjHeight()
 	}
-	if g.p.ceilz-g.p.floorz < playerHeight {
+	if g.p.ceilz-g.p.floorz < g.playerMobjHeight() {
 		return false
 	}
 	return true
@@ -1272,7 +1272,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	actorCeilZ := g.p.ceilz
 	actorAngle := g.p.angle
 	actorRadius := int64(playerRadius)
-	actorHeight := int64(playerHeight)
+	actorHeight := g.playerMobjHeight()
 	if !isPlayer {
 		actor := g.m.Things[actorIdx]
 		actorLabel = "thing"
@@ -1340,8 +1340,11 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 				g.p.ceilz = tmceil
 				g.p.z = tmfloor
 				g.p.momz = 0
-				g.p.viewHeight = playerViewHeight
-				g.p.deltaViewHeight = 0
+				// EV_Teleport preserves the current landing/step/death view
+				// height and its recovery velocity at the destination.
+				if g.p.viewHeight == 0 {
+					g.p.viewHeight = playerViewHeight
+				}
 				g.playerViewZ = g.p.z + g.p.viewHeight
 				g.p.momx = 0
 				g.p.momy = 0

@@ -844,11 +844,13 @@ func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 		sectorFloor: []int64{0},
 		sectorCeil:  []int64{128 * fracUnit},
 		p: player{
-			x:      -32 * fracUnit,
-			y:      0,
-			z:      0,
-			floorz: 0,
-			ceilz:  128 * fracUnit,
+			viewHeight:      35 * fracUnit,
+			deltaViewHeight: fracUnit / 4,
+			x:               -32 * fracUnit,
+			y:               0,
+			z:               0,
+			floorz:          0,
+			ceilz:           128 * fracUnit,
 		},
 	}
 	g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
@@ -857,6 +859,9 @@ func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	}
 	if g.p.angle != thingSpawnAngle(250) {
 		t.Fatalf("player angle=%d want %d", g.p.angle, thingSpawnAngle(250))
+	}
+	if g.p.viewHeight != 35*fracUnit || g.p.deltaViewHeight != fracUnit/4 || g.playerViewZ != g.p.z+35*fracUnit {
+		t.Fatal("teleport reset the recovering view height")
 	}
 	if g.p.reactionTime != 18 {
 		t.Fatalf("player reactionTime=%d want 18", g.p.reactionTime)

@@ -156,3 +156,36 @@ func TestSkyTextureEntryForMap_PrefersPrimaryThenFallback(t *testing.T) {
 		t.Fatalf("skyTextureEntryForMap(E2M1 fallback)=(%q,%v) want (SKY1,true)", got, ok)
 	}
 }
+
+func TestFaithfulSkyRowsUseFixedPointDivision(t *testing.T) {
+	g := &game{viewW: 400, viewH: 250}
+	_, rows := g.buildSkyLookupParallel(400, 250, 200, 0, 256, 128)
+	// Original pspriteiscale = (320<<16)/400 = 52428. Five rows below
+	// center lands just below texel 104; floating-point 0.8 selects 104.
+	for y, want := range map[int]int{0: 0, 120: 96, 125: 100, 130: 103, 150: 119, 249: 71} {
+		if rows[y] != want {
+			t.Fatalf("sky row %d=%d, want %d", y, rows[y], want)
+		}
+	}
+	g.opts.SourcePortMode = true
+	_, rows = g.buildSkyLookupParallel(400, 250, 200, 0, 256, 128)
+	if rows[130] != 104 {
+		t.Fatalf("Source Port row 130=%d, want 104", rows[130])
+	}
+}
+
+func TestFaithfulSkyReadsOpaqueColumnSource(t *testing.T) {
+	installTestWallShadeRow(t)
+	tex := WallTexture{Width: 1, Height: 128, RGBA: make([]byte, 128*4), Indexed: make([]byte, 128)}
+	for i := range tex.RGBA {
+		tex.RGBA[i] = 255
+	}
+	raw := make([]byte, 128)
+	raw[59] = 144 // Doom II SKY2 includes a short post in one column.
+	tex.SetClassicOpaque(raw)
+	g := &game{viewW: 320, viewH: 200, m: &mapdata.Map{Name: "MAP12"}, opts: Options{WallTexBank: map[string]WallTexture{"SKY2": tex}}}
+	g.prepareFrameSkyState(0, 160)
+	if g.frameSkyIndexed[59] != 144 {
+		t.Fatal("sky discarded the classic opaque column bytes")
+	}
+}

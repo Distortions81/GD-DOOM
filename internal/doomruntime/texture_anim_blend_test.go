@@ -39,7 +39,7 @@ func TestTextureBlendSample_DisabledOutsideSourcePortMode(t *testing.T) {
 			SourcePortMode:             false,
 			TextureAnimCrossfadeFrames: 5,
 		},
-		worldTic:    8,
+		worldTic:    9,
 		renderAlpha: 0.5,
 	}
 	refs := map[string]textureAnimRef{
@@ -52,22 +52,44 @@ func TestTextureBlendSample_DisabledOutsideSourcePortMode(t *testing.T) {
 	}
 }
 
-func TestTextureBlendSample_FrameNameDoesNotReanchorSequence(t *testing.T) {
-	g := &game{
-		opts: Options{
-			SourcePortMode:             true,
-			TextureAnimCrossfadeFrames: 5,
-		},
-		worldTic: 4,
+func TestFaithfulTextureAnimationIdentityThenAliasPhase(t *testing.T) {
+	g := &game{}
+	refs := buildTextureAnimRefsFromSequences(map[string][]string{"A": {"B", "C", "A"}, "B": {"C", "A", "B"}, "C": {"A", "B", "C"}})
+	for _, name := range []string{"A", "B", "C"} {
+		g.worldTic = 0
+		if got := g.textureBlendSample(name, refs).fromKey; got != name {
+			t.Fatalf("initial %s translated to %s", name, got)
+		}
+		for tic := 1; tic <= 33; tic++ {
+			g.worldTic = tic
+			want := refs[name].frames[((tic-1)/8)%3]
+			if got := g.textureBlendSample(name, refs).fromKey; got != want {
+				t.Fatalf("%s tic=%d got=%s want=%s", name, tic, got, want)
+			}
+		}
 	}
-	refs := map[string]textureAnimRef{
-		"A": {frames: []string{"A", "B"}, index: 0},
-		"B": {frames: []string{"A", "B"}, index: 0},
-	}
+}
 
-	gotA := g.textureBlendSample("A", refs)
-	gotB := g.textureBlendSample("B", refs)
-	if gotA != gotB {
-		t.Fatalf("A sample=%+v B sample=%+v want identical sequencing", gotA, gotB)
+func TestFaithfulTextureAnimationUsesCompletedSpecialUpdates(t *testing.T) {
+	g := &game{}
+	refs := map[string]textureAnimRef{"A": {frames: []string{"A", "B", "C"}}}
+	// P_Ticker calls P_UpdateSpecials at leveltime 0..N-1, then increments
+	// leveltime. Thus the first frame change is visible after update nine.
+	for _, tc := range []struct {
+		tic  int
+		want string
+	}{{0, "A"}, {1, "A"}, {7, "A"}, {8, "A"}, {9, "B"}, {16, "B"}, {17, "C"}, {24, "C"}, {25, "A"}} {
+		g.worldTic = tc.tic
+		sample := g.textureBlendSample("A", refs)
+		if sample.fromKey != tc.want || sample.alpha != 0 {
+			t.Fatalf("tic %d: sample=%+v want %s", tc.tic, sample, tc.want)
+		}
+		wantTick := max(0, tc.tic-1) / 8
+		if tc.tic == 0 {
+			wantTick = -1
+		}
+		if got := g.textureAnimTick(); got != wantTick {
+			t.Fatalf("tic %d cache frame=%d", tc.tic, got)
+		}
 	}
 }

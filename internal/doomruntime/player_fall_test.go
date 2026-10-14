@@ -337,3 +337,11 @@ func TestPlayerHardLanding_UsesOofAndViewSquatWithoutDamage(t *testing.T) {
 		t.Fatalf("viewHeight=%d want=%d after recovery", got, playerViewHeight)
 	}
 }
+
+func TestDeadPlayerFitsBelowCeilingAtCorpseHeight(t *testing.T) {
+	g := &game{isDead: true, p: player{z: 20 * fracUnit, floorz: 0, ceilz: 48 * fracUnit, viewHeight: 6 * fracUnit}}
+	g.zMovement()
+	if g.p.z != 20*fracUnit {
+		t.Fatalf("corpse pushed to %d, want %d", g.p.z, 20*fracUnit)
+	}
+}

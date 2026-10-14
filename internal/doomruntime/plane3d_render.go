@@ -15,14 +15,17 @@ type planeTexStepper struct {
 }
 
 type planeRowRenderState struct {
-	depth          float64
-	depthQ         uint16
-	rowBaseWXFixed int64
-	rowBaseWYFixed int64
-	stepWXFixed    int64
-	stepWYFixed    int64
-	defaultShade   uint32
-	defaultRow     int
+	classicProjection                           *classicProjection
+	classicAngle                                uint32
+	classicDistance, classicViewX, classicViewY int64
+	depth                                       float64
+	depthQ                                      uint16
+	rowBaseWXFixed                              int64
+	rowBaseWYFixed                              int64
+	stepWXFixed                                 int64
+	stepWYFixed                                 int64
+	defaultShade                                uint32
+	defaultRow                                  int
 }
 
 func (s planeTexStepper) texelIndex() int {
@@ -343,13 +346,31 @@ func (g *game) planeRowRenderState(y int, key plane3DKey, eyeZ, camX, camY, ca, 
 		depth:          depth,
 		depthQ:         depthQ,
 		rowBaseWXFixed: floorFixed(rowBaseWX),
-		rowBaseWYFixed: floorFixed(rowBaseWY),
+		// Doom's R_MapPlane uses ds_yfrac = -viewy - sin(angle)*length.
+		// Flat V increases toward negative world Y on floors and ceilings.
+		rowBaseWYFixed: floorFixed(-rowBaseWY),
 		stepWXFixed:    floorFixed(stepWX),
-		stepWYFixed:    floorFixed(stepWY),
+		stepWYFixed:    floorFixed(-stepWY),
 		defaultShade:   uint32(sectorLightMul(key.light)),
 	}
+	if g != nil && !g.opts.SourcePortMode && cx >= 1 {
+		angle := radiansToDoomAngle(math.Atan2(sa, ca))
+		slope := fixedDiv(floorFixed(focalV), abs64(floorFixed(float64(y)-cy)+fracUnit/2))
+		distance := int64(int32(fixedMul(abs64(floorFixed(float64(key.height))-floorFixed(eyeZ)), slope)))
+		state.classicProjection = classicProjectionForWidth(int(cx * 2))
+		state.classicAngle = angle
+		state.classicDistance = distance
+		state.classicViewX, state.classicViewY = floorFixed(camX), floorFixed(camY)
+		state.stepWXFixed = fixedMul(distance, fixedDiv(doomFineCosine(angle-doomAng90), floorFixed(cx)))
+		state.stepWYFixed = fixedMul(distance, -fixedDiv(doomFineSineAtAngle(angle-doomAng90), floorFixed(cx)))
+		state.depth = float64(distance) / fracUnit
+		state.rowBaseWXFixed, state.rowBaseWYFixed = state.textureStart(0)
+	}
 	if doomLightingEnabled {
-		state.defaultRow = doomPlaneLightRow(key.light, depth)
+		state.defaultRow = doomPlaneLightRow(key.light, state.depth)
+		if g.opts.SourcePortMode {
+			state.defaultRow = doomClampColorMapRow(int(doomPlaneLightRowF(key.light, state.depth)))
+		}
 		if row, ok := g.playerFixedColormapRow(); ok {
 			state.defaultRow = row
 		}
@@ -372,10 +393,10 @@ func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, 
 		g.gpuPlaneSpan(rowPix, x1, x2, sample, state)
 		return
 	}
-	xOff := int64(x1)
+	u, v := state.textureStart(x1)
 	stepper := planeTexStepper{
-		uFixed:     state.rowBaseWXFixed + xOff*state.stepWXFixed,
-		vFixed:     state.rowBaseWYFixed + xOff*state.stepWYFixed,
+		uFixed:     u,
+		vFixed:     v,
 		stepUFixed: state.stepWXFixed,
 		stepVFixed: state.stepWYFixed,
 	}

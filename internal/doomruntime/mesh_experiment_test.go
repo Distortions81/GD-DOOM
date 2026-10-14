@@ -1,7 +1,6 @@
 package doomruntime
 
 import (
-	"bytes"
 	"fmt"
 	"image"
 	"image/png"
@@ -120,8 +119,8 @@ func TestMeshExperimentE1M3MidwallBottom(t *testing.T) {
 	r := g.ensureMeshExperiment()
 	g.renderMeshExperiment(r)
 	// Line 5 has BRNSMALC on both sides of a 72-unit opening. Its 64-unit
-	// texture must wrap through the bottom eight units, as our classic
-	// renderer does. Previously the mesh cut the card off at Z=72.
+	// texture is drawn once by Doom's R_DrawMaskedColumn, leaving the bottom
+	// eight units open. The CPU and mesh renderers used to repeat into that gap.
 	line := g.m.Linedefs[5]
 	side := int(line.SideNum[0])
 	if g.m.Sidedefs[side].Mid != "BRNSMALC" {
@@ -137,17 +136,15 @@ func TestMeshExperimentE1M3MidwallBottom(t *testing.T) {
 			}
 		}
 	}
-	if bottom != 64 {
-		t.Fatalf("midwall ends at Z=%g instead of portal floor 64", bottom)
+	if bottom != 72 {
+		t.Fatalf("midwall ends at Z=%g instead of texture bottom 72", bottom)
 	}
 	var raster levelmesh.Rasterizer
 	raster.Render(faces, 320, 200, levelmesh.Camera{X: -1312, Y: -2944, Z: 100, Yaw: -math.Pi / 2}, levelmesh.Textured, func(tri levelmesh.Triangle) levelmesh.Texture { return g.meshMaterial(r, tri) }, nil)
-	// Pixel center (160.5,179.5) hits Z=68.2, inside the former bottom gap.
+	// Pixel center (160.5,179.5) hits Z=68.2, below the single texture strip.
 	p := (179*320 + 160) * 4
-	tex := g.meshMaterial(r, faces[0])
-	want := tex.RGBA[(3*tex.Width+32)*4 : (3*tex.Width+32)*4+3]
-	if raster.Depth[179*320+160] == 0 || !bytes.Equal(raster.Pixels[p:p+3], want) {
-		t.Fatalf("bottom gap pixel=%v want repeated texel %v", raster.Pixels[p:p+3], want)
+	if raster.Depth[179*320+160] != 0 {
+		t.Fatalf("masked texture repeated into bottom gap: %v", raster.Pixels[p:p+3])
 	}
 	captureMeshFrame(t, "e1m3-midwall-bottom", raster.Pixels, 320, 200)
 }

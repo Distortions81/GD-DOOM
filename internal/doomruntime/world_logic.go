@@ -6,8 +6,6 @@ import (
 
 import "gddoom/internal/doomrand"
 
-const playerDeathViewFallSpeed = fracUnit
-
 type sectorLightEffectKind uint8
 
 const (
@@ -288,50 +286,52 @@ func (g *game) findMinSurroundingSectorLight(sec int, maxLight int16) int16 {
 	return minLight
 }
 
+// P_DeathThink lowers viewheight, not world-space viewz: a corpse can still
+// slide, fall or ride a lift. P_CalcHeight retains momentum bob on the ground.
 func (g *game) tickPlayerViewHeight() {
 	if g.p.viewHeight == 0 {
 		g.p.viewHeight = playerViewHeight
 	}
-	aliveEye := g.p.z + g.p.viewHeight
-	if g.playerViewZ == 0 && !g.isDead {
-		g.playerViewZ = aliveEye
+	if g.isDead {
+		g.p.viewHeight -= fracUnit
+		if g.p.viewHeight < 6*fracUnit {
+			g.p.viewHeight = 6 * fracUnit
+		}
+		g.p.deltaViewHeight = 0
+	}
+	if g.p.z > g.p.floorz {
+		// Original P_CalcHeight returns before bob and ceiling clipping here.
+		g.playerViewZ = g.p.z + g.p.viewHeight
+		return
 	}
 	if !g.isDead {
-		if g.p.z <= g.p.floorz {
-			g.p.viewHeight += g.p.deltaViewHeight
-			if g.p.viewHeight > playerViewHeight {
-				g.p.viewHeight = playerViewHeight
-				g.p.deltaViewHeight = 0
-			}
-			if g.p.viewHeight < playerViewHeightMin {
-				g.p.viewHeight = playerViewHeightMin
-				if g.p.deltaViewHeight <= 0 {
-					g.p.deltaViewHeight = 1
-				}
-			}
-			if g.p.deltaViewHeight != 0 {
-				g.p.deltaViewHeight += fracUnit / 4
-				if g.p.deltaViewHeight == 0 {
-					g.p.deltaViewHeight = 1
-				}
+		g.p.viewHeight += g.p.deltaViewHeight
+		if g.p.viewHeight > playerViewHeight {
+			g.p.viewHeight, g.p.deltaViewHeight = playerViewHeight, 0
+		}
+		if g.p.viewHeight < playerViewHeightMin {
+			g.p.viewHeight = playerViewHeightMin
+			if g.p.deltaViewHeight <= 0 {
+				g.p.deltaViewHeight = 1
 			}
 		}
-		aliveEye = g.p.z + g.p.viewHeight
-		if aliveEye > g.p.ceilz-4*fracUnit {
-			aliveEye = g.p.ceilz - 4*fracUnit
+		if g.p.deltaViewHeight != 0 {
+			g.p.deltaViewHeight += fracUnit / 4
+			if g.p.deltaViewHeight == 0 {
+				g.p.deltaViewHeight = 1
+			}
 		}
-		g.playerViewZ = aliveEye
-		return
 	}
-	target := g.p.floorz
-	if g.playerViewZ > target {
-		g.playerViewZ -= playerDeathViewFallSpeed
-		if g.playerViewZ < target {
-			g.playerViewZ = target
-		}
-		return
+	var bobOffset int64
+	// Authoritative prediction has a separate command clock; retain its
+	// existing bob-free eye so snapshots cannot introduce phase corrections.
+	if g.authorityRules == nil && !g.predictionMovement {
+		bob := int64(int32(fixedMul(g.p.momx, g.p.momx)+fixedMul(g.p.momy, g.p.momy))) >> 2
+		bob = min(bob, 0x100000)
+		angle := (doomFineAngles / 20 * g.worldTic) & doomFineMask
+		bobOffset = fixedMul(bob/2, doomFineSine[angle])
 	}
-	g.playerViewZ = target
+	g.playerViewZ = min(g.p.z+g.p.viewHeight+bobOffset, g.p.ceilz-4*fracUnit)
 }
 
 func (g *game) trackSecrets() {
@@ -510,10 +510,10 @@ func (g *game) damagePlayerFromWithInflictorZ(amount int, msg string, attackerX,
 		if len(g.authorityPlayers) != 0 {
 			g.authorityPlayerKilled(g.localSlot, g.authorityDamageSource)
 		}
-		// Doom's P_KillMobj always shortens the death state's tics with
-		// `P_Random() & 3`, including the player path. We don't model the
-		// full player death mobj state here, but we must consume the RNG.
+		// P_KillMobj shortens the death state's tics with P_Random & 3.
+		// Lower the weapon immediately, before another attack state can run.
 		_ = doomrand.PRandom() & 3
+		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
 		msg = "You Died"
 		g.emitSoundEvent(soundEventPlayerDeath)
 	} else {

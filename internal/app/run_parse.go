@@ -1199,6 +1199,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 					Width:           w,
 					Height:          h,
 				}
+				if opaque, err := ts.BuildTextureOpaqueIndexed(name); err == nil {
+					tex := wallTexBank[name]
+					tex.SetClassicOpaque(opaque)
+					tex.ClassicMasked = ts.BuildTextureMaskedPosts(name)
+					wallTexBank[name] = tex
+				}
 				built++
 			}
 			fmt.Fprintf(stderr, "wall texture build: built=%d failed=%d\n", built, failed)
@@ -2178,6 +2184,10 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 					}
 				}
 				tex := media.WallTexture{RGBA: rgba, RGBA32: rgba32, ColMajor: colMajor, Indexed: indexed, IndexedColMajor: indexedColMajor, Width: w, Height: h}
+				if opaque, err := ts.BuildTextureOpaqueIndexed(name); err == nil {
+					tex.SetClassicOpaque(opaque)
+					tex.ClassicMasked = ts.BuildTextureMaskedPosts(name)
+				}
 				tex.EnsureOpaqueMask()
 				tex.EnsureOpaqueColumnBounds()
 				wallTexBank[name] = tex

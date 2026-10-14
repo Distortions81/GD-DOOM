@@ -492,11 +492,11 @@ func (g *game) doorWouldCrushPlayer(sec int, nextCeil int64) bool {
 	if !ok {
 		return true
 	}
-	if tmceil-tmfloor < playerHeight {
+	if tmceil-tmfloor < g.playerMobjHeight() {
 		return true
 	}
-	playerTop := g.p.z + playerHeight
-	return tmceil-g.p.z < playerHeight || tmceil < playerTop
+	playerTop := g.p.z + g.playerMobjHeight()
+	return tmceil-g.p.z < g.playerMobjHeight() || tmceil < playerTop
 }
 
 func (g *game) tickDoor(sec int, d *doorThinker) {
@@ -805,11 +805,11 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 		g.debugPlayerMove("tryMove blocked", x, y)
 		return false
 	}
-	if tmceil-tmfloor < playerHeight {
+	if tmceil-tmfloor < g.playerMobjHeight() {
 		g.debugPlayerMove("tryMove low ceiling", x, y)
 		return false
 	}
-	if tmceil-g.p.z < playerHeight {
+	if tmceil-g.p.z < g.playerMobjHeight() {
 		g.debugPlayerMove("tryMove ceiling clip", x, y)
 		return false
 	}
@@ -862,11 +862,11 @@ func (g *game) zMovement() {
 		}
 	}
 
-	if g.p.z+playerHeight > g.p.ceilz {
+	if g.p.z+g.playerMobjHeight() > g.p.ceilz {
 		if g.p.momz > 0 {
 			g.p.momz = 0
 		}
-		g.p.z = g.p.ceilz - playerHeight
+		g.p.z = g.p.ceilz - g.playerMobjHeight()
 		if g.p.z < g.p.floorz {
 			g.p.z = g.p.floorz
 		}
@@ -1166,7 +1166,7 @@ func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThin
 		// Doom's PIT_CheckThing touches MF_SPECIAL items during the thing
 		// blockmap walk, before a later solid/corpse can reject the move.
 		if touchPickups && moverThingIdx < 0 && !moverIsMonster && !g.isDead {
-			g.processThingPickupAtIndex(i, th, x, y, g.p.z, playerRadius, playerHeight, false)
+			g.processThingPickupAtIndex(i, th, x, y, g.p.z, playerRadius, g.playerMobjHeight(), false)
 			if i < len(g.thingCollected) && g.thingCollected[i] {
 				return false
 			}
@@ -1741,10 +1741,10 @@ func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 			return it.frac, it.line, true
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
-		if openrange < playerHeight {
+		if openrange < g.playerMobjHeight() {
 			return it.frac, it.line, true
 		}
-		if opentop-g.p.z < playerHeight {
+		if opentop-g.p.z < g.playerMobjHeight() {
 			return it.frac, it.line, true
 		}
 		if openbottom-g.p.z > stepHeight {

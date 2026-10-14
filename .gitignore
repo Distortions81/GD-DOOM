@@ -1,7 +1,11 @@
 .VSCodeCounter/
 build/
 config.toml
-internal/doomruntime/testdata/
+internal/doomruntime/testdata/*
+!internal/doomruntime/testdata/classic_sampling.csv
+!internal/doomruntime/testdata/classic_lighting.csv
+!internal/doomruntime/testdata/classic_camera.csv
+__pycache__/
 out/*
 pk*.wad
 *.pprof

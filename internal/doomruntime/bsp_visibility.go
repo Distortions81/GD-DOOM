@@ -121,11 +121,52 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, 
 }
 
 func (g *game) nodeChildBBoxMaybeVisible(n mapdata.Node, childSide int, px, py int64, ca, sa, near, tanHalfFOV float64) bool {
+	if !g.opts.SourcePortMode {
+		_, _, ok := g.classicBBoxRange(n, childSide, px, py, ca, sa)
+		return ok
+	}
 	return scene.NodeChildBBoxMaybeVisible(n, childSide, float64(px)/fracUnit, float64(py)/fracUnit, ca, sa, near, tanHalfFOV)
 }
 
 func (g *game) nodeChildScreenRange(n mapdata.Node, childSide int, px, py int64, ca, sa, near, focal float64) (int, int, bool) {
+	if !g.opts.SourcePortMode {
+		return g.classicBBoxRange(n, childSide, px, py, ca, sa)
+	}
 	return scene.NodeChildScreenRange(n, childSide, float64(px)/fracUnit, float64(py)/fracUnit, ca, sa, near, focal, g.viewW)
+}
+
+// R_CheckBBox uses the same quantized angle table as walls. Float frustum
+// tests can reject a box exactly on the left edge even when column zero draws.
+func (g *game) classicBBoxRange(n mapdata.Node, side int, px, py int64, ca, sa float64) (int, int, bool) {
+	bb := n.BBoxR
+	if side != 0 {
+		bb = n.BBoxL
+	}
+	x, y := float64(px)/fracUnit, float64(py)/fracUnit
+	bx, by := 2, 2
+	if x <= float64(bb[2]) {
+		bx = 0
+	} else if x < float64(bb[3]) {
+		bx = 1
+	}
+	if y >= float64(bb[0]) {
+		by = 0
+	} else if y > float64(bb[1]) {
+		by = 1
+	}
+	pos := by*4 + bx
+	if pos == 5 {
+		return 0, g.viewW - 1, true
+	}
+	coords := [12][4]int{{3, 0, 2, 1}, {3, 0, 2, 0}, {3, 1, 2, 0}, {}, {2, 0, 2, 1}, {}, {3, 1, 3, 0}, {}, {2, 0, 3, 1}, {2, 1, 3, 1}, {2, 1, 3, 0}, {}}
+	c := coords[pos]
+	in := scene.WallPrepassWorldInput{X1W: float64(bb[c[0]]), Y1W: float64(bb[c[1]]), X2W: float64(bb[c[2]]), Y2W: float64(bb[c[3]])}
+	a := doomPointToAngle2(px, py, floorFixed(in.X1W), floorFixed(in.Y1W))
+	b := doomPointToAngle2(px, py, floorFixed(in.X2W), floorFixed(in.Y2W))
+	if a-b >= doomAng180 {
+		return 0, g.viewW - 1, true
+	}
+	return classicProjectionForWidth(g.viewW).wallBounds(in, x, y, radiansToDoomAngle(math.Atan2(sa, ca)))
 }
 
 func (g *game) nodeChildScreenRangeCached(nodeIdx int, n mapdata.Node, childSide int, px, py int64, ca, sa, near, focal float64) (int, int, bool) {
@@ -148,7 +189,15 @@ func (g *game) nodeChildScreenRangeCached(nodeIdx int, n mapdata.Node, childSide
 }
 
 func (g *game) segCoarseOpaque(si int) bool {
-	front, back := g.segSectors(si)
+	frontIdx, backIdx := g.wallRenderSectorIndices(si)
+	if frontIdx < 0 || frontIdx >= len(g.m.Sectors) {
+		return false
+	}
+	front := &g.m.Sectors[frontIdx]
+	var back *mapdata.Sector
+	if backIdx >= 0 && backIdx < len(g.m.Sectors) {
+		back = &g.m.Sectors[backIdx]
+	}
 	if front == nil {
 		return false
 	}
@@ -156,7 +205,6 @@ func (g *game) segCoarseOpaque(si int) bool {
 		return true
 	}
 	if g.authorityRender != nil || g.clientPrediction != nil {
-		frontIdx, backIdx := g.segSectorIndices(si)
 		frontFloor, frontCeil, frontOK := g.sectorHeightRenderSnapshot(frontIdx)
 		backFloor, backCeil, backOK := g.sectorHeightRenderSnapshot(backIdx)
 		if frontOK && backOK {
@@ -172,6 +220,13 @@ func (g *game) segScreenRange(si int, px, py int64, ca, sa, near, focal float64)
 	x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
 	if !ok || g.viewW <= 0 {
 		return 0, 0, false
+	}
+	if !g.opts.SourcePortMode {
+		// Occlusion must cover exactly the columns the wall will draw. The
+		// floating-point floor/ceil range can hide a neighboring column and
+		// discard a subsector that classic still visits, changing plane spans.
+		input := scene.WallPrepassWorldInput{X1W: x1w, Y1W: y1w, X2W: x2w, Y2W: y2w}
+		return classicProjectionForWidth(g.viewW).wallBounds(input, float64(px)/fracUnit, float64(py)/fracUnit, radiansToDoomAngle(math.Atan2(sa, ca)))
 	}
 	return scene.SegScreenRangeFromWorld(x1w, y1w, x2w, y2w, float64(px)/fracUnit, float64(py)/fracUnit, ca, sa, near, focal, g.viewW)
 }

@@ -28,6 +28,20 @@ func TestDecodePatchAndBlit(t *testing.T) {
 	if p.width != 2 || p.height != 2 {
 		t.Fatalf("size=%dx%d", p.width, p.height)
 	}
+	s := &Set{patchCache: map[string]*decodedPatch{"P": p}, textures: map[string]TextureDef{"T": {Width: 2, Height: 2, Patches: []PatchRef{{PatchName: "P"}}}}}
+	legacy, err := s.BuildTextureOpaqueIndexed("T")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The opaque reader sees raw bytes following the short post, including
+	// its padding and next column's header; the last row is safely bounded.
+	if legacy[0] != 1 || legacy[2] != 2 || legacy[4] != 0 || legacy[6] != 255 || legacy[254] != 0 {
+		t.Fatalf("opaque column bytes %v", legacy[:10])
+	}
+	posts := s.BuildTextureMaskedPosts("T")
+	if len(posts) != 2 || posts[0][0].Length != 2 || posts[0][0].Indexed[3] != 255 {
+		t.Fatal("lost raw masked post stream")
+	}
 
 	dst := make([]byte, 4)
 	alpha := make([]bool, 4)
@@ -133,5 +147,36 @@ func TestBuildPatchIndexedViewSharesDecodedPatchSlices(t *testing.T) {
 	}
 	if p.opaque[1] {
 		t.Fatalf("opaque view did not share backing slice")
+	}
+}
+
+func TestTexturePatchOriginIsChosenPerColumn(t *testing.T) {
+	// Column 0 has one patch (ignore Y=-1), column 1 overlaps two patches
+	// (apply both origins), and column 2 is uncovered. Transparent posts still
+	// count toward R_GenerateLookup's patch coverage.
+	a := &decodedPatch{width: 3, height: 4, index: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, opaque: []bool{true, true, true, true, true, true, true, true, true, true, true, true}}
+	b := &decodedPatch{width: 1, height: 2, index: []byte{0, 99}, opaque: []bool{false, true}}
+	var pal [256][3]uint8
+	for i := range pal {
+		pal[i] = [3]uint8{uint8(i), uint8(i), uint8(i)}
+	}
+	s := &Set{palettes: [][256][3]uint8{pal}, patchCache: map[string]*decodedPatch{"A": a, "B": b}, textures: map[string]TextureDef{"TEST": {Width: 3, Height: 4, Patches: []PatchRef{{PatchName: "A", OriginX: -1, OriginY: -1}, {PatchName: "B", OriginX: 1, OriginY: 1}}}}}
+	want := []byte{2, 3, 0, 5, 6, 0, 8, 99, 0, 11, 0, 0}
+	pixels, _, _, err := s.BuildTextureIndexed("TEST")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rgba, _, _, err := s.BuildTextureRGBA("TEST", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range want {
+		alpha := byte(255)
+		if v == 0 {
+			alpha = 0
+		}
+		if pixels[i] != v || rgba[i*4] != v || rgba[i*4+3] != alpha {
+			t.Fatalf("pixel %d: index=%d rgba=%v want=%d alpha=%d", i, pixels[i], rgba[i*4:i*4+4], v, alpha)
+		}
 	}
 }

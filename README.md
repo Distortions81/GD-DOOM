@@ -52,6 +52,8 @@ Music playlists: [SGM MIDI](https://www.youtube.com/playlist?list=PLMxxYNFZPBOgQ
 
 ## Software-rendered appearance, GPU drawing
 
+For reproducible classic/CPU/GPU screenshots, overlays, and coordinate-audit findings, see the [visual comparison harness](docs/visual-renderer-comparison.md).
+
 GD-DOOM's shaders keep Doom's crisp texture pixels, column-and-span geometry,
 sprite cutouts, clipping, and lighting. The CPU makes the same visibility and
 projection decisions as the software renderer; the GPU draws the resulting

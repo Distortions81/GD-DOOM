@@ -35,6 +35,9 @@ var DoomFlatAnimDefs = []AnimDef{
 	{EndName: "SLIME12", StartName: "SLIME09"},
 }
 
+// LoadWallTextureAnimSequences returns per-name cycles phased by absolute WAD
+// texture index, starting at the translation used by leveltime zero. Before the
+// first special update the renderer must use identity translation instead.
 func LoadWallTextureAnimSequences(set *Set, defs []AnimDef) map[string][]string {
 	if set == nil {
 		return nil
@@ -42,6 +45,7 @@ func LoadWallTextureAnimSequences(set *Set, defs []AnimDef) map[string][]string 
 	return buildAnimSequences(set.TextureNames(), defs)
 }
 
+// LoadFlatAnimSequences uses classic flat indices, including marker lumps.
 func LoadFlatAnimSequences(f *wad.File, defs []AnimDef) map[string][]string {
 	if f == nil {
 		return nil
@@ -79,8 +83,14 @@ func buildAnimSequences(order []string, defs []AnimDef) map[string][]string {
 		if len(frames) < 2 {
 			continue
 		}
-		for _, frame := range frames {
-			out[normalizeName(frame)] = frames
+		// P_UpdateSpecials uses the absolute texture/flat index, not an
+		// index relative to this animation. Store each alias's cycle beginning
+		// at its translated frame for leveltime zero.
+		for i, frame := range frames {
+			phase := (startIdx + i) % len(frames)
+			cycle := append([]string(nil), frames[phase:]...)
+			cycle = append(cycle, frames[:phase]...)
+			out[normalizeName(frame)] = cycle
 		}
 	}
 	return out
@@ -91,19 +101,12 @@ func flatNamesInOrder(f *wad.File) []string {
 	if len(ranges) == 0 {
 		return nil
 	}
+	// R_InitFlats numbers every lump between F_START and F_END, including
+	// nested F1/F2 markers. Filtering those markers changes animation phase.
 	out := make([]string, 0, 256)
-	seen := make(map[string]struct{}, 256)
 	for _, r := range ranges {
 		for i := r[0]; i < r[1]; i++ {
-			l := f.Lumps[i]
-			if l.Name == "" || l.Size != doomFlatSize {
-				continue
-			}
-			if _, ok := seen[l.Name]; ok {
-				continue
-			}
-			seen[l.Name] = struct{}{}
-			out = append(out, l.Name)
+			out = append(out, f.Lumps[i].Name)
 		}
 	}
 	return out

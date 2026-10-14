@@ -21,13 +21,13 @@ type TextureDef struct {
 }
 
 type Set struct {
-	wad         *wad.File
-	palettes    [][256][3]uint8
-	textures    map[string]TextureDef
+	wad          *wad.File
+	palettes     [][256][3]uint8
+	textures     map[string]TextureDef
 	textureOrder []string
 	textureIndex map[string]int
-	patchByName map[string]wad.Lump
-	patchCache  map[string]*decodedPatch
+	patchByName  map[string]wad.Lump
+	patchCache   map[string]*decodedPatch
 }
 
 type decodedPatch struct {
@@ -37,6 +37,13 @@ type decodedPatch struct {
 	topOffset  int
 	index      []uint8
 	opaque     []bool
+	columns    [][]patchPost
+	raw        []byte
+}
+
+type patchPost struct {
+	top    int
+	pixels []byte
 }
 
 func (s *Set) TextureNames() []string {
