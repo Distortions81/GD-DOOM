@@ -172,10 +172,28 @@ func TestShouldOpenIWADPickerForWASMEvenWithExplicitWAD(t *testing.T) {
 	}
 }
 
-func TestShouldOpenIWADPickerSkipsForcedWASMWhenExplicitWADProvided(t *testing.T) {
-	forceWASMPicker := false
-	if shouldOpenIWADPicker(true, false, forceWASMPicker, 1) {
-		t.Fatal("picker should stay closed for explicit WAD launches in forced WASM mode")
+func TestShouldOpenIWADPickerSkipsExplicitNativeWAD(t *testing.T) {
+	if shouldOpenIWADPicker(true, false, false, 1) {
+		t.Fatal("picker should stay closed for explicit native WAD launches")
+	}
+}
+
+func TestWASMSelectedWADStillStartsProfileAndAudioSetup(t *testing.T) {
+	for _, path := range []string{"/tmp/DOOM2.WAD", "/browser-wads/local-42/custom-base.wad"} {
+		t.Run(path, func(t *testing.T) {
+			choices := wasmPickerChoices([]iwadChoice{{Path: "DOOM1.WAD", Label: "DOOM Shareware"}}, path)
+			if !shouldOpenIWADPicker(true, false, true, len(choices)) {
+				t.Fatal("selected browser WAD bypassed setup")
+			}
+			game, err := newIWADPickerGame(choices, music.BackendImpSynth, "paper-speaker", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(game.Close)
+			if len(game.choices) != 1 || game.choices[game.selected].Path != path || game.stage != pickerStageProfile {
+				t.Fatalf("selected base WAD did not enter profile/audio setup: choices=%+v selected=%d stage=%v", game.choices, game.selected, game.stage)
+			}
+		})
 	}
 }
 

@@ -62,6 +62,8 @@ the familiar software-rendered appearance on desktop and in the browser.
 using the WAD's **COLORMAP lookup tables** for lighting and the selected gamma
 palette for color. Sky coordinates match the CPU renderer, and classic low
 detail still doubles each framebuffer column.
+Simulation and visual updates stay at 35 Hz, with no motion interpolation or
+game-speed controls, including in multiplayer.
 **Source Port** mode adds high-resolution output, interpolated camera, monster
 and weapon motion, full-color rendering, and optional CRT effects.
 
@@ -173,10 +175,14 @@ go run . -wad DOOM2.WAD -sourceport-mode
 go run . -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
 ```
 
-The WAD can also be the first positional argument. Without `-wad`, one known
-WAD in the working directory is selected automatically; multiple supported
-WADs can open the frontend picker. For demos and live sessions, use matching
-base WADs and add-ons on every instance.
+The WAD can also be the first positional argument. Without `-wad`, the in-game
+picker offers installed games plus **Freedoom Phase 1**, **Freedoom Phase 2**,
+and **FreeDM**. These standalone games need no other base WAD and download only
+when selected, with size and SHA-256 verification. Graphics, sound, and music
+setup still runs before play. Doom Shareware remains bundled for offline use.
+FreeDM supplies deathmatch arenas; the two Freedoom phases supply campaigns.
+See [free games, licenses, and server installation](docs/free-games.md).
+For demos and live sessions, use matching base WADs and add-ons on every instance.
 
 Source builds require **Go 1.26.6 or newer** and a Doom WAD. Linux also needs
 the usual X11, OpenGL, and audio development dependencies. On Debian/Ubuntu:
@@ -204,6 +210,46 @@ another instance with `-watch -watch-session=N`, using the session ID printed
 by the broadcaster. Native Linux microphone capture is available with `-mic`.
 See the [relay, voice, controls, and cheats reference](docs/usage.md).
 
+Authoritative co-op/deathmatch is available through `cmd/gdserver` and the
+`-connect` client option, with prediction, reconnects, chat and spectators.
+In desktop and browser games, open **Esc → Multiplayer**. **Find Game** opens
+the live room list; **Create Game** starts a room of your own. **Player Setup**
+contains your name and player/spectator preference. **Servers** opens
+the public **GD-DOOM Co-op** and **GD-DOOM Deathmatch** servers and your saved
+addresses, with a separate **Manage Servers** page for adding or editing them.
+Select a game and press **Enter** or tap **Use** to join. The list shows map,
+mode, player counts and whether your loaded WADs match. Saved addresses persist
+in native config or browser local storage. **Back** or **Esc** returns one page.
+During a match, **Multiplayer → Players** shows the live player list with names,
+ping, scores, and connection state; hold **F6** for the quick scoreboard.
+Join, leave, and reconnect notices appear in a readable on-screen feed. A small gameplay
+indicator shows player count and your ping, with a warning for a stalled connection.
+In a match, **Return to Game** resumes play and **Leave Match** returns to the
+title menu without restarting the game.
+For user-created games, run `cmd/gdlobby` and configure the client with
+`-multiplayer-lobby=https://your-lobby-host`. **Create Game** keeps the name,
+mode and difficulty together. **Game Files** selects WADs and the starting
+level; **Rules** contains player limits, monsters, friendly fire and match limits. The lobby runs
+each room in its own authoritative server process. With uploads enabled,
+**Upload Loaded WADs** registers the game's current base WAD and overlays.
+Joining can download missing WADs explicitly approved for redistribution by the
+host and load the room's exact content, including graphics and audio. Matching
+local files are reused; private or commercial WADs must already be loaded.
+Uploads are private by default, and filenames never grant download permission.
+See [lobby hosting and custom WADs](docs/authoritative-multiplayer.md#multi-room-lobby-and-custom-wads).
+Mouse look turns left/right in multiplayer with your usual sensitivity and
+inversion settings; click the browser game to capture the pointer. Hold **F6**
+for scores, press **T** for chat, or **F12** to change the spectator view.
+The default deathmatch room supports four players, no monsters, and an E1M1/E1M2
+rotation with a 20-frag or 10-minute limit; map exits can rotate early.
+After dying, press **Use** to respawn.
+New menu labels use a reusable large Doom menu font; **Multiplayer** matches the
+original menu lettering. Custom WADs can override it with an `M_MULTI` patch.
+See the [font source and composition API](internal/render/menufont/assets/NOTICE.md).
+The [multiplayer design and verification status](docs/authoritative-multiplayer.md)
+records launch commands, transport choices, measured bandwidth, and remaining
+release requirements.
+
 ## Browser and development
 
 Build and serve the browser version from the repository root:
@@ -217,7 +263,17 @@ The build uses `DOOM1.WAD` and your Go toolchain's `wasm_exec.js`; optional
 `wasm-opt` optimizes the output. The browser supports local WAD loading,
 SoundFont caching, touch controls, and persistent saves. Click or tap once to
 start audio where browser autoplay policies require it.
+Set `MULTIPLAYER_SERVER=https://your-host:6672/netplay` when building to prefill
+the in-game server list. This does not join automatically.
+Set `MULTIPLAYER_LOBBY=https://your-lobby-host` to enable the live room browser
+and Create Game in the WASM build. These defaults are embedded in the game.
+The browser page only launches the game and selects WAD files. Choose graphics,
+sound, and music during game setup, then use the in-game Multiplayer menu to
+join or create a game. Browser URLs cannot join a server or skip game setup.
 Browser rendering uses VSync by default, with no separate WASM frame throttle.
+Automatic detail starts at full resolution and reduces quality if performance
+requires it. Re-enabling AUTO also starts at full resolution; explicit
+`-detail-level` overrides and manual detail settings remain available.
 
 ```bash
 go test ./...

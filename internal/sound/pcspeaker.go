@@ -140,6 +140,20 @@ type PCSpeakerImportReport struct {
 	Sounds  []PCSpeakerSound
 }
 
+// BuildPCSpeakerBank retains compact DP tone sequences under the corresponding
+// DS sound-event names. Both hosts use the same lump decoder and PIT table.
+func BuildPCSpeakerBank(report PCSpeakerImportReport) map[string][]PCSpeakerTone {
+	bank := make(map[string][]PCSpeakerTone, len(report.Sounds))
+	for _, s := range report.Sounds {
+		seq := BuildToneSequence(s)
+		if len(seq) == 0 {
+			continue
+		}
+		bank["DS"+s.Name[2:]] = seq
+	}
+	return bank
+}
+
 func ImportPCSpeakerSounds(f *wad.File) PCSpeakerImportReport {
 	report := PCSpeakerImportReport{}
 	for _, l := range f.Lumps {

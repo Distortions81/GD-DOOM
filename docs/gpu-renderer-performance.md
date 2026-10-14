@@ -131,20 +131,111 @@ Baseline and packed binaries alternated for three runs, with `GOMAXPROCS=4`,
 | Walls | 47.24 ms | 40.47 ms | 14.3% |
 | Sprites | 10.42 ms | 8.68 ms | 16.6% |
 
+## Vertex metadata and sky work
+
+Unblended world draws now carry the two packed atlas-coordinate/dimension pairs
+in the existing vertex channels. The fragment shader no longer reads two
+metadata texels for each ordinary wall, plane, sprite, or Faithful sky pixel.
+Vertices remain 48 bytes, and geometry, batch order, lighting, masks, and texture
+coordinates are unchanged. Animated blends retain the original metadata lookup;
+solid fills, sky copies, and spectre passes retain their existing encodings.
+GPU comparisons exercise both encodings at texture-ID, atlas, and dimension
+limits, including 2,048-pixel textures.
+
+The final candidate was compared with a frozen binary from `3399c93` on
+October 9, 2026, using Go 1.26.6, a Ryzen 9 7950X, and Mesa 26.1.3 llvmpipe
+(LLVM 22.1.5). Three separate-process pairs alternated baseline/candidate,
+candidate/baseline, then baseline/candidate. Each used a one-second benchmark,
+`GOMAXPROCS=4`, `LP_NUM_THREADS=4`, CPU affinity 0–7, and Xvfb. These synthetic
+Modern-mode draws isolate the ordinary indexed world path; they do not time
+Faithful COLORMAP shading, sky, or fuzz.
+
+| World draw | Baseline median | Vertex metadata median | Time reduction |
+| --- | ---: | ---: | ---: |
+| Planes, 320×200 | 1.026 ms | 0.895 ms | 12.8% |
+| Walls, 320×200 | 1.528 ms | 1.255 ms | 17.8% |
+| Sprites, 320×200 | 0.346 ms | 0.303 ms | 12.6% |
+| Planes, 1920×1080 | 28.666 ms | 24.971 ms | 12.9% |
+| Walls, 1920×1080 | 43.952 ms | 36.361 ms | 17.3% |
+| Sprites, 1920×1080 | 9.848 ms | 7.723 ms | 21.6% |
+
+Shaders were compiled and warmed before timing, and each draw synchronized with
+a readback. Timings include that transfer and benchmark-only allocations.
+All runs were retained, including a transient slowdown in the first candidate
+process: at 1080p, candidate ranges were 23.990–33.326 ms for planes,
+35.997–48.429 ms for walls, and 7.680–11.258 ms for sprites. These medians show
+software-renderer microbenchmark results, not hardware-GPU or whole-game FPS
+guarantees.
+
+CPU command preparation was checked separately with three 200 ms repetitions
+per binary. Heavily merged wall commands added about 3 µs: 24.782 → 27.670 µs
+for eight-column repeats and 20.669 → 23.694 µs for 64-column repeats. The
+measured sprite and wall cases retained zero allocations and identical quad
+counts and vertex/index payloads.
+
+Both complete native framebuffer suites passed for the world-metadata and
+hidden-sky candidate. All 316 saved CPU/GPU images from Doom and Doom II matched
+the frozen baseline pixel-for-pixel, including the real-map views and synthetic
+cutout-order captures. This comparison is stricter than merely remaining within
+the existing 1% CPU/GPU difference budget.
+
+Frames with no visible sky commands skip the full-screen sky backdrop. The
+snapshot lifecycle still supports indoor → outdoor → indoor transitions and
+ordered spectres. The optional sharp sky path shares identical sample positions
+while retaining the original filter arithmetic. The default GPU world path uses
+point sky sampling, so this sample reuse applies to the separate sharp path.
+
+The sky shader's original source is retained as an integration-only reference.
+Its parity test compares every channel across 96 cases covering point/sharp
+modes, wrapped seams, odd output sizes, non-power-of-two textures, a 1×1 texture,
+and nonzero source-image origins. Both paths retain the original safe sampler;
+switching to the unchecked sampler introduced small channel-rounding differences
+on WebGL. At the shader source level, the sharp filter reduces texture-sampling
+calls from 80 to 56. Compiler and driver optimizations determine the resulting
+hardware work. The final safe-sampler version independently passes all 96 cases
+byte-for-byte on native OpenGL and browser WebGL. Indoor frames avoid the sky
+draw entirely.
+
+Final safe-sampler measurements on October 9, 2026 used the same Go 1.26.6,
+Ryzen 9 7950X, Mesa 26.1.3 llvmpipe, four Go/Mesa threads, and CPU affinity 0–7
+as the world checks. Medians below retain all three separate-process runs, with
+one-second benchmarks and variant order reversed between runs. Each draw was
+warmed and synchronized with a benchmark-only readback.
+
+| Sky draw | Original median | Cached-sample median | Time reduction |
+| --- | ---: | ---: | ---: |
+| Point, 320×200 | 0.195 ms | 0.199 ms | −2.5% |
+| Sharp, 320×200 | 1.242 ms | 1.140 ms | 8.2% |
+| Point, 1920×1080 | 5.316 ms | 5.294 ms | 0.4% |
+| Sharp, 1920×1080 | 37.911 ms | 34.343 ms | 9.4% |
+
+The point-sampling code is unchanged; its small timing variation does not
+establish a performance gain. All three 1080p sharp-filter runs improved:
+original times ranged from 37.307–38.315 ms and cached times from
+33.905–34.503 ms. These software-renderer measurements include readback and do
+not predict hardware-GPU performance or whole-game FPS.
+
 ## Running the checks
 
 ```sh
-go test ./internal/doomruntime -run '^TestGPU|^TestMagnifiedSprite' -count=1
+go test ./internal/doomruntime -run '^TestGPU' -count=1
+go test ./internal/doomruntime -run '^TestMagnifiedSprite' -count=1
 go test ./internal/doomruntime -run '^$' -bench '^BenchmarkGPU(Sprite|Wall)Commands$' -count=3
 go test ./internal/doomruntime -run '^$' -bench '^BenchmarkGPUCloseSprite' -count=3
 GD_GPU_INTEGRATION=1 GD_GPU_WAD=wads/DOOMU.WAD xvfb-run -a go test -tags integration ./internal/doomruntime -run '^TestGPUFramebufferComparison$' -count=1 -v
 GD_GPU_INTEGRATION=1 GD_GPU_WAD=wads/DOOM2.WAD xvfb-run -a go test -tags integration ./internal/doomruntime -run '^TestGPUFramebufferComparison$' -count=1 -v
 LP_NUM_THREADS=4 GOMAXPROCS=4 xvfb-run -a go test -tags integration ./internal/doomruntime -run '^$' -bench '^BenchmarkGPUIndexedDraw$' -benchtime=1s -count=1
+GD_GPU_SKY_INTEGRATION=1 xvfb-run -a go test -tags integration ./internal/doomruntime -run '^TestGPUSkyShaderParity$' -count=1 -v
+LP_NUM_THREADS=4 GOMAXPROCS=4 xvfb-run -a go test -tags integration ./internal/doomruntime -run '^$' -bench '^BenchmarkGPUSkyDraw$' -benchtime=1s -count=1
 ```
 
 Run draw benchmark repetitions in separate processes because Ebitengine starts
 its game loop once per process. On a desktop with a working display, omit
 `xvfb-run` to measure that display's renderer.
+
+Keep the GPU and magnified-sprite unit groups in separate processes as shown;
+their existing fixtures share global palette state and depend on initialization
+order when selected together.
 
 Framebuffer tests compare compressed sprite commands exactly with the original
 row commands across seven scales and six sprite modes, including clipping
@@ -155,3 +246,29 @@ and 48 map units from enemies and barrels. All map comparisons must stay within
 the existing 1% difference budget. Deterministic randomized tests compare cached
 spans with every row across wall, closed-portal, open-portal, clipping-range, and
 equal-depth cases.
+
+For browser WebGL checks of the indexed world shader, build the integration test
+binary and serve only its temporary fixture directory:
+
+```sh
+mkdir -p /tmp/gddoom-shader-webgl
+GOOS=js GOARCH=wasm go test -c -tags integration \
+  -o /tmp/gddoom-shader-webgl/doomruntime.test.wasm ./internal/doomruntime
+cp internal/doomruntime/shaders/testdata/gpu_shader_probe.html /tmp/gddoom-shader-webgl/
+cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /tmp/gddoom-shader-webgl/
+python3 -m http.server 18082 --bind 127.0.0.1 --directory /tmp/gddoom-shader-webgl
+```
+
+Open `http://127.0.0.1:18082/gpu_shader_probe.html` and select the indexed world
+or sky suite. Reload between suites. This uses
+real browser shader compilation and pixel readback, including palette, cutout,
+animation, metadata precision, and sky visibility checks. It does not claim
+whole-game FPS measurements. Run each Ebitengine integration test in its own
+process or page. The indexed world suite and the final safe-sampler sky suite
+both pass these browser WebGL checks.
+
+The full framebuffer suite also exposes a pre-existing WebGL spectre scaling
+discrepancy at 1920×1080: the clean `3399c93` baseline and optimized shader both
+produce the same first failing fuzz case. The indexed browser fixture isolates
+the world paths changed here; the full native suite continues to check spectre
+feedback and draw order.

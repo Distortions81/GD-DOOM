@@ -71,7 +71,9 @@ func (p *Playback) PlayTitle(volume float64) {
 	if err != nil || parsed == nil {
 		return
 	}
-	p.ctl.PlayParsed(parsed)
+	// The title is an intro cue. Menus may remain open after it finishes;
+	// only a genuine return to the title should start the cue again.
+	p.ctl.PlayParsedOnce(parsed)
 }
 
 func (p *Playback) PlayMap(name mapdata.MapName, volume float64) {

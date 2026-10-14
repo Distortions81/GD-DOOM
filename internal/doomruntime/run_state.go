@@ -8,6 +8,7 @@ import (
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
+	"gddoom/internal/render/levelmesh"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionaudio"
 	"gddoom/internal/sessionflow"
@@ -23,7 +24,7 @@ const (
 	bootSplashHoldTics = 2 * doomTicsPerSecond
 	// Sourceport melt uses Doom-like 2-pixel column pairs over a 320-wide
 	// virtual layout, i.e. 160 moving slices.
-	sourcePortMeltInitCols = 160
+	sourcePortMeltInitCols = sessiontransition.SourcePortMeltColumns
 	sourcePortMeltMoveCols = sourcePortMeltInitCols
 
 	menuSkullBlinkTics = 8
@@ -58,6 +59,7 @@ const (
 	frontendModeSaveLoad                 = sessionflow.FrontendModeSaveLoad
 	frontendModeMusicPlayer frontendMode = 100
 	frontendModeKeybinds    frontendMode = 101
+	frontendModeMultiplayer frontendMode = 102
 )
 
 type frontendState = sessionflow.Frontend
@@ -74,6 +76,10 @@ const (
 )
 
 type sessionGame struct {
+	nativePatches            *[]levelmesh.Patch // Alternate backend collection; nil during Ebiten drawing.
+	nativeBindingActions     []int              // Optional action ordering for alternate backend menus.
+	nativeHideVoiceOptions   bool               // Voice is excluded by the native host.
+	nativeSaveSlots          []NativeSaveSlot   // Menu snapshot supplied by the native host.
 	g                        *game
 	rt                       sessionRuntime
 	gameFactory              gameplay.RuntimeFactory[Options, *game]
@@ -93,6 +99,9 @@ type sessionGame struct {
 	levelCarryover           *playerLevelCarryover
 	faithfulSurface          *ebiten.Image
 	faithfulNearest          *ebiten.Image
+	faithfulFrame            *ebiten.Image
+	faithfulFrameGame        *game
+	faithfulFrameReady       bool
 	crtShader                *ebiten.Shader
 	crtPost                  *ebiten.Image
 	crtUniforms              map[string]any
@@ -118,6 +127,7 @@ type sessionGame struct {
 	frontendKeybindRow       int
 	frontendKeybindSlot      int
 	frontendKeybindCapture   bool
+	multiplayer              authorityMenuState
 	startupMusicLocked       bool
 	startupMusicVisualReady  bool
 	startupMusicPending      musicPlaybackSource
@@ -141,6 +151,8 @@ type frontendMusicConfigPending struct {
 }
 
 type sessionInputSnapshot struct {
+	inputChars              []rune
+	controlHeld             bool
 	justPressedKeys         map[ebiten.Key]int
 	justPressedMouseButtons map[ebiten.MouseButton]int
 }

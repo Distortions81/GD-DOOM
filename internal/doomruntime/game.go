@@ -18,6 +18,7 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/netgame"
 	"gddoom/internal/render/hud"
 	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/linepolicy"
@@ -428,6 +429,7 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	meshExperiment    *experimentalMeshRenderer
 	gpu               *gpuRenderer
 	gpuFrame          *gpuRenderer
 	m                 *mapdata.Map
@@ -445,51 +447,66 @@ type game struct {
 	hudLogicalLayout  bool
 	State             mapview.ViewState
 
-	mode                      viewMode
-	rotateView                bool
-	parity                    automapParityState
-	showGrid                  bool
-	showLegend                bool
-	bigMap                    mapview.BigMapState
-	paused                    bool
-	pauseMenuActive           bool
-	pauseMenuMode             int
-	pauseMenuItemOn           int
-	pauseMenuOptionsOn        int
-	pauseMenuSoundOn          int
-	pauseMenuVoiceOn          int
-	pauseMenuEpisodeOn        int
-	pauseMenuSelectedEpisode  int
-	pauseMenuSkillOn          int
-	pauseMenuKeybindRow       int
-	pauseMenuKeybindSlot      int
-	pauseMenuKeybindCapture   bool
-	pauseMenuSkullAnimCounter int
-	pauseMenuWhichSkull       int
-	pauseMenuStatus           string
-	pauseMenuStatusTics       int
-	musicPlayerRequested      bool
-	frontendMenuRequested     bool
-	soundMenuRequested        bool
-	frontendActive            bool
-	saveGameRequested         bool
-	loadGameRequested         bool
-	quickSaveRequested        bool
-	quickLoadRequested        bool
-	quitPromptRequested       bool
-	readThisRequested         bool
-	quitPromptActive          bool
-	newGameRequestedMap       *mapdata.Map
-	newGameRequestedSkill     int
-	marks                     mapview.MarksState
-	p                         player
-	currentMoveCmd            moveCmd
-	lastAttackRange           int64 // Original p_map.c attackrange, also read by tracer puffs.
-	localSlot                 int
-	localPlayerThingIndex     int
-	playerBlockOrder          int64
-	peerStarts                []playerStart
-	remotePlayers             map[int]*remotePlayer // slot → state
+	mode                        viewMode
+	rotateView                  bool
+	parity                      automapParityState
+	showGrid                    bool
+	showLegend                  bool
+	bigMap                      mapview.BigMapState
+	paused                      bool
+	pauseMenuActive             bool
+	pauseMenuMode               int
+	pauseMenuItemOn             int
+	pauseMenuOptionsOn          int
+	pauseMenuSoundOn            int
+	pauseMenuVoiceOn            int
+	pauseMenuEpisodeOn          int
+	pauseMenuSelectedEpisode    int
+	pauseMenuSkillOn            int
+	pauseMenuKeybindRow         int
+	pauseMenuKeybindSlot        int
+	pauseMenuKeybindCapture     bool
+	pauseMenuSkullAnimCounter   int
+	pauseMenuWhichSkull         int
+	pauseMenuStatus             string
+	pauseMenuStatusTics         int
+	musicPlayerRequested        bool
+	frontendMenuRequested       bool
+	soundMenuRequested          bool
+	frontendActive              bool
+	saveGameRequested           bool
+	loadGameRequested           bool
+	quickSaveRequested          bool
+	quickLoadRequested          bool
+	quitPromptRequested         bool
+	readThisRequested           bool
+	quitPromptActive            bool
+	newGameRequestedMap         *mapdata.Map
+	newGameRequestedSkill       int
+	marks                       mapview.MarksState
+	p                           player
+	currentMoveCmd              moveCmd
+	predictionMovement          bool // movement-only replay suppresses authoritative side effects
+	clientPrediction            *ClientPrediction
+	authorityRender             *authorityRenderState
+	authorityMapHashCache       *authorityMapHashCache
+	authorityEvents             *authorityEventLog
+	authorityFailure            *netgame.ConnectionStatus
+	authorityNotices            authorityNoticeState
+	clientUpdate                authorityClientUpdateState
+	lastAttackRange             int64 // Original p_map.c attackrange, also read by tracer puffs.
+	localSlot                   int
+	localPlayerThingIndex       int
+	playerBlockOrder            int64
+	peerStarts                  []playerStart
+	remotePlayers               map[int]*remotePlayer       // slot → state
+	authorityPlayers            []*authoritativePlayerState // nil selects legacy player paths
+	authorityRules              *authorityRulesState
+	authorityBarrelSources      map[int]authorityBarrelSource
+	authorityItemRespawns       map[int]uint64 // server-only level-tic deadlines
+	authorityDamageOwner        authorityPlayerIdentity
+	authorityPlayerThinkerOrder int64
+	authorityDamageSource       int // Scoped source player; zero is world/monster.
 
 	lines                   []physLine
 	mapVisibleLines         []mapview.Line
@@ -628,6 +645,7 @@ type game struct {
 	thingAggro                 []bool
 	thingAmbush                []bool
 	thingTargetPlayer          []bool
+	thingTargetPlayerSlot      []int
 	thingTargetIdx             []int
 	thingTargetDirectReacquire []bool
 	thingThreshold             []int
@@ -708,6 +726,7 @@ type game struct {
 	secretsFound               int
 	secretsTotal               int
 	sectorSoundTarget          []bool
+	sectorSoundPlayerSlot      []int
 	isDead                     bool
 	playerReborn               bool
 	playerMobjHealth           int
@@ -1488,7 +1507,11 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SharedPCSpeaker, opts.SFXVolume, opts.PCSpeakerVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
+	if opts.Headless {
+		g.snd = newHeadlessSoundSystem(opts)
+	} else {
+		g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SharedPCSpeaker, opts.SFXVolume, opts.PCSpeakerVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
+	}
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -1562,9 +1585,11 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	if opts.StartZoom > 0 {
 		g.State.SetZoom(opts.StartZoom)
 	}
-	g.reserveRenderScratch()
-	if !(opts.DemoScript != nil && opts.DemoQuitOnComplete) {
-		g.precacheRenderAssets()
+	if !opts.Headless {
+		g.reserveRenderScratch()
+		if !(opts.DemoScript != nil && opts.DemoQuitOnComplete) {
+			g.precacheRenderAssets()
+		}
 	}
 	g.syncRenderState()
 	if g.mode == viewWalk {
@@ -2201,15 +2226,8 @@ func (g *game) initSkyLayerShader() {
 }
 
 func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
-	if sourcePort {
-		if isWASMBuild() && len(sourcePortDetailDivisors) > 2 {
-			return 1
-		}
-		if len(sourcePortDetailDivisors) > 1 {
-			return 1
-		}
-		return 0
-	}
+	// Begin at full quality and let AUTO reduce it if measured work requires
+	// that. Explicit manual or carried adaptive levels override this default.
 	return 0
 }
 
@@ -2494,6 +2512,7 @@ func (g *game) cycleSourcePortDetailLevel() {
 	next := g.detailLevel + 1
 	if next >= len(sourcePortDetailDivisors) {
 		g.autoDetailEnabled = true
+		_ = g.setDetailLevel(0)
 		g.setHUDMessage("Detail: AUTO", 70)
 		return
 	}
@@ -2634,6 +2653,10 @@ func (g *game) shouldCaptureCursor() bool {
 
 func (g *game) Update() error {
 	defer g.clearSampledInput()
+	g.updateMeshExperiment()
+	if g.opts.AuthorityClient != nil {
+		return g.updateAuthoritativeClient()
+	}
 	if g.levelExitRequested && !g.demoIntermissionActive && !g.demoFinaleActive {
 		return ebiten.Termination
 	}
@@ -2699,13 +2722,13 @@ func (g *game) Update() error {
 		if g.keyJustPressed(ebiten.KeyF1) {
 			g.readThisRequested = true
 		}
-		if g.keyJustPressed(ebiten.KeyComma) {
+		if g.canScaleLiveSimulation() && g.keyJustPressed(ebiten.KeyComma) {
 			g.setSimTickScale(g.simTickScale - 0.1)
 		}
-		if g.keyJustPressed(ebiten.KeyPeriod) {
+		if g.canScaleLiveSimulation() && g.keyJustPressed(ebiten.KeyPeriod) {
 			g.setSimTickScale(g.simTickScale + 0.1)
 		}
-		if g.keyJustPressed(ebiten.KeySlash) {
+		if g.canScaleLiveSimulation() && g.keyJustPressed(ebiten.KeySlash) {
 			g.setSimTickScale(1.0)
 		}
 		if g.bindingJustPressed(bindingUse) {
@@ -2758,7 +2781,21 @@ func (g *game) Update() error {
 	return nil
 }
 
+// Only local Source Port live play may change the command cadence. Relay
+// hosts, watchers, coop and authoritative multiplayer all retain 35 Hz.
+func (g *game) canScaleLiveSimulation() bool {
+	return g.opts.SourcePortMode && g.opts.DemoScript == nil &&
+		g.opts.AuthorityClient == nil && g.opts.LiveTicSource == nil &&
+		g.opts.LiveTicSink == nil && g.opts.CoopPeers == nil &&
+		g.clientPrediction == nil && g.authorityRules == nil
+}
+
 func (g *game) consumeSimTicks() int {
+	if !g.canScaleLiveSimulation() {
+		g.simTickScale = 1
+		g.simTickAccum = 0
+		return 1
+	}
 	if g.simTickScale <= 0 {
 		g.simTickScale = 1
 	}
@@ -2779,6 +2816,11 @@ func (g *game) consumeSimTicks() int {
 }
 
 func (g *game) setSimTickScale(v float64) {
+	if !g.canScaleLiveSimulation() {
+		g.simTickScale = 1
+		g.simTickAccum = 0
+		return
+	}
 	if v < 0.1 {
 		v = 0.1
 	}
@@ -2797,6 +2839,16 @@ func (g *game) updateDemoMode() error {
 	if len(g.input.justPressedKeys) > 0 {
 		g.frontendMenuRequested = true
 		ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		return nil
+	}
+	return g.advanceDemoTic()
+}
+
+// advanceDemoTic consumes the shared playback stream without sampling window
+// input. Both native and Ebiten hosts own their menu and command-tic timing.
+func (g *game) advanceDemoTic() error {
+	script := g.opts.DemoScript
+	if script == nil {
 		return nil
 	}
 	g.capturePrevState()
@@ -3062,13 +3114,7 @@ func (g *game) updateWalkMode() {
 	g.input.mouseTurnRawAccum = 0
 
 	cmd.run = speed == 1
-	if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
-		// Quantize cmd to demo format precision before running gameplay,
-		// matching vanilla's G_WriteDemoTiccmd -> G_ReadDemoTiccmd round-trip.
-		cmd = quantizeMoveCmdToDemo(cmd)
-	}
-	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.recordDemoTic(cmd, usePressed, fireHeld)
+	g.runLocalGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 }
@@ -3102,13 +3148,19 @@ func (g *game) SampleInput() {
 		}
 	}
 	g.input.inputChars = ebiten.AppendInputChars(g.input.inputChars[:0])
-	if len(g.input.inputChars) > 0 && !g.chatComposeOpen {
+	if len(g.input.inputChars) > 0 && !g.chatComposeOpen && g.opts.AuthorityClient == nil {
 		g.consumeTypedCheatInput()
 	}
 
 	_, wheelY := ebiten.Wheel()
 	g.input.wheelY += wheelY
 	mx, _ := ebiten.CursorPosition()
+	g.sampleMouseLookPosition(mx)
+}
+
+// Keep the cursor sampler independent of the host API so all gameplay paths
+// share the same relative-motion baseline, sensitivity and inversion.
+func (g *game) sampleMouseLookPosition(mx int) {
 	g.input.cursorX = mx
 
 	if !g.opts.MouseLook {
@@ -3311,32 +3363,25 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 		return
 	}
 	if g.bindingJustPressed(bindingWeapon1) {
-		g.selectWeaponSlot(1)
-		g.demoWeaponSlot = 1
+		g.selectLocalWeaponSlot(1)
 	}
 	if g.bindingJustPressed(bindingWeapon2) {
-		g.selectWeaponSlot(2)
-		g.demoWeaponSlot = 2
+		g.selectLocalWeaponSlot(2)
 	}
 	if g.bindingJustPressed(bindingWeapon3) {
-		g.selectWeaponSlot(3)
-		g.demoWeaponSlot = 3
+		g.selectLocalWeaponSlot(3)
 	}
 	if g.bindingJustPressed(bindingWeapon4) {
-		g.selectWeaponSlot(4)
-		g.demoWeaponSlot = 4
+		g.selectLocalWeaponSlot(4)
 	}
 	if g.bindingJustPressed(bindingWeapon5) {
-		g.selectWeaponSlot(5)
-		g.demoWeaponSlot = 5
+		g.selectLocalWeaponSlot(5)
 	}
 	if g.bindingJustPressed(bindingWeapon6) {
-		g.selectWeaponSlot(6)
-		g.demoWeaponSlot = 6
+		g.selectLocalWeaponSlot(6)
 	}
 	if g.bindingJustPressed(bindingWeapon7) {
-		g.selectWeaponSlot(7)
-		g.demoWeaponSlot = 7
+		g.selectLocalWeaponSlot(7)
 	}
 	if !allowCycleInput {
 		return
@@ -3453,13 +3498,17 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
 				return
 			}
-			g.crtEnabled = !g.crtEnabled
-			if g.crtEnabled {
-				g.setHUDMessage("CRT ON", 70)
-			} else {
-				g.setHUDMessage("CRT OFF", 70)
-			}
+			g.toggleCRT()
 		}
+	}
+}
+
+func (g *game) toggleCRT() {
+	g.crtEnabled = !g.crtEnabled
+	if g.crtEnabled {
+		g.setHUDMessage("CRT ON", 70)
+	} else {
+		g.setHUDMessage("CRT OFF", 70)
 	}
 }
 
@@ -3762,7 +3811,7 @@ func (g *game) drawWalk3D(screen *ebiten.Image) {
 	rect := g.walkRenderViewportRect()
 	if rect.Dx() >= g.viewW && rect.Dy() >= g.viewH && rect.Min.X == 0 && rect.Min.Y == 0 {
 		g.prepareRenderStateAt(now)
-		g.drawDoomBasic3D(screen)
+		g.drawWorld3D(screen)
 		return
 	}
 	fullW := g.viewW
@@ -3771,7 +3820,7 @@ func (g *game) drawWalk3D(screen *ebiten.Image) {
 	g.viewW = rect.Dx()
 	g.viewH = rect.Dy()
 	g.prepareRenderStateAt(now)
-	g.drawDoomBasic3D(sub)
+	g.drawWorld3D(sub)
 	g.viewW = fullW
 	g.viewH = fullH
 }
@@ -4462,6 +4511,7 @@ func (g *game) profileLabel() string {
 }
 
 func (g *game) emitSoundEvent(ev soundEvent) {
+	g.recordAuthoritySound(ev, 0, 0, false)
 	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -4482,6 +4532,7 @@ func (g *game) emitSoundEvent(ev soundEvent) {
 }
 
 func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
+	g.recordAuthoritySound(ev, x, y, true)
 	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -4502,6 +4553,10 @@ func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
 }
 
 func (g *game) emitSoundEventDelayed(ev soundEvent, tics int) {
+	if g.authorityEvents != nil {
+		g.emitSoundEventDelayedAt(ev, tics, g.p.x, g.p.y, true)
+		return
+	}
 	g.emitSoundEventDelayedAt(ev, tics, 0, 0, false)
 }
 
@@ -4670,9 +4725,6 @@ func (g *game) applyThingSpawnFiltering() {
 func (g *game) flushSoundEvents() {
 	queue := g.soundQueue
 	origins := g.soundQueueOrigin
-	if isWASMBuild() {
-		queue, origins = g.collectWASMSoundEvents()
-	}
 	totalBudget := maxSoundEventsPerFlush()
 	monsterVocalBudget := maxMonsterVocalSoundsPerFlush()
 	totalCount := 0
@@ -4698,28 +4750,38 @@ func (g *game) flushSoundEvents() {
 		}
 		totalCount++
 	}
-	for pass := 0; pass < 2; pass++ {
-		for idx, ev := range queue {
-			vocal := isMonsterVocalSound(ev)
-			if pass == 0 && vocal {
-				continue
+	if isWASMBuild() {
+		g.visitWASMSoundBatch(len(queue), func(i int) (soundEvent, queuedSoundOrigin) {
+			origin := queuedSoundOrigin{}
+			if i < len(origins) {
+				origin = origins[i]
 			}
-			if pass == 1 && !vocal {
-				continue
+			return queue[i], origin
+		}, playQueued)
+	} else {
+		for pass := 0; pass < 2; pass++ {
+			for idx, ev := range queue {
+				vocal := isMonsterVocalSound(ev)
+				if pass == 0 && vocal {
+					continue
+				}
+				if pass == 1 && !vocal {
+					continue
+				}
+				if totalBudget > 0 && totalCount >= totalBudget {
+					break
+				}
+				if vocal && monsterVocalBudget > 0 {
+					if monsterVocalCount >= monsterVocalBudget {
+						continue
+					}
+					monsterVocalCount++
+				}
+				playQueued(idx, ev)
 			}
 			if totalBudget > 0 && totalCount >= totalBudget {
 				break
 			}
-			if vocal && monsterVocalBudget > 0 {
-				if monsterVocalCount >= monsterVocalBudget {
-					continue
-				}
-				monsterVocalCount++
-			}
-			playQueued(idx, ev)
-		}
-		if totalBudget > 0 && totalCount >= totalBudget {
-			break
 		}
 	}
 	if g.snd != nil {
@@ -4733,34 +4795,14 @@ func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
 	if g == nil || len(g.soundQueue) == 0 {
 		return g.soundQueue, g.soundQueueOrigin
 	}
-	for i := 0; i < g.wasmSoundOrderCount; i++ {
-		ev := g.wasmSoundOrder[i]
-		g.wasmSoundSeen[ev] = false
-	}
-	g.wasmSoundOrderCount = 0
-	mapUsesFullClip := false
-	if g.m != nil {
-		mapUsesFullClip = soundMapUsesFullClip(g.m.Name)
-	}
-	for idx, ev := range g.soundQueue {
+	g.collectWASMSoundOrder(len(g.soundQueue), func(idx int) (soundEvent, queuedSoundOrigin) {
 		origin := queuedSoundOrigin{}
 		if idx < len(g.soundQueueOrigin) {
 			origin = g.soundQueueOrigin[idx]
 		}
-		strength := vanillaSoundStrength(g.snd, origin, g.p.x, g.p.y, g.p.angle, mapUsesFullClip)
-		if g.wasmSoundSeen[ev] {
-			if strength > g.wasmSoundBestStrength[ev] {
-				g.wasmSoundBestIdx[ev] = idx
-				g.wasmSoundBestStrength[ev] = strength
-			}
-			continue
-		}
-		g.wasmSoundSeen[ev] = true
-		g.wasmSoundBestIdx[ev] = idx
-		g.wasmSoundBestStrength[ev] = strength
-		g.wasmSoundOrder[g.wasmSoundOrderCount] = ev
-		g.wasmSoundOrderCount++
-	}
+		return g.soundQueue[idx], origin
+	})
+	defer g.resetWASMSoundOrder()
 	queue := g.soundQueue[:0]
 	origins := g.soundQueueOrigin[:0]
 	for i := 0; i < g.wasmSoundOrderCount; i++ {
@@ -4772,11 +4814,7 @@ func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
 		} else {
 			origins = append(origins, queuedSoundOrigin{})
 		}
-		g.wasmSoundSeen[ev] = false
-		g.wasmSoundBestIdx[ev] = 0
-		g.wasmSoundBestStrength[ev] = 0
 	}
-	g.wasmSoundOrderCount = 0
 	return queue, origins
 }
 
@@ -5511,10 +5549,18 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 	}
 	key.light = g.sectorLightForRender(secIdx, sec)
 	pic := sec.CeilingPic
-	key.height = sec.CeilingHeight
+	key.height = float64(sec.CeilingHeight)
 	if floor {
 		pic = sec.FloorPic
-		key.height = sec.FloorHeight
+		key.height = float64(sec.FloorHeight)
+	}
+	if g.authorityRender != nil || g.clientPrediction != nil {
+		if fz, cz, ok := g.sectorHeightRenderSnapshot(secIdx); ok {
+			key.height = float64(cz) / fracUnit
+			if floor {
+				key.height = float64(fz) / fracUnit
+			}
+		}
 	}
 	if !floor && isSkyFlatName(pic) {
 		key.sky = true
@@ -9784,6 +9830,14 @@ func (g *game) refinePlaneSampleAtPixel(x, y int, cx, cy, camX, camY, ca, sa, ey
 		if ceiling {
 			nextZ = float64(g.m.Sectors[rsec].CeilingHeight)
 		}
+		if g.authorityRender != nil || g.clientPrediction != nil {
+			if fz, cz, valid := g.sectorHeightRenderSnapshot(rsec); valid {
+				nextZ = float64(fz) / fracUnit
+				if ceiling {
+					nextZ = float64(cz) / fracUnit
+				}
+			}
+		}
 		wx, wy, depth, sec = rwx, rwy, rd, rsec
 		if rsec == lastSec || math.Abs(nextZ-planeZ) < 0.001 {
 			return wx, wy, depth, sec, true
@@ -13392,6 +13446,17 @@ func normalizeDeg360(deg float64) float64 {
 }
 
 func (g *game) playerEyeZ() float64 {
+	z := g.playerBaseEyeZ()
+	if g.opts.SourcePortMode && g.clientPrediction != nil {
+		z += g.clientPrediction.renderEyeOffset
+	}
+	z += g.authoritySupportEyeOffset()
+	return z
+}
+
+// The body/view height changes immediately on authoritative reconciliation.
+// The separate render offset above must never alter collision or view physics.
+func (g *game) playerBaseEyeZ() float64 {
 	if g.playerViewZ == 0 {
 		return float64(g.p.z)/fracUnit + 41.0
 	}
@@ -13624,6 +13689,16 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 }
 
 func (g *game) beginPlane3DFrame(viewW int) []*plane3DVisplane {
+	if g.authorityRender != nil || g.clientPrediction != nil {
+		// Interpolated movers can have a new fractional height every frame.
+		// Keep only the preceding frame's buckets for reuse; their generation
+		// already guards the pooled visplanes, so older keys serve no purpose.
+		for key, bucket := range g.plane3DVisBuckets {
+			if bucket.gen != g.plane3DVisGen {
+				delete(g.plane3DVisBuckets, key)
+			}
+		}
+	}
 	if g.plane3DPoolViewW != viewW {
 		g.plane3DPool = g.plane3DPool[:0]
 		g.plane3DPoolUsed = 0
@@ -14247,6 +14322,10 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 	}
 	animatedLight := g.sectorLightKindCached(frontSectorIdx) != sectorLightEffectNone ||
 		g.sectorLightKindCached(backSectorIdx) != sectorLightEffectNone
+	// A replica's displayed heights advance between snapshots, even while its
+	// world tic stays fixed. Neither the static nor per-tic cache covers them.
+	replica := g.authorityRender != nil || g.clientPrediction != nil
+	cacheOK = cacheOK && !replica
 	if cacheOK && segIdx >= 0 && segIdx < len(g.wallSegStaticCache) {
 		c := &g.wallSegStaticCache[segIdx]
 		if c.portalSplitStatic && !animatedLight {
@@ -14258,8 +14337,13 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 	}
 	front := &g.m.Sectors[frontSectorIdx]
 	back := &g.m.Sectors[backSectorIdx]
-	split := front.FloorHeight != back.FloorHeight ||
-		front.CeilingHeight != back.CeilingHeight ||
+	heightSplit := front.FloorHeight != back.FloorHeight || front.CeilingHeight != back.CeilingHeight
+	if replica {
+		ff, fc, _ := g.sectorHeightRenderSnapshot(frontSectorIdx)
+		bf, bc, _ := g.sectorHeightRenderSnapshot(backSectorIdx)
+		heightSplit = ff != bf || fc != bc
+	}
+	split := heightSplit ||
 		normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
 		normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
 		g.sectorsLightDifferForRender(frontSectorIdx, backSectorIdx, front, back)
@@ -14862,21 +14946,8 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	}
 	g.ensureMapFloorLayer()
 	clear(g.mapFloorPix)
-	w := g.viewW
-	h := g.viewH
-	viewWB := g.screenWorldBBox()
 	pix := g.mapFloorPix
-	stats := mapview.RasterizeFloor2D(pix, mapview.FloorRasterInput{
-		ViewW:         w,
-		ViewH:         h,
-		ViewBBox:      mapview.WorldBBox{MinX: viewWB.minX, MinY: viewWB.minY, MaxX: viewWB.maxX, MaxY: viewWB.maxY},
-		LoopSets:      g.mapFloorBoundarySetsForView(),
-		ShadeMuls:     g.mapFloorShadeMuls(),
-		Textures:      g.mapFloorTextures(),
-		FallbackRGB:   [3]byte{wallFloorChange.R, wallFloorChange.G, wallFloorChange.B},
-		ScreenToWorld: g.screenToWorld,
-		WorldToScreen: g.worldToScreen,
-	})
+	stats := mapview.RasterizeFloor2D(pix, g.mapFloorRasterInput())
 	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 	g.mapFloorWorldState = "live-screen"
@@ -16903,8 +16974,16 @@ func (g *game) sectorHeightSnapshot(sec int) (int64, int64, bool) {
 
 func (g *game) sectorHeightRenderSnapshot(sec int) (int64, int64, bool) {
 	floor, ceil, ok := g.sectorHeightSnapshot(sec)
-	if !ok || g == nil {
+	if !ok || g == nil || !g.opts.SourcePortMode {
 		return floor, ceil, ok
+	}
+	if g.authorityRender != nil || g.clientPrediction != nil {
+		if fz, cz, valid := g.authoritySectorRenderHeights(sec); valid {
+			return fz, cz, true
+		}
+		// Before a second baseline arrives, hold the confirmed heights. Local
+		// input alpha must never extrapolate an authoritative world mover.
+		return floor, ceil, true
 	}
 	if sec < 0 || sec >= len(g.sectorCeil) {
 		return floor, ceil, true
@@ -18453,6 +18532,9 @@ func (g *game) clipSubSectorPolyBySegBounds(ss int, poly []worldPt) []worldPt {
 	if ss < 0 || ss >= len(g.m.SubSectors) || len(poly) < 3 {
 		return nil
 	}
+	if g.m.SubSectors[ss].SegCount < 3 {
+		return g.clipSubSectorPolyByLinedefBounds(ss, poly)
+	}
 	seed, ok := g.subSectorSeedPoint(ss, poly)
 	if !ok {
 		return poly
@@ -18870,6 +18952,12 @@ func (g *game) recoverMissingSubsectorPolyFromBSP(ss, sec int) bool {
 	if !ok || len(poly) < 3 {
 		return false
 	}
+	if g.m.SubSectors[ss].SegCount < 3 {
+		poly = g.clipSubSectorPolyByLinedefBounds(ss, poly)
+		if len(poly) < 3 {
+			return false
+		}
+	}
 	if sec >= 0 && sec < len(g.sectorBBox) {
 		sb := g.sectorBBox[sec]
 		if isFinite(sb.minX) && isFinite(sb.minY) && isFinite(sb.maxX) && isFinite(sb.maxY) {
@@ -19069,6 +19157,16 @@ func (g *game) constrainAmbiguousNodePolysToSectorBounds() {
 		poly := g.subSectorPoly[ss]
 		if len(poly) < 3 {
 			continue
+		}
+		// Bound short leaves by their walls before comparing overlap. Their raw
+		// BSP cells can extend far beyond those walls and look mostly exterior.
+		if sub.SegCount < 3 {
+			poly = g.clipSubSectorPolyByLinedefBounds(ss, poly)
+			if len(poly) < 3 {
+				g.subSectorPoly[ss] = nil
+				g.subSectorPolySrc[ss] = subPolySrcNone
+				continue
+			}
 		}
 		sec := -1
 		if ss < len(g.subSectorSec) {
@@ -19535,11 +19633,14 @@ func (g *game) prepareRenderState() {
 }
 
 func (g *game) prepareRenderStateAt(now time.Time) {
+	if g.opts.SourcePortMode && g.authorityRender != nil {
+		g.authorityRender.prepare(now)
+	}
 	alpha := g.interpAlphaAt(now)
 	if !g.opts.SourcePortMode {
 		alpha = 1
 	}
-	if g.simTickScale > 1.0 {
+	if g.canScaleLiveSimulation() && g.simTickScale > 1.0 {
 		// Multiple sim ticks per frame already advance world state aggressively.
 		// Interpolating from prev can make render state lag behind simulation.
 		alpha = 1
@@ -19548,6 +19649,10 @@ func (g *game) prepareRenderStateAt(now time.Time) {
 	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
 	g.renderAngle = g.renderCameraAngle(alpha)
+	if g.clientPrediction != nil {
+		g.clientPrediction.prepareRenderCorrection(now)
+	}
+	g.prepareAuthorityObserverCamera()
 	g.renderAlpha = alpha
 	g.beginSourcePortSpectreFuzzFrame(alpha)
 	g.debugAimSS = debugFixedSubsector
@@ -19572,8 +19677,14 @@ func (g *game) markSimUpdate(now time.Time) {
 }
 
 func (g *game) expectedSimStepSeconds() float64 {
+	if g != nil && !g.opts.SourcePortMode {
+		return 1.0 / doomTicsPerSecond
+	}
+	if g != nil && g.clientPrediction != nil && g.clientUpdate.step > 0 && g.clientUpdate.step != time.Second/doomTicsPerSecond {
+		return g.clientUpdate.step.Seconds()
+	}
 	ticRate := float64(doomTicsPerSecond)
-	if g != nil && g.simTickScale > 0 {
+	if g != nil && g.canScaleLiveSimulation() && g.simTickScale > 0 {
 		ticRate *= g.simTickScale
 	}
 	if ticRate < 1e-6 {
@@ -19636,6 +19747,10 @@ func lerpFixed(a, b int64, t float64) int64 {
 }
 
 func (g *game) projectileRenderPosFixed(p projectile, alpha float64) (int64, int64, int64) {
+	if g != nil && g.authorityRender != nil {
+		pose := g.authorityProjectileRenderPose(p)
+		return pose.x, pose.y, pose.z
+	}
 	if g == nil || alpha >= 1 {
 		return p.x, p.y, p.z
 	}
@@ -20124,6 +20239,10 @@ func (g *game) thingSectorCached(i int, th mapdata.Thing) int {
 func (g *game) thingRenderPosFixed(i int, th mapdata.Thing, alpha float64) (int64, int64, int64) {
 	x, y := g.thingPosFixed(i, th)
 	z, _, _ := g.thingSupportState(i, th)
+	if g.authorityRender != nil {
+		pose := g.authorityThingRenderPose(i, th.Type, authorityRenderPose{x: x, y: y, z: z})
+		return pose.x, pose.y, pose.z
+	}
 	if g == nil || alpha >= 1 || i < 0 {
 		return x, y, z
 	}
@@ -20353,7 +20472,9 @@ func (g *game) setPlayerPosFixed(x, y int64) {
 	}
 	g.p.x = x
 	g.p.y = y
-	g.playerBlockOrder = g.allocBlockmapOrder()
+	if !g.predictionMovement {
+		g.playerBlockOrder = g.allocBlockmapOrder()
+	}
 	g.refreshPlayerSubsectorCache(x, y)
 }
 
@@ -21199,12 +21320,12 @@ func (g *game) huTextWidth(text string) int {
 			w += 4
 			continue
 		}
-		_, gw, _, _, _, ok := g.messageFontGlyph(uc)
+		p, ok := g.messageFontTexture(uc)
 		if !ok {
 			w += 4
 			continue
 		}
-		w += gw
+		w += p.Width
 	}
 	return w
 }

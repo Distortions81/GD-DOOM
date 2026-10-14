@@ -6,7 +6,10 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+
+	"gddoom/internal/sound"
 )
 
 func TestLinuxPCSpeakerPrepareDivisorChangeLocked(t *testing.T) {
@@ -53,6 +56,101 @@ func TestLinuxPCSpeakerPrepareDivisorChangeLocked(t *testing.T) {
 	}
 	if gotFile != f {
 		t.Fatal("expected original file handle for silence write")
+	}
+}
+
+func TestLinuxPCSpeakerPauseAndClearPreserveCursors(t *testing.T) {
+	t.Parallel()
+	f, err := os.CreateTemp(t.TempDir(), "speaker-events-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &LinuxPCSpeakerPlayer{f: f}
+	defer p.Close()
+	effects := make([]sound.PCSpeakerTone, 8)
+	music := make([]sound.PCSpeakerTone, 8)
+	for i := range effects {
+		effects[i] = sound.PCSpeakerTone{Active: true, Divisor: 1000}
+		music[i] = sound.PCSpeakerTone{Active: true, Divisor: 2000}
+	}
+	p.Play(effects)
+	p.SetMusic(music, 140, true)
+	div := p.stepDivisor()
+	if err := p.setDivisor(div); err != nil {
+		t.Fatal(err)
+	}
+	effectPos, musicPos, mixTick := p.effectTickPos, p.musicTickPos, p.mixTick
+	p.SetPaused(true)
+	for range 50 {
+		if p.stepDivisor() != 0 {
+			t.Fatal("paused speaker produced a tone")
+		}
+		// Simulate a tone computed before the pause reached the device writer.
+		if err := p.setDivisor(1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p.effectTickPos != effectPos || p.musicTickPos != musicPos || p.mixTick != mixTick || p.lastDivisor != 0 {
+		t.Fatal("pause advanced playback or restored sound")
+	}
+	p.ClearEffects()
+	if len(p.effectSeq) != 0 || p.musicTickPos != musicPos || len(p.musicSeq) != len(music) {
+		t.Fatal("clearing effects also cleared music")
+	}
+	p.SetPaused(false)
+	if got := p.stepDivisor(); got != 2000 || p.musicTickPos != musicPos+1 {
+		t.Fatalf("music did not resume at its retained cursor: divisor %d", got)
+	}
+	p.ClearMusic()
+	if got := p.stepDivisor(); got != 0 {
+		t.Fatalf("cleared music retained a tone: %d", got)
+	}
+}
+
+func TestLinuxPCSpeakerConcurrentPauseAndCloseSilence(t *testing.T) {
+	t.Parallel()
+	f, err := os.CreateTemp(t.TempDir(), "speaker-events-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &LinuxPCSpeakerPlayer{f: f, stopCh: make(chan struct{})}
+	if err := p.setDivisor(1000); err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	for range 4 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for range 100 {
+				_ = p.setDivisor(1000)
+				p.SetPaused(true)
+				_ = p.setDivisor(2000)
+				p.SetPaused(false)
+			}
+		}()
+	}
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	workers.Wait()
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := binary.Size(linuxInputEvent{})
+	if len(data)%(2*size) != 0 {
+		t.Fatal("concurrent writes interleaved tone/report event pairs")
+	}
+	if len(data) != 0 {
+		// The last event pair must be silence followed by SYN_REPORT.
+		value := int32(binary.LittleEndian.Uint32(data[len(data)-size-4 : len(data)-size]))
+		if value != 0 {
+			t.Fatalf("close left an active hardware tone: %d", value)
+		}
 	}
 }
 

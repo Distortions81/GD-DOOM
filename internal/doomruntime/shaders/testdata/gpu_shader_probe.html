@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>GD-DOOM WebGL shader checks</title>
+<style>
+body { margin: 0; background: #151515; color: #eee; font: 15px system-ui; }
+#results { position: fixed; z-index: 10; inset: 16px; padding: 20px; background: #181818ed; overflow: auto; }
+button { padding: 10px 16px; font: inherit; }
+pre { white-space: pre-wrap; color: #bde6ba; }
+</style>
+<section id="results">
+<h1>WebGL shader pixel checks</h1>
+<p>Check indexed world rendering or compare the optimized sky against its original shader. Reload the page before running another suite. The separate full native suite also checks spectre fuzz.</p>
+<label for="suite">Shader suite</label>
+<select id="suite"><option value="indexed">Indexed world</option><option value="sky">Sky pixel parity</option></select>
+<button id="run">Run WebGL checks</button>
+<p id="status">Ready</p><pre id="output"></pre>
+</section>
+<script src="wasm_exec.js"></script>
+<script>
+document.querySelector('#run').addEventListener('click', async () => {
+  const status = document.querySelector('#status');
+  const output = document.querySelector('#output');
+  const suite = document.querySelector('#suite');
+  document.querySelector('#run').disabled = true;
+  suite.disabled = true;
+  status.textContent = 'Running shader comparisons…';
+  const originalLog = console.log;
+  console.log = (...args) => { output.textContent += args.join(' ') + '\n'; originalLog(...args); };
+  try {
+    const go = new Go();
+    const test = suite.value === 'sky' ? 'TestGPUSkyShaderParity' : 'TestGPUIndexedFramebufferComparison';
+    go.argv = ['doomruntime.test', '-test.run=^' + test + '$', '-test.v', '-test.timeout=2m'];
+    go.env = { GD_GPU_INTEGRATION: '1', GD_GPU_SKY_INTEGRATION: '1' };
+    go.exit = code => { status.textContent = code === 0 ? 'PASS — WebGL framebuffer checks passed' : 'FAIL — see test output'; };
+    const module = await WebAssembly.instantiateStreaming(fetch('doomruntime.test.wasm'), go.importObject);
+    await go.run(module.instance);
+  } catch (error) {
+    status.textContent = 'FAIL — ' + error.message;
+    output.textContent += String(error);
+  }
+});
+</script>
+</html>

@@ -6,7 +6,7 @@ import (
 )
 
 func TestConsumeSimTicks_SupportsSlowAndFastRates(t *testing.T) {
-	g := &game{simTickScale: 0.5}
+	g := &game{opts: Options{SourcePortMode: true}, simTickScale: 0.5}
 
 	if got := g.consumeSimTicks(); got != 0 {
 		t.Fatalf("first half-rate frame: got ticks=%d want=0", got)
@@ -23,7 +23,7 @@ func TestConsumeSimTicks_SupportsSlowAndFastRates(t *testing.T) {
 }
 
 func TestSetSimTickScale_Clamps(t *testing.T) {
-	g := &game{hudMessagesEnabled: false}
+	g := &game{opts: Options{SourcePortMode: true}, hudMessagesEnabled: false}
 
 	g.setSimTickScale(0.1)
 	if g.simTickScale != 0.1 {
@@ -66,6 +66,7 @@ func TestInterpAlphaAt_UsesProvidedTimestamp(t *testing.T) {
 
 func TestInterpAlpha_FallsBackToConfiguredTickRate(t *testing.T) {
 	g := &game{
+		opts:         Options{SourcePortMode: true},
 		lastUpdate:   time.Now().Add(-14 * time.Millisecond),
 		simTickScale: 2.0,
 	}

@@ -1,12 +1,57 @@
 package audiofx
 
 import (
+	"errors"
+	"io"
 	"testing"
 	"time"
 
 	"gddoom/internal/sound"
 	gobeep86 "github.com/Distortions81/GoBeep86"
 )
+
+func TestPCSpeakerBackendFactoryAndPauseRetainPlayback(t *testing.T) {
+	backend := &fakePCSpeakerBackend{}
+	var reader io.ReadSeeker
+	p, err := NewPCSpeakerWithBackend(.75, PCSpeakerVariantSmallSpeaker, func(src io.ReadSeeker) (PCSpeakerBackend, error) {
+		reader = src
+		return backend, nil
+	})
+	if err != nil || reader == nil || backend.buffer <= 0 {
+		t.Fatalf("backend initialization: %v", err)
+	}
+	p.SetMusic([]sound.PCSpeakerTone{{Active: true, Divisor: 96}}, 140, true)
+	if !backend.playing || backend.volume != .75 || backend.rewound != 1 {
+		t.Fatal("injected transport did not start shared music")
+	}
+	p.Play([]sound.PCSpeakerTone{{Active: true, Divisor: 20}})
+	if backend.rewound != 1 {
+		t.Fatal("mixed effect rewound music")
+	}
+	p.SetPaused(true)
+	if backend.playing {
+		t.Fatal("pause did not reach transport")
+	}
+	p.SetPaused(false)
+	if !backend.playing || backend.rewound != 1 {
+		t.Fatal("resume restarted the source")
+	}
+	p.ClearEffects()
+	if !p.src.MusicIsActive() {
+		t.Fatal("clearing effects cleared music")
+	}
+	p.ClearMusic()
+	if p.src.MusicIsActive() {
+		t.Fatal("music did not clear")
+	}
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("transport failed")
+	if p, err := NewPCSpeakerWithBackend(1, PCSpeakerVariantClean, func(io.ReadSeeker) (PCSpeakerBackend, error) { return nil, want }); p != nil || !errors.Is(err, want) {
+		t.Fatal("failed transport initialization accepted")
+	}
+}
 
 type fakePCSpeakerBackend struct {
 	playing bool

@@ -28,6 +28,14 @@ type hostFrameSampler interface {
 	SampleInput()
 }
 
+type hostFrameUpdater interface {
+	UpdateHostFrame() error
+}
+
+type authorityContentReplacer interface {
+	TakeAuthorityContentReplacement() (runtimecfg.AuthorityContentBundle, func(session.Runtime), bool)
+}
+
 type finalScreenDrawer interface {
 	DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM)
 }
@@ -96,6 +104,21 @@ func (s *Session) Update() error {
 	if err := s.game.Update(); err != nil {
 		return err
 	}
+	if pending, ok := s.game.(authorityContentReplacer); ok {
+		if bundle, initialize, ready := pending.TakeAuthorityContentReplacement(); ready {
+			// Content banks, image caches, audio controllers, and captured loader
+			// callbacks all belong to one runtime. Replace that owner as a unit.
+			if s.meta.Close != nil {
+				s.meta.Close()
+			}
+			s.game, s.meta = doomruntime.NewRuntime(bundle.Map, bundle.Options, bundle.NextMap)
+			s.lastPeriodicKeyframeTic = 0
+			if initialize != nil {
+				initialize(s.game)
+			}
+			return nil
+		}
+	}
 	if err := s.emitPeriodicKeyframe(); err != nil {
 		return fmt.Errorf("broadcast keyframe: %w", err)
 	}
@@ -109,6 +132,18 @@ func (s *Session) SampleInput() {
 	if sampler, ok := s.game.(hostFrameSampler); ok {
 		sampler.SampleInput()
 	}
+}
+
+// UpdateHostFrame forwards the optional network pump without advancing the
+// fixed game/menu cadence or emitting demo keyframes.
+func (s *Session) UpdateHostFrame() error {
+	if s == nil || s.game == nil {
+		return nil
+	}
+	if updater, ok := s.game.(hostFrameUpdater); ok {
+		return updater.UpdateHostFrame()
+	}
+	return nil
 }
 
 func (s *Session) Draw(screen *ebiten.Image) {

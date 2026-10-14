@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,6 +17,20 @@ import (
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/wad"
 )
+
+func TestRunParseMeshRendererModes(t *testing.T) {
+	for _, mode := range []string{"textured", "sectors", "wireframe", "invalid"} {
+		var out, errb bytes.Buffer
+		code := RunParse([]string{"-wad", filepath.Join("..", "..", "DOOM1.WAD"), "-render=false", "-mesh-renderer", mode}, &out, &errb)
+		if mode == "invalid" {
+			if code != 2 || !strings.Contains(errb.String(), "invalid -mesh-renderer") {
+				t.Fatalf("invalid mode: code=%d stderr=%s", code, errb.String())
+			}
+		} else if code != 0 {
+			t.Fatalf("mode %s: code=%d stderr=%s", mode, code, errb.String())
+		}
+	}
+}
 
 func TestRunParseLoadsConfigDefaults(t *testing.T) {
 	td := t.TempDir()
@@ -840,6 +855,27 @@ func TestSaveInputBindingsWritesKeybindTable(t *testing.T) {
 	}
 }
 
+func TestStartupDetailLevelRestartsAutoAtFullQuality(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		level          int
+		auto, explicit bool
+		want           int
+	}{
+		{"new auto session", -1, true, false, 0},
+		{"saved auto reduction", 3, true, false, 0},
+		{"saved manual choice", 2, false, false, 2},
+		{"explicit auto starting point", 1, true, true, 1},
+		{"manual mode default", -1, false, false, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := startupDetailLevel(tc.level, tc.auto, tc.explicit); got != tc.want {
+				t.Fatalf("startup detail=%d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestConfiguredDetailLevelForModeUsesModeSpecificOnly(t *testing.T) {
 	cfg := &fileConfig{
 		DetailLevelFaithful:   intPtr(1),
@@ -889,5 +925,31 @@ func TestLoadConfigRewritesFileAtomically(t *testing.T) {
 	}
 	if _, err := os.Stat(cfgPath + ".tmp"); !os.IsNotExist(err) {
 		t.Fatalf("expected no leftover tmp file, stat err=%v", err)
+	}
+}
+
+func TestMainConfigUpdatesPreserveRaylibPreferences(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	original := []byte("music_volume=0.5\n[raylib]\nwidth=1600\nheight=1000\nfps=240\nfullscreen=true\nmsaa=false\ntexture_scale=2\ntexture_filter=\"trilinear\"\nlighting=\"sector\"\nmesh_mode=\"wireframe\"\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := loadConfig(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := *before.Raylib
+	if err := saveRuntimeSettings(path, doomsession.RuntimeSettings{MusicVolume: .8}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveInputBindings(path, runtimecfg.DefaultInputBindings()); err != nil {
+		t.Fatal(err)
+	}
+	after, err := loadConfig(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(*after.Raylib, want) {
+		t.Fatal("main preference writes destroyed native renderer settings")
 	}
 }

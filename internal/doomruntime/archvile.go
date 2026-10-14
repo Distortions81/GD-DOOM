@@ -22,6 +22,7 @@ func (g *game) spawnArchVileFire(source int) {
 		fx.fireTargetThing = target + 1
 	} else {
 		fx.fireTargetPlayer = true
+		fx.fireTargetPlayerSlot = g.monsterTargetPlayerSlot(source)
 	}
 	if len(g.thingTracerFireOrder) != len(g.m.Things) {
 		old := g.thingTracerFireOrder
@@ -40,6 +41,17 @@ func (g *game) followArchVileFire(fx *projectileImpact) {
 		return
 	}
 	x, y, z, height, angle := g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), g.p.angle
+	if fx.fireTargetPlayer && len(g.authorityPlayers) > 0 {
+		state := g.authoritativePlayerForSlot(fx.fireTargetPlayerSlot)
+		if state == nil {
+			return
+		}
+		body, dead, _ := g.authoritativePlayerBody(state)
+		x, y, z, height, angle = body.x, body.y, body.z, playerHeight, body.angle
+		if dead {
+			height >>= 2
+		}
+	}
 	if !fx.fireTargetPlayer {
 		i := fx.fireTargetThing - 1
 		if i < 0 || i >= len(g.m.Things) {
@@ -81,6 +93,10 @@ func (g *game) archVileBlast(source int, sx, sy int64) bool {
 	g.damageMonsterTarget(source, 20, "Arch-Vile blast", sx, sy)
 	if target, ok := g.monsterTargetThingIdx(source); ok {
 		g.thingMomZ[target] = 1000 * fracUnit / int64(thingTypeMass(g.m.Things[target].Type))
+	} else if len(g.authorityPlayers) > 0 {
+		if state := g.authoritativeMonsterPlayer(source); state != nil {
+			g.withAuthoritativePlayer(state, func() { g.p.momz = 10 * fracUnit })
+		}
 	} else {
 		g.p.momz = 10 * fracUnit
 	}

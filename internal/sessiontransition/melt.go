@@ -122,26 +122,7 @@ func stepMeltSlicesVirtual(y []int, virtualH int, width, height int, fromPix, to
 	}
 
 	for ; ticks > 0; ticks-- {
-		done := true
-		for i := 0; i < slices; i++ {
-			if y[i] < 0 {
-				y[i]++
-				done = false
-				continue
-			}
-			if y[i] >= virtualH {
-				continue
-			}
-			dy := 8
-			if y[i] < 16 {
-				dy = y[i] + 1
-			}
-			if y[i]+dy >= virtualH {
-				dy = virtualH - y[i]
-			}
-			y[i] += dy
-			done = false
-		}
+		done := AdvanceMeltPositions(y, virtualH, slices)
 
 		composeMeltSlicesVirtual(y, virtualH, width, height, fromPix, toPix, workPix, slices)
 		if done {
@@ -193,4 +174,34 @@ func composeMeltSlicesVirtual(y []int, virtualH, width, height int, fromPix, toP
 			copy(workPix[dstOff:dstOff+colBytes], fromPix[srcOff:srcOff+colBytes])
 		}
 	}
+}
+
+// AdvanceMeltPositions advances one command tic without touching image pixels.
+// Window hosts can share the exact movement while composing snapshots on a GPU.
+func AdvanceMeltPositions(y []int, virtualH, slices int) bool {
+	if virtualH <= 0 || slices <= 0 || len(y) < slices {
+		return true
+	}
+	done := true
+	for i := 0; i < slices; i++ {
+		if y[i] < 0 {
+			y[i]++
+			done = false
+			continue
+		}
+		if y[i] >= virtualH {
+			continue
+		}
+		dy := 8
+		if y[i] < 16 {
+			dy = y[i] + 1
+		}
+		if y[i]+dy >= virtualH {
+			dy = virtualH - y[i]
+		}
+		y[i] += dy
+		done = false
+	}
+
+	return done
 }

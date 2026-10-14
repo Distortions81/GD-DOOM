@@ -102,6 +102,7 @@ jobs:
           cp "$wad_path" "$pkg_dir/DOOM1.WAD"
           cp soundfonts/general-midi.sf2 "$pkg_dir/soundfonts/"
           cp README.md LICENSE NOTICE "$pkg_dir/"
+          cp -R internal/freegames/licenses "$pkg_dir/free-game-licenses"
 
           python - <<'PY'
           import os

@@ -666,6 +666,10 @@ func (g *game) tickMonsters() {
 }
 
 func (g *game) tickThingThinker(i int, th mapdata.Thing) {
+	if state := g.authoritativeMonsterPlayer(i); state != nil && state.localSlot != g.localSlot {
+		g.withAuthoritativePlayer(state, func() { g.tickThingThinker(i, th) })
+		return
+	}
 	if g != nil && g.m != nil {
 		g.ensureMonsterAIState()
 	}
@@ -1253,6 +1257,14 @@ func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
 }
 
 func (g *game) monsterTargetAlive() bool {
+	if g != nil && len(g.authorityPlayers) > 0 {
+		for _, state := range g.authorityPlayers {
+			if _, dead, _ := g.authoritativePlayerBody(state); !dead {
+				return true
+			}
+		}
+		return false
+	}
 	return g != nil && !g.isDead
 }
 
@@ -1271,6 +1283,9 @@ func (g *game) clearMonsterTargetState(i int) {
 	}
 	if i < len(g.thingTargetPlayer) {
 		g.thingTargetPlayer[i] = false
+	}
+	if i < len(g.thingTargetPlayerSlot) {
+		g.thingTargetPlayerSlot[i] = 0
 	}
 	if i < len(g.thingTargetIdx) {
 		g.thingTargetIdx[i] = -1
@@ -1312,6 +1327,12 @@ func (g *game) setMonsterTargetPlayer(i int) {
 	if i < len(g.thingTargetPlayer) {
 		g.thingTargetPlayer[i] = true
 	}
+	if len(g.authorityPlayers) > 0 {
+		g.ensureMonsterAIState()
+		if i < len(g.thingTargetPlayerSlot) {
+			g.thingTargetPlayerSlot[i] = g.localSlot
+		}
+	}
 	if i < len(g.thingTargetIdx) {
 		g.thingTargetIdx[i] = -1
 	}
@@ -1323,6 +1344,9 @@ func (g *game) setMonsterTargetThing(i, targetIdx int) {
 	}
 	if i < len(g.thingTargetPlayer) {
 		g.thingTargetPlayer[i] = false
+	}
+	if i < len(g.thingTargetPlayerSlot) {
+		g.thingTargetPlayerSlot[i] = 0
 	}
 	if i < len(g.thingTargetIdx) {
 		g.thingTargetIdx[i] = targetIdx
@@ -1348,9 +1372,25 @@ func (g *game) monsterHasTarget(i int) bool {
 		return false
 	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		if len(g.authorityPlayers) > 0 {
+			state := g.authoritativeMonsterPlayer(i)
+			if state == nil {
+				return false
+			}
+			_, dead, _ := g.authoritativePlayerBody(state)
+			return !dead
+		}
 		return g.monsterTargetAlive()
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if len(g.authorityPlayers) > 0 {
+			state := g.authoritativeMonsterPlayer(i)
+			if state == nil {
+				return false
+			}
+			_, dead, _ := g.authoritativePlayerBody(state)
+			return !dead
+		}
 		return g.monsterTargetAlive()
 	}
 	if idx, ok := g.monsterTargetThingIdx(i); ok {
@@ -1367,6 +1407,9 @@ func (g *game) monsterHasSimulationTarget(i int) bool {
 		return false
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if len(g.authorityPlayers) > 0 {
+			return g.authoritativeMonsterPlayer(i) != nil
+		}
 		return true
 	}
 	return g.monsterHasTarget(i)
@@ -1390,9 +1433,15 @@ func (g *game) monsterTargetPos(i int) (x, y, z, height, radius int64, ok bool) 
 		if !g.monsterTargetAlive() {
 			return 0, 0, 0, 0, 0, false
 		}
+		if len(g.authorityPlayers) > 0 {
+			return g.authoritativeMonsterPlayerPos(i)
+		}
 		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if len(g.authorityPlayers) > 0 {
+			return g.authoritativeMonsterPlayerPos(i)
+		}
 		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	targetIdx, ok := g.monsterTargetThingIdx(i)
@@ -1415,9 +1464,15 @@ func (g *game) monsterAttackTargetPos(i int) (x, y, z, height, radius int64, ok 
 		if !g.monsterTargetAlive() {
 			return 0, 0, 0, 0, 0, false
 		}
+		if len(g.authorityPlayers) > 0 {
+			return g.authoritativeMonsterPlayerPos(i)
+		}
 		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if len(g.authorityPlayers) > 0 {
+			return g.authoritativeMonsterPlayerPos(i)
+		}
 		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	return g.monsterTargetPos(i)
@@ -1426,6 +1481,17 @@ func (g *game) monsterAttackTargetPos(i int) (x, y, z, height, radius int64, ok 
 func (g *game) monsterHasLOSTarget(i int, typ int16, x, y int64) bool {
 	if g == nil || i < 0 {
 		return false
+	}
+	if len(g.authorityPlayers) > 0 && (i >= len(g.thingTargetPlayer) || g.thingTargetPlayer[i] || i >= len(g.thingTargetIdx) || g.thingTargetIdx[i] < 0) {
+		state := g.authoritativeMonsterPlayer(i)
+		if state == nil {
+			return false
+		}
+		if state.localSlot != g.localSlot {
+			var visible bool
+			g.withAuthoritativePlayer(state, func() { visible = g.monsterHasLOSTarget(i, typ, x, y) })
+			return visible
+		}
 	}
 	fromSector := -1
 	if g.m != nil && i < len(g.m.Things) {
@@ -1800,6 +1866,11 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingTargetPlayer
 		g.thingTargetPlayer = make([]bool, n)
 		copy(g.thingTargetPlayer, old)
+	}
+	if len(g.thingTargetPlayerSlot) != n {
+		old := g.thingTargetPlayerSlot
+		g.thingTargetPlayerSlot = make([]int, n)
+		copy(g.thingTargetPlayerSlot, old)
 	}
 	if len(g.thingTargetIdx) != n {
 		old := g.thingTargetIdx
@@ -2507,7 +2578,13 @@ func (g *game) hitSkullFlyTarget(i int, typ int16, target lineAttackTarget) {
 	damage := 3 * (1 + doomPRandomN(8))
 	switch target.kind {
 	case lineAttackTargetPlayer:
-		g.damagePlayerFrom(damage, "Monster hit you", x, y, true, i)
+		if len(g.authorityPlayers) > 0 {
+			if state := g.authoritativePlayerForSlot(target.playerSlot); state != nil {
+				g.applyPlayerDamageTarget(state.localSlot, 0, func() { g.damagePlayerFrom(damage, "Monster hit you", x, y, true, i) })
+			}
+		} else {
+			g.damagePlayerFrom(damage, "Monster hit you", x, y, true, i)
+		}
 	case lineAttackTargetThing:
 		if target.idx >= 0 && target.idx < len(g.m.Things) && thingTypeIsShootable(g.m.Things[target.idx].Type) {
 			g.damageShootableThingFrom(target.idx, damage, false, i, x, y, true)
@@ -2535,7 +2612,14 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 	}
 	const maxThingBlockRadius = 32 * fracUnit
 	radius := monsterRadius(th.Type)
-	if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
+	if len(g.authorityPlayers) > 0 {
+		for _, state := range g.authorityPlayers {
+			body, dead, _ := g.authoritativePlayerBody(state)
+			if !dead && abs(body.x-x) < radius+playerRadius && abs(body.y-y) < radius+playerRadius {
+				return lineAttackTarget{kind: lineAttackTargetPlayer, playerSlot: state.localSlot}, true
+			}
+		}
+	} else if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
 		return lineAttackTarget{kind: lineAttackTargetPlayer}, true
 	}
 	if g.m == nil {
@@ -2910,6 +2994,10 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 		return false
 	}
 	g.ensureMonsterAIState()
+	px, py := g.p.x, g.p.y
+	if len(g.authorityPlayers) > 0 {
+		px, py, _, _, _, _ = g.monsterAttackTargetPos(i)
+	}
 	if !missile {
 		if ev := monsterAttackStateEntrySoundEvent(typ); ev >= 0 {
 			tx, ty := g.thingPosFixed(i, g.m.Things[i])
@@ -2922,13 +3010,13 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 			g.thingAttackFireTics[i] = -1
 		}
 		tx, ty := g.thingPosFixed(i, g.m.Things[i])
-		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+		dist := doomApproxDistance(px-tx, py-ty)
 		phase := 0
 		if i >= 0 && i < len(g.thingAttackPhase) {
 			phase = g.thingAttackPhase[i]
 		}
-		g.runMonsterAttackPhaseEntry(i, typ, phase, tx, ty, g.p.x, g.p.y, dist)
-		if !g.advanceZeroTicMonsterAttackFrames(i, typ, tx, ty, g.p.x, g.p.y, dist) {
+		g.runMonsterAttackPhaseEntry(i, typ, phase, tx, ty, px, py, dist)
+		if !g.advanceZeroTicMonsterAttackFrames(i, typ, tx, ty, px, py, dist) {
 			return false
 		}
 		if missile && i >= 0 && i < len(g.thingJustAtk) {
@@ -2940,7 +3028,7 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 		// Fallback for malformed state in tests.
 		tx := int64(g.m.Things[i].X) << fracBits
 		ty := int64(g.m.Things[i].Y) << fracBits
-		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+		dist := doomApproxDistance(px-tx, py-ty)
 		return g.monsterAttack(i, typ, dist)
 	}
 	delay := monsterAttackFireDelayTics(typ)
@@ -2948,7 +3036,7 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 	if delay <= 0 {
 		tx := int64(g.m.Things[i].X) << fracBits
 		ty := int64(g.m.Things[i].Y) << fracBits
-		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+		dist := doomApproxDistance(px-tx, py-ty)
 		if !g.monsterAttack(i, typ, dist) {
 			g.thingAttackTics[i] = 0
 			g.thingAttackFireTics[i] = -1
@@ -3981,6 +4069,11 @@ func (g *game) startLostSoulCharge(i int) bool {
 }
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
+	if state := g.authoritativeMonsterPlayer(i); state != nil && state.localSlot != g.localSlot {
+		var result bool
+		g.withAuthoritativePlayer(state, func() { result = g.monsterAttack(i, typ, dist) })
+		return result
+	}
 	meleeOnly := isMeleeOnlyMonster(typ)
 	var sx, sy int64
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {
@@ -4127,6 +4220,11 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 // monsters, a cacodemon chooses a close-range 1..6 x 10 melee hit before
 // spawning MT_HEADSHOT.
 func (g *game) monsterHeadAttack(i int, sx, sy int64) bool {
+	if state := g.authoritativeMonsterPlayer(i); state != nil && state.localSlot != g.localSlot {
+		var result bool
+		g.withAuthoritativePlayer(state, func() { result = g.monsterHeadAttack(i, sx, sy) })
+		return result
+	}
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false
 	}
@@ -4147,6 +4245,15 @@ func (g *game) monsterTargetHasShadow(i int) bool {
 		return false
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if len(g.authorityPlayers) > 0 {
+			state := g.authoritativeMonsterPlayer(i)
+			if state == nil {
+				return false
+			}
+			if state.localSlot != g.localSlot {
+				return state.inventory.InvisTics > 0
+			}
+		}
 		return g.playerInvisible()
 	}
 	if i < len(g.thingTargetIdx) {
@@ -4170,6 +4277,12 @@ func (g *game) monsterAimAngleToTarget(i int, sx, sy int64) uint32 {
 
 func (g *game) damageMonsterTarget(i, damage int, msg string, attackerX, attackerY int64) {
 	if g == nil || i < 0 {
+		return
+	}
+	if len(g.authorityPlayers) > 0 && (i >= len(g.thingTargetPlayer) || g.thingTargetPlayer[i] || i >= len(g.thingTargetIdx) || g.thingTargetIdx[i] < 0) {
+		if state := g.authoritativeMonsterPlayer(i); state != nil {
+			g.applyPlayerDamageTarget(state.localSlot, 0, func() { g.damagePlayerFrom(damage, msg, attackerX, attackerY, true, i) })
+		}
 		return
 	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i]) {
@@ -4259,6 +4372,10 @@ func (g *game) spawnPainLostSoul(sourceIdx int, angle uint32) bool {
 	if sourceIdx >= 0 && sourceIdx < len(g.thingTargetPlayer) && idx < len(g.thingTargetPlayer) {
 		g.thingTargetPlayer[idx] = g.thingTargetPlayer[sourceIdx]
 	}
+	g.ensureMonsterAIState()
+	if sourceIdx < len(g.thingTargetPlayerSlot) && idx < len(g.thingTargetPlayerSlot) {
+		g.thingTargetPlayerSlot[idx] = g.thingTargetPlayerSlot[sourceIdx]
+	}
 	if sourceIdx >= 0 && sourceIdx < len(g.thingTargetIdx) && idx < len(g.thingTargetIdx) {
 		g.thingTargetIdx[idx] = g.thingTargetIdx[sourceIdx]
 	}
@@ -4310,6 +4427,10 @@ func monsterAttackStateEntrySoundEvent(typ int16) soundEvent {
 }
 
 func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int) {
+	if state := g.authoritativeMonsterPlayer(i); state != nil && state.localSlot != g.localSlot {
+		g.withAuthoritativePlayer(state, func() { g.monsterHitscanAttack(i, typ, sx, sy, pellets) })
+		return
+	}
 	if pellets <= 0 {
 		return
 	}
@@ -4936,6 +5057,9 @@ func (g *game) monsterAcquireSectorSoundTarget(i int, tx, ty int64) (hasSoundTar
 	if sec < 0 || sec >= len(g.sectorSoundTarget) || !g.sectorSoundTarget[sec] {
 		return false, false
 	}
+	if len(g.authorityPlayers) > 0 {
+		return g.authoritativeMonsterSoundTarget(i, sec, tx, ty)
+	}
 	g.setMonsterTargetPlayer(i)
 	if i < len(g.thingAmbush) && g.thingAmbush[i] {
 		return true, g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
@@ -4944,7 +5068,13 @@ func (g *game) monsterAcquireSectorSoundTarget(i int, tx, ty int64) (hasSoundTar
 }
 
 func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
-	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) || g.isDead {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if len(g.authorityPlayers) > 0 {
+		return g.authoritativeMonsterLookForPlayer(i, allAround, tx, ty)
+	}
+	if g.isDead {
 		return false
 	}
 	look := 0
@@ -5006,6 +5136,9 @@ func (g *game) monsterPlayerSlotActive(slot int) bool {
 	if g == nil {
 		return false
 	}
+	if len(g.authorityPlayers) > 0 {
+		return slot >= 0 && slot < 4 && g.authoritativePlayerForSlot(slot+1) != nil
+	}
 	activeSlot := g.localSlot - 1
 	if activeSlot < 0 || activeSlot >= 4 {
 		activeSlot = 0
@@ -5041,6 +5174,14 @@ func (g *game) propagateSectorNoise(sec int, soundBlocks int, best []int) {
 	}
 	if sec < len(g.sectorSoundTarget) {
 		g.sectorSoundTarget[sec] = true
+		if len(g.authorityPlayers) > 0 {
+			if len(g.sectorSoundPlayerSlot) != len(g.sectorSoundTarget) {
+				old := g.sectorSoundPlayerSlot
+				g.sectorSoundPlayerSlot = make([]int, len(g.sectorSoundTarget))
+				copy(g.sectorSoundPlayerSlot, old)
+			}
+			g.sectorSoundPlayerSlot[sec] = g.localSlot
+		}
 	}
 	for _, ld := range g.lines {
 		front, back := g.physLineSectors(ld)
@@ -5303,7 +5444,11 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 	radius := thingTypeRadius(typ)
 
 	visitPlayer := func() (lineAttackTarget, bool) {
-		return lineAttackTarget{kind: lineAttackTargetPlayer}, g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius
+		slot := 0
+		if len(g.authorityPlayers) > 0 {
+			slot = g.localSlot
+		}
+		return lineAttackTarget{kind: lineAttackTargetPlayer, playerSlot: slot}, g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius
 	}
 
 	visitThing := func(other int) (lineAttackTarget, bool) {
@@ -5351,6 +5496,24 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 		for bx := left; bx <= right; bx++ {
 			for by := bottom; by <= top; by++ {
 				var hit lineAttackTarget
+				if len(g.authorityPlayers) > 0 {
+					found := false
+					g.walkAuthoritativeActorBlockCell(by*g.bmapWidth+bx,
+						func(other int) {
+							if !found {
+								hit, found = visitThing(other)
+							}
+						},
+						func() {
+							if !found {
+								hit, found = visitPlayer()
+							}
+						})
+					if found {
+						return skullFlyProbeResult{target: hit, hitTarget: true}
+					}
+					continue
+				}
 				playerPending := playerCell >= 0 && bx == playerCell%g.bmapWidth && by == playerCell/g.bmapWidth
 				if !g.blockThingsIterator(bx, by, func(other int) bool {
 					// PIT_CheckThing visits the player in the same newest-first
@@ -5378,7 +5541,16 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 			}
 		}
 	} else {
-		if hit, ok := visitPlayer(); ok {
+		if len(g.authorityPlayers) > 0 {
+			for _, state := range g.authorityPlayers {
+				var hit lineAttackTarget
+				var found bool
+				g.withAuthoritativePlayer(state, func() { hit, found = visitPlayer() })
+				if found {
+					return skullFlyProbeResult{target: hit, hitTarget: true}
+				}
+			}
+		} else if hit, ok := visitPlayer(); ok {
 			return skullFlyProbeResult{target: hit, hitTarget: true}
 		}
 		for other := range g.m.Things {

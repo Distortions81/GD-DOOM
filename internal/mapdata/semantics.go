@@ -267,6 +267,7 @@ var floorSpecials = map[uint16]LineSpecialInfo{
 	102: {Special: 102, Name: "switch lower floor", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorLower, UsesTag: true}},
 	119: {Special: 119, Name: "walk raise floor to nearest", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
 	128: {Special: 128, Name: "walk raise floor to nearest", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
+	129: {Special: 129, Name: "walk raise floor turbo", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},
 	130: {Special: 130, Name: "walk raise floor turbo", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},
 	131: {Special: 131, Name: "switch raise floor turbo", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},
 	132: {Special: 132, Name: "button raise floor turbo", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},

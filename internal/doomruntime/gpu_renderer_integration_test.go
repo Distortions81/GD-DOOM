@@ -41,15 +41,29 @@ func (d *gpuComparisonDriver) Draw(screen *ebiten.Image) {
 // Runs real shader draws and readbacks only in this opt-in test, never during
 // gameplay. GD_GPU_WAD adds map comparisons; GD_GPU_CAPTURE_DIR writes PNG pairs.
 func TestGPUFramebufferComparison(t *testing.T) {
+	runGPUFramebufferComparison(t, true)
+}
+
+// Keep the indexed world checks independently runnable in WebGL, where the
+// full suite also exercises platform-specific spectre feedback and scaling.
+func TestGPUIndexedFramebufferComparison(t *testing.T) {
+	runGPUFramebufferComparison(t, false)
+}
+
+func runGPUFramebufferComparison(t *testing.T, includeFuzz bool) {
+	t.Helper()
 	if os.Getenv("GD_GPU_INTEGRATION") == "" {
 		t.Skip("set GD_GPU_INTEGRATION=1 to compare rendered GPU pixels")
 	}
 	driver := &gpuComparisonDriver{t: t}
 	driver.run = func() {
 		gpuCompareSynthetic(t)
+		gpuCompareHiddenSky(t)
 		gpuCompareFaithfulPalette(t)
-		gpuCompareSpectreFuzz(t)
-		gpuCompareFuzzDrawOrder(t)
+		if includeFuzz {
+			gpuCompareSpectreFuzz(t)
+			gpuCompareFuzzDrawOrder(t)
+		}
 		if path := os.Getenv("GD_GPU_WAD"); path != "" {
 			gpuCompareMaps(t, path)
 		}
@@ -57,6 +71,45 @@ func TestGPUFramebufferComparison(t *testing.T) {
 	ebiten.SetVsyncEnabled(false)
 	if err := ebiten.RunGame(driver); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func gpuCompareHiddenSky(t *testing.T) {
+	palette := make([]byte, 256*4)
+	for i := range 256 {
+		palette[i*4+3] = 255
+	}
+	initWallShadePackedLUT(palette)
+	sky := WallTexture{Width: 1, Height: 1, Indexed: []byte{0}, RGBA: []byte{91, 137, 203, 255}}
+	g := &game{opts: Options{GPURenderer: true, SourcePortMode: true, DoomPaletteRGBA: palette, WallTexBank: map[string]WallTexture{"SKY1": sky}}, viewW: 320, viewH: 200, m: &mapdata.Map{Name: "E1M1"}}
+	dst := newUnmanagedImage(g.viewW, g.viewH)
+	out := make([]byte, g.viewW*g.viewH*4)
+	// A sky texture may exist in the WAD without any visible sky. Verify both
+	// that the first indoor frame avoids initialization and that returning
+	// indoors after a sky frame cannot retain its snapshot pixels.
+	for frame, visible := range []bool{false, true, false} {
+		g.beginGPUFrame()
+		r := g.gpuFrame
+		if r == nil {
+			t.Fatal("hidden sky GPU renderer unavailable")
+		}
+		if visible {
+			r.rect(&r.skyCommands, 0, 0, g.viewW-1, g.viewH-1, gpuTexture{}, gpuTexture{}, 7, 0, 0, 0, 0, 0, 0)
+		}
+		g.finishGPUFrame(dst, 0, doomFocalLength(g.viewW))
+		if frame == 0 && (g.skyLayerShader != nil || g.skyLayerTex != nil) {
+			t.Error("invisible sky initialized GPU resources")
+		}
+		dst.ReadPixels(out)
+		want := [4]byte{0, 0, 0, 255}
+		if visible {
+			want = [4]byte{91, 137, 203, 255}
+		}
+		for i := 0; i < len(out); i += 4 {
+			if [4]byte(out[i:i+4]) != want {
+				t.Fatalf("sky visibility frame=%d pixel=%d got=%v want=%v", frame, i/4, out[i:i+4], want)
+			}
+		}
 	}
 }
 
@@ -292,24 +345,29 @@ func gpuCompareSynthetic(t *testing.T) {
 		t.Error("RGBA-only sprite color or mask changed")
 	}
 	gpuCompareSpriteRuns(t, g, &WallTexture{Width: 64, Height: 64, Indexed: indexed, OpaqueMask: mask})
-	// Check metadata row boundaries and the final texture ID on the GPU.
-	// Reuse an uploaded texel at a known atlas origin for each aliased ID.
+	// Check both direct vertex metadata and the animated metadata-image path
+	// at row boundaries and the final texture ID. Blending an alias with itself
+	// keeps the reference color exact while exercising both metadata reads.
 	r.overlayCommands.reset()
-	for x, id := range []int{127, 128, gpuModeStride - 1} {
-		alias := back
-		alias.id = id
-		putGPUTextureMetadata(r.metadataPixels, alias)
-		r.rect(&r.overlayCommands, x, 0, x, 0, alias, alias, 2, 256, 0, 0, 0, 0, 0)
+	for y, alpha := range []uint8{0, 127} {
+		for x, id := range []int{127, 128, gpuModeStride - 1} {
+			alias := back
+			alias.id = id
+			putGPUTextureMetadata(r.metadataPixels, alias)
+			r.rect(&r.overlayCommands, x, y, x, y, alias, alias, 2, 256, alpha, 0, 0, 0, 0)
+		}
 	}
 	r.metadata.WritePixels(r.metadataPixels)
 	r.cutouts.Clear()
 	r.drawCommands(r.cutouts, &r.overlayCommands, ebiten.BlendSourceOver, nil, 0)
 	r.cutouts.ReadPixels(out)
-	for x := 0; x < 3; x++ {
-		i := x * 4
-		want := wallShadePackedLUT[256][200]
-		if out[i] != byte(want>>pixelRShift) || out[i+1] != byte(want>>pixelGShift) || out[i+2] != byte(want>>pixelBShift) || out[i+3] != 255 {
-			t.Errorf("metadata boundary pixel %d differs", x)
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 3; x++ {
+			i := (y*r.width + x) * 4
+			want := wallShadePackedLUT[256][200]
+			if out[i] != byte(want>>pixelRShift) || out[i+1] != byte(want>>pixelGShift) || out[i+2] != byte(want>>pixelBShift) || out[i+3] != 255 {
+				t.Errorf("metadata boundary pixel (%d,%d) differs", x, y)
+			}
 		}
 	}
 	// Dimensions of 2048 and atlas coordinates of 2047 use every packed bit.
@@ -323,18 +381,22 @@ func gpuCompareSynthetic(t *testing.T) {
 		t.Fatalf("edge texture x=%d", edge.x)
 	}
 	r.overlayCommands.reset()
-	r.rect(&r.overlayCommands, 0, 0, 0, 0, wide, wide, 2, 256, 0, gpuAtlasSize-1, 0, 0, 0)
-	r.rect(&r.overlayCommands, 1, 0, 1, 0, tall, tall, 2, 256, 0, 0, gpuAtlasSize-1, 0, 0)
-	r.rect(&r.overlayCommands, 2, 0, 2, 0, edge, edge, 2, 256, 0, 0, 0, 0, 0)
+	for y, alpha := range []uint8{0, 127} {
+		r.rect(&r.overlayCommands, 0, y, 0, y, wide, wide, 2, 256, alpha, gpuAtlasSize-1, 0, 0, 0)
+		r.rect(&r.overlayCommands, 1, y, 1, y, tall, tall, 2, 256, alpha, 0, gpuAtlasSize-1, 0, 0)
+		r.rect(&r.overlayCommands, 2, y, 2, y, edge, edge, 2, 256, alpha, 0, 0, 0, 0)
+	}
 	r.metadata.WritePixels(r.metadataPixels)
 	r.cutouts.Clear()
 	r.drawCommands(r.cutouts, &r.overlayCommands, ebiten.BlendSourceOver, nil, 0)
 	r.cutouts.ReadPixels(out)
-	for x := 0; x < 3; x++ {
-		i := x * 4
-		want := wallShadePackedLUT[256][200]
-		if out[i] != byte(want>>pixelRShift) || out[i+1] != byte(want>>pixelGShift) || out[i+2] != byte(want>>pixelBShift) || out[i+3] != 255 {
-			t.Errorf("metadata atlas limit pixel %d differs", x)
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 3; x++ {
+			i := (y*r.width + x) * 4
+			want := wallShadePackedLUT[256][200]
+			if out[i] != byte(want>>pixelRShift) || out[i+1] != byte(want>>pixelGShift) || out[i+2] != byte(want>>pixelBShift) || out[i+3] != 255 {
+				t.Errorf("metadata atlas limit pixel (%d,%d) differs", x, y)
+			}
 		}
 	}
 	g.viewW, g.viewH = 400, 240

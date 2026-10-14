@@ -25,13 +25,17 @@ const (
 )
 
 type chatHistoryEntry struct {
-	Text string
-	Tics int
+	Text   string
+	Tics   int
+	Notice bool
 }
 
 func (g *game) chatSource() runtimecfg.LiveChatSource {
 	if g == nil {
 		return nil
+	}
+	if client, ok := g.opts.AuthorityClient.(runtimecfg.AuthorityChatClient); ok {
+		return authorityChatEndpoint{client}
 	}
 	if src, ok := g.opts.LiveTicSource.(runtimecfg.LiveChatSource); ok && src != nil {
 		return src
@@ -45,6 +49,9 @@ func (g *game) chatSource() runtimecfg.LiveChatSource {
 func (g *game) chatSink() runtimecfg.LiveChatSink {
 	if g == nil {
 		return nil
+	}
+	if client, ok := g.opts.AuthorityClient.(runtimecfg.AuthorityChatClient); ok {
+		return authorityChatEndpoint{client}
 	}
 	if sink, ok := g.opts.LiveTicSink.(runtimecfg.LiveChatSink); ok && sink != nil {
 		return sink
@@ -214,10 +221,14 @@ func (g *game) appendChatHistory(name, text string) {
 	if strings.TrimSpace(name) != "" {
 		label = fmt.Sprintf("%s: %s", name, text)
 	}
-	g.chatHistory = append(g.chatHistory, chatHistoryEntry{
+	g.appendChatHistoryEntry(chatHistoryEntry{
 		Text: label,
 		Tics: chatHistoryTTL,
 	})
+}
+
+func (g *game) appendChatHistoryEntry(entry chatHistoryEntry) {
+	g.chatHistory = append(g.chatHistory, entry)
 	if len(g.chatHistory) > chatHistoryMaxEntries {
 		g.chatHistory = append([]chatHistoryEntry(nil), g.chatHistory[len(g.chatHistory)-chatHistoryMaxEntries:]...)
 	}
@@ -238,12 +249,23 @@ func (g *game) tickChatHistory() {
 }
 
 func (g *game) drawChatOverlay(screen *ebiten.Image) {
-	if g == nil || screen == nil || (!g.chatComposeOpen && len(g.chatHistory) == 0) {
+	if screen == nil {
 		return
 	}
+	g.drawChatOverlayText(func(text string, x, y, sx, sy float64) { g.drawHUTextAt(screen, text, x, y, sx, sy) })
+}
+
+func (g *game) drawChatOverlayText(draw func(string, float64, float64, float64, float64)) {
+	if g == nil || (!g.chatComposeOpen && len(g.chatHistory) == 0) {
+		return
+	}
+	g.drawAuthorityNoticesText(draw)
 	maxWidth := max(80, min(g.viewW-chatMarginX*2-chatWrapPadding, g.viewW/2))
 	lines := make([]string, 0, len(g.chatHistory))
 	for _, entry := range g.chatHistory {
+		if entry.Notice {
+			continue
+		}
 		lines = append(lines, g.wrapChatText(entry.Text, maxWidth, "", "  ")...)
 	}
 	y := float64(chatMarginY)
@@ -256,7 +278,7 @@ func (g *game) drawChatOverlay(screen *ebiten.Image) {
 		if x < 0 {
 			x = 0
 		}
-		g.drawHUTextAt(screen, line, x, y, 1, 1)
+		draw(line, x, y, 1, 1)
 		y += chatLineAdvance
 	}
 	if g.chatComposeOpen {
@@ -270,7 +292,7 @@ func (g *game) drawChatOverlay(screen *ebiten.Image) {
 			if strings.TrimSpace(line) == "" {
 				continue
 			}
-			g.drawHUTextAt(screen, line, float64(chatMarginX), y, 1, 1)
+			draw(line, float64(chatMarginX), y, 1, 1)
 			y += chatLineAdvance
 		}
 	}

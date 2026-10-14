@@ -206,6 +206,7 @@ func (g *game) processThingPickupAtIndex(i int, th mapdata.Thing, px, py, pz, pr
 		return false
 	}
 	g.thingCollected[i] = true
+	g.scheduleAuthoritativeItemRespawn(i)
 	if thingCountsItem(th.Type) {
 		g.playerItemCount++
 	}

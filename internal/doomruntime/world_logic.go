@@ -463,7 +463,10 @@ func (g *game) damagePlayerFromWithInflictorZ(amount int, msg string, attackerX,
 			}
 		}
 	}
-	if g.playerInvulnerable() {
+	// Authoritative telefrags use Doom's exceptional 1000+ damage rule. Keep
+	// the legacy/demo path unchanged, and leave co-op protection to the scoped
+	// player-damage policy before this function is entered.
+	if g.playerInvulnerable() && (g.authorityRules == nil || amount < 1000) {
 		return
 	}
 	if g.stats.ArmorType != 0 && g.stats.Armor > 0 {
@@ -504,6 +507,9 @@ func (g *game) damagePlayerFromWithInflictorZ(amount int, msg string, attackerX,
 	}
 	if g.stats.Health == 0 {
 		g.isDead = true
+		if len(g.authorityPlayers) != 0 {
+			g.authorityPlayerKilled(g.localSlot, g.authorityDamageSource)
+		}
 		// Doom's P_KillMobj always shortens the death state's tics with
 		// `P_Random() & 3`, including the player path. We don't model the
 		// full player death mobj state here, but we must consume the RNG.

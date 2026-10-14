@@ -250,6 +250,18 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	if g.thingDead[thingIdx] || g.thingHP[thingIdx] <= 0 {
 		return
 	}
+	if len(g.authorityPlayers) != 0 {
+		owner := g.authorityDamageOwner
+		if sourceThing >= 0 {
+			owner = authorityPlayerIdentity{}
+		} else if owner.Slot == 0 && sourcePlayer {
+			owner = authorityPlayerIdentity{Slot: g.localSlot, Generation: g.authorityPlayerGeneration(g.localSlot)}
+		}
+		if g.authorityBarrelSources == nil {
+			g.authorityBarrelSources = make(map[int]authorityBarrelSource)
+		}
+		g.authorityBarrelSources[thingIdx] = authorityBarrelSource{PlayerSlot: owner.Slot, PlayerGeneration: owner.Generation, Thing: sourceThing}
+	}
 	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if g.thingHP[thingIdx] > 0 {
@@ -293,6 +305,20 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 	sx, sy := g.thingPosFixed(spotIdx, spot)
 	sz, _, _ := g.thingSupportState(spotIdx, spot)
 	sheight := g.thingCurrentHeight(spotIdx, spot)
+	if len(g.authorityPlayers) != 0 {
+		if owner, ok := g.authorityBarrelSources[spotIdx]; ok {
+			g.withProjectileSource(owner.PlayerSlot, owner.PlayerGeneration, func(validSource bool) {
+				g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion", validSource, owner.Thing)
+			})
+			return
+		}
+		// A barrel with no damage owner is environmental. Never infer its
+		// shooter from whichever player currently anchors world thinking.
+		g.withProjectileSource(0, 0, func(bool) {
+			g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion", false, -1)
+		})
+		return
+	}
 	sourcePlayer := false
 	sourceThing := -1
 	if spotIdx >= 0 && spotIdx < len(g.thingTargetPlayer) && g.thingTargetPlayer[spotIdx] {
@@ -306,6 +332,17 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage int, msg string, sourcePlayer bool, sourceThing int) {
 	if g == nil || damage <= 0 {
 		return
+	}
+	sourceIdentity := g.authorityDamageOwner
+	if sourceIdentity.Slot == 0 && sourcePlayer && len(g.authorityPlayers) != 0 {
+		sourceIdentity = authorityPlayerIdentity{Slot: g.localSlot, Generation: g.authorityPlayerGeneration(g.localSlot)}
+	}
+	attackerX, attackerY := sx, sy
+	if g.authoritativeSourceIdentityValid(sourceIdentity) {
+		body, _, _ := g.authoritativePlayerBody(g.authoritativePlayerForSlot(sourceIdentity.Slot))
+		attackerX, attackerY = body.x, body.y
+	} else if len(g.authorityPlayers) == 0 && sourcePlayer {
+		attackerX, attackerY = g.p.x, g.p.y
 	}
 	debugRadius := g.debugRadiusAttackEnabled(sx, sy)
 	debugVisit := 0
@@ -352,14 +389,16 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		// P_DamageMobj applies thrust from the exploding mobj (the inflictor),
 		// but P_KillMobj retains the explosion owner as player->attacker for
 		// P_DeathThink. Keep those two Doom concepts distinct.
-		g.damagePlayerFromWithInflictorZ(damageToPlayer, msg, sx, sy, true, -1, sz)
-		if g.statusHasAttacker && sourceThing >= 0 && g.m != nil && sourceThing < len(g.m.Things) {
-			g.statusAttackerX, g.statusAttackerY = g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
-			g.statusAttackerThing = sourceThing
-		} else if g.statusHasAttacker && sourcePlayer {
-			g.statusAttackerX, g.statusAttackerY = g.p.x, g.p.y
-			g.statusAttackerThing = -1
-		}
+		g.applyPlayerDamageTargetFrom(g.localSlot, sourceIdentity, func() {
+			g.damagePlayerFromWithInflictorZ(damageToPlayer, msg, sx, sy, true, -1, sz)
+			if g.statusHasAttacker && sourceThing >= 0 && g.m != nil && sourceThing < len(g.m.Things) {
+				g.statusAttackerX, g.statusAttackerY = g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
+				g.statusAttackerThing = sourceThing
+			} else if g.statusHasAttacker && (sourcePlayer || sourceIdentity.Slot != 0) {
+				g.statusAttackerX, g.statusAttackerY = attackerX, attackerY
+				g.statusAttackerThing = -1
+			}
+		})
 		if debugRadius {
 			rndAfter, prndAfter := doomrand.State()
 			fmt.Printf("gd-radius-debug tic=%d world=%d player health_after=%d armor_after=%d prnd_after=%d rnd_after=%d\n",
@@ -422,7 +461,9 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 			return
 		}
 		rndBefore, prndBefore := doomrand.State()
-		g.damageShootableThingFromWithInflictorZ(i, damage-int(tdist), sourcePlayer, sourceThing, sx, sy, true, sz, true)
+		g.withProjectileSource(sourceIdentity.Slot, sourceIdentity.Generation, func(validSource bool) {
+			g.damageShootableThingFromWithInflictorZ(i, damage-int(tdist), sourcePlayer && validSource, sourceThing, sx, sy, true, sz, true)
+		})
 		if debugRadius {
 			rndAfter, prndAfter := doomrand.State()
 			fmt.Printf("gd-radius-debug tic=%d world=%d idx=%d hp_after=%d dead=%t prnd_after=%d rnd_after=%d\n",
@@ -454,12 +495,22 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 				// The player shares the original blocklink list with monsters.
 				// Their interleaved visit order determines damage RNG, including
 				// randomized corpse lifetimes when an explosion kills a skull.
-				g.walkActorBlockCell(cell, visitThing, visitPlayer)
+				if len(g.authorityPlayers) != 0 {
+					g.walkAuthoritativeActorBlockCell(cell, visitThing, visitPlayer)
+				} else {
+					g.walkActorBlockCell(cell, visitThing, visitPlayer)
+				}
 			}
 		}
 		return
 	}
-	visitPlayer()
+	if len(g.authorityPlayers) != 0 {
+		for _, p := range g.authorityPlayers {
+			g.withAuthoritativePlayer(p, visitPlayer)
+		}
+	} else {
+		visitPlayer()
+	}
 	for i := range g.m.Things {
 		visitThing(i)
 	}

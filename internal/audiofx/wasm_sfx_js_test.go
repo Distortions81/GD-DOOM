@@ -96,11 +96,13 @@ func TestPlayWASMSoundEffect_ActiveCachedVoiceRewindsWithoutReplayCall(t *testin
 	}
 	backend := &fakeWASMBackend{playing: true}
 	voice := &spatialVoice{
-		player: backend,
-		src:    &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
-		pinned: true,
-		key:    key,
-		bucket: wasmVolumeBuckets - 1,
+		player:         backend,
+		src:            &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
+		pinned:         true,
+		key:            key,
+		bucket:         wasmVolumeBuckets - 1,
+		wasmBucketGain: 1,
+		wasmAppliedVol: 1,
 	}
 	p := &SpatialPlayer{
 		ctx:    &audio.Context{},
@@ -137,11 +139,13 @@ func TestPlayWASMSoundEffect_QuantizedVolumeSkipsRedundantSetVolume(t *testing.T
 	}
 	backend := &fakeWASMBackend{}
 	voice := &spatialVoice{
-		player: backend,
-		src:    &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
-		pinned: true,
-		key:    key,
-		bucket: wasmVolumeBuckets - 1,
+		player:         backend,
+		src:            &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
+		pinned:         true,
+		key:            key,
+		bucket:         wasmVolumeBuckets - 1,
+		wasmBucketGain: 1,
+		wasmAppliedVol: 1,
 	}
 	p := &SpatialPlayer{
 		ctx:    &audio.Context{},
@@ -203,8 +207,12 @@ func TestPlayWASMSoundEffect_SkipsBelowFirstAudibleBucket(t *testing.T) {
 	threshold := math.Pow(1.0/float64(wasmVolumeBuckets-1)/2, 2)
 	origin := SpatialOrigin{
 		Positioned: true,
-		X:          int64(math.Round((1-threshold)*float64(doomSoundAttenuator)*float64(fracUnit))) + 1,
+		X:          doomSoundClippingDist - int64(math.Floor(threshold*float64(doomSoundAttenuator)))*fracUnit,
 		Y:          0,
+	}
+	attenuation, audible := wasmMonoAttenuation(origin, 0, 0, false)
+	if !audible || attenuation <= 0 || attenuation >= threshold {
+		t.Fatalf("fixture attenuation=%f must be nonzero but below bucket threshold=%f", attenuation, threshold)
 	}
 	p := &SpatialPlayer{
 		ctx:    &audio.Context{},

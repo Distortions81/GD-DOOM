@@ -1,13 +1,31 @@
 package runtimecfg
 
 import (
+	"context"
+	"time"
+
 	"gddoom/internal/audiofx"
 	"gddoom/internal/demo"
 	"gddoom/internal/gameplay"
+	"gddoom/internal/lobby"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/netgame"
 	"gddoom/internal/sound"
+)
+
+// DefaultAlwaysRun is shared by native and Ebiten launchers. The run modifier
+// inverts it while held, so Shift walks with the default setting.
+const DefaultAlwaysRun = true
+
+// Common launcher defaults keep the native and Ebiten controls and audio aligned.
+const (
+	DefaultMouseLookSpeed    = 0.5
+	DefaultKeyboardTurnSpeed = 1.0
+	DefaultSmoothCameraYaw   = true
+	DefaultMusicVolume       = 1.0
+	DefaultSFXVolume         = 0.5
 )
 
 type MusicPlayerTrack struct {
@@ -35,6 +53,87 @@ type WADSource struct {
 
 type LiveTicSource interface {
 	PollTic() (demo.Tic, bool, error)
+}
+
+// AuthorityClient supplies authenticated full baselines and sends intent to the
+// server. Implementations must bound their queues and keep these calls
+// nonblocking so network I/O cannot stall the game/render goroutine.
+type AuthorityClient interface {
+	Welcome() netgame.Welcome
+	PollTransition() (netgame.MapChange, bool, error)
+	PollSnapshot() (netgame.Snapshot, bool, error)
+	SendInputs(netgame.InputBatch) error
+}
+
+type AuthorityChatClient interface {
+	SendChat(text string) error
+	PollChat() (netgame.ChatEvent, bool, error)
+}
+
+// AuthorityJoinRequest joins a match using the WADs already loaded by the game.
+type AuthorityJoinRequest struct {
+	Address, Name string
+	Spectator     bool
+}
+
+type AuthorityServerEntry struct {
+	Label   string `json:"label" toml:"label"`
+	Address string `json:"address" toml:"address"`
+}
+
+// Counts are negative when an older server does not advertise capacity.
+type AuthorityServerInfo struct {
+	Manifest           netgame.CompatibilityManifest
+	Ping               time.Duration
+	Players            int
+	PlayerLimit        int
+	Spectators         int
+	Compatible         bool
+	CompatibilityError string
+}
+
+// AuthorityJoinResult is prepared off the game thread. The caller owns Client
+// and the supplied context for the entire session, including reconnection.
+type AuthorityJoinResult struct {
+	Client    AuthorityClient
+	Map       *mapdata.Map
+	Manifest  netgame.CompatibilityManifest
+	MapLoader func(netgame.MapChange) (*mapdata.Map, error)
+}
+
+// AuthorityContentProgress is advisory progress for the current room download.
+// The UI coalesces reports without blocking the downloader.
+type AuthorityContentProgress struct {
+	Stage, Name     string
+	Received, Total int64
+}
+
+// AuthorityContentPreparation owns verified downloaded resources until Load
+// succeeds. Load is called on the game thread with current user preferences;
+// success transfers ownership to Bundle.Options.AuthorityContentCleanup.
+// Cancel releases an abandoned preparation and must be safe to repeat.
+type AuthorityContentPreparation struct {
+	Load   func(current Options) (AuthorityContentBundle, error)
+	Cancel func()
+}
+
+type AuthorityContentBundle struct {
+	Map     *mapdata.Map
+	Options Options
+	NextMap func(mapdata.MapName, bool) (*mapdata.Map, mapdata.MapName, error)
+}
+
+// AuthorityLocalRules preserves local game rules across a network session
+// without overwriting rendering, sound, or input preferences changed in menus.
+type AuthorityLocalRules struct {
+	GameMode                                  string
+	SkillLevel, PlayerSlot                    int
+	NoMonsters, FastMonsters, RespawnMonsters bool
+	WADHash                                   string
+	AllCheats                                 bool
+	CheatLevel                                int
+	Invulnerable                              bool
+	ShowAllItems, ShowNoSkillItems            bool
 }
 
 type ChatMessage struct {
@@ -158,6 +257,9 @@ type VoiceSettings struct {
 }
 
 type Options struct {
+	// Headless suppresses device-backed audio and render asset preparation for
+	// callers that drive the simulation directly without an Ebitengine game loop.
+	Headless                     bool
 	Width                        int
 	Height                       int
 	StartZoom                    float64
@@ -213,6 +315,7 @@ type Options struct {
 	DisableBillboardClipping     bool
 	DisableMaskedMidFastPaths    bool
 	GPURenderer                  bool
+	MeshRenderer                 string // Empty disables the experimental triangle renderer.
 	RendererWorkers              int
 	TextureAnimCrossfadeFrames   int
 	NoVsync                      bool
@@ -260,6 +363,22 @@ type Options struct {
 	DemoMapLoader                func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                     []int
 	LiveTicSource                LiveTicSource
+	AuthorityClient              AuthorityClient
+	AuthorityMapLoader           func(netgame.MapChange) (*mapdata.Map, error)
+	AuthorityJoin                func(context.Context, AuthorityJoinRequest) (AuthorityJoinResult, error)
+	AuthorityJoinDefaults        AuthorityJoinRequest
+	AuthorityAutoJoin            bool
+	AuthorityServers             []AuthorityServerEntry
+	AuthorityDiscover            func(context.Context, string) (AuthorityServerInfo, error)
+	AuthorityLobbyURL            string
+	AuthorityLobby               func(context.Context, string) (lobby.State, error)
+	AuthorityCreateGame          func(context.Context, string, lobby.CreateRequest) (lobby.Room, error)
+	AuthorityUploadWADs          func(context.Context, string, string) (lobby.Pack, error)
+	AuthorityPrepareRoom         func(context.Context, string, lobby.Room, func(AuthorityContentProgress)) (AuthorityContentPreparation, error)
+	AuthorityContentCleanup      func()
+	AuthorityWADHashes           []string
+	OnAuthorityServersChanged    func([]AuthorityServerEntry) error
+	AuthorityLocalRules          *AuthorityLocalRules
 	LiveTicSink                  LiveTicSink
 	CoopPeers                    CoopPeerSource
 	CaptureKeyframe              func() ([]byte, error)

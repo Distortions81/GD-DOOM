@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/sha1"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,12 +24,14 @@ import (
 	"gddoom/internal/audiofx"
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
+	"gddoom/internal/launchcatalog"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
 	"gddoom/internal/netplay"
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/doomtex"
+	"gddoom/internal/render/menufont"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/session"
 	"gddoom/internal/sessionvoice"
@@ -42,7 +43,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"github.com/zeebo/blake3"
 )
 
 func flagProvided(args []string, name string) bool {
@@ -69,6 +69,20 @@ func shouldOpenIWADPicker(render, noExplicitWAD, forceWASMPicker bool, pickerCho
 		return true
 	}
 	return forceWASMPicker
+}
+
+// A browser-selected base WAD still needs profile and audio setup. Keep that
+// exact base as the only choice so its selected overlays remain paired with it.
+func wasmPickerChoices(choices []iwadChoice, selectedWAD string) []iwadChoice {
+	if selectedWAD == "" {
+		return choices
+	}
+	choice, known := knownIWADChoiceForPath(selectedWAD)
+	if !known {
+		choice = iwadChoice{Path: selectedWAD, Label: filepath.Base(selectedWAD)}
+	}
+	choice.Path = selectedWAD
+	return []iwadChoice{choice}
 }
 
 func resolveForceWASMMode(args []string) bool {
@@ -367,10 +381,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultShowAllItems := false
 	defaultMouseLook := true
 	defaultMouseInvert := false
-	defaultSmoothCameraYaw := true
-	defaultMouseLookSpeed := 0.5
-	defaultKeyboardTurnSpeed := 1.0
-	defaultMusicVolume := 1.0
+	defaultSmoothCameraYaw := runtimecfg.DefaultSmoothCameraYaw
+	defaultMouseLookSpeed := runtimecfg.DefaultMouseLookSpeed
+	defaultKeyboardTurnSpeed := runtimecfg.DefaultKeyboardTurnSpeed
+	defaultMusicVolume := runtimecfg.DefaultMusicVolume
 	defaultMUSPanMax := 0.8
 	defaultMUSVolumeCompression := music.DefaultMUSVolumeCompression
 	defaultOPLVolume := 2.5
@@ -381,12 +395,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if isWASMBuild() {
 		defaultSoundFontPath = music.DefaultEmbeddedSoundFontPath()
 	}
-	defaultSFXVolume := 0.5
+	defaultSFXVolume := runtimecfg.DefaultSFXVolume
 	defaultPCSpeakerVolume := 1.0
 	defaultSFXPitchShift := false
 	defaultFastMonsters := false
 	defaultNoMonsters := false
-	defaultAlwaysRun := true
+	defaultAlwaysRun := runtimecfg.DefaultAlwaysRun
 	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
 	defaultInvuln := false
@@ -619,6 +633,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	gpuRenderer := fs.Bool("gpu-renderer", true, "use GPU world rendering in Faithful and Source Port modes (set false for CPU rendering)")
+	meshRenderer := fs.String("mesh-renderer", "", "experimental in-game triangle renderer: textured, sectors, or wireframe (F7 cycles views)")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
 	legacyMaskedMids := fs.Bool("legacy-masked-mids", false, "disable masked-mid fast paths and force the legacy renderer")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
@@ -634,6 +649,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	broadcastAddr := fs.String("broadcast", "", "publish to GDSF relay at addr (default 127.0.0.1:6670; bare -broadcast uses localhost)")
 	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
+	connectAddr := fs.String("connect", "", "join an authoritative server: host:port, HTTPS/WebTransport, or WebSocket URL")
+	defaultMultiplayerServer, defaultMultiplayerLobby := multiplayerBuildDefaults()
+	multiplayerServer := fs.String("multiplayer-server", defaultMultiplayerServer, "prefill the in-game Multiplayer server address without joining")
+	multiplayerLobby := fs.String("multiplayer-lobby", defaultMultiplayerLobby, "HTTP(S) lobby URL for browsing rooms and creating games")
+	netName := fs.String("player-name", "Player", "multiplayer display name")
+	netSpectator := fs.Bool("spectate", false, "join authoritative multiplayer as a spectator (F12 changes view)")
 	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
 	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
@@ -662,6 +683,20 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wadFlagSet := flagProvided(normalizedArgs, "wad")
 	broadcastFlagSet := flagProvided(normalizedArgs, "broadcast")
 	watchFlagSet := flagProvided(normalizedArgs, "watch")
+	connectActive := strings.TrimSpace(*connectAddr) != ""
+	joinDefaults := runtimecfg.AuthorityJoinRequest{Address: strings.TrimSpace(*multiplayerServer), Name: *netName, Spectator: *netSpectator}
+	lobbyURL, lobbyErr := resolveAuthorityLobbyURL(*multiplayerLobby)
+	if lobbyErr != nil {
+		fmt.Fprintf(stderr, "multiplayer lobby: %v\n", lobbyErr)
+		return 2
+	}
+	if connectActive {
+		joinDefaults.Address = strings.TrimSpace(*connectAddr)
+	}
+	if *netSpectator && !connectActive {
+		fmt.Fprintln(stderr, "-spectate requires -connect")
+		return 2
+	}
 	_ = configFlag
 	platformcfg.SetForcedWASMMode(*forceWASMMode)
 	allCheatsSet := false
@@ -714,6 +749,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid -pc-speaker-volume %.3f (must be between 0 and 1)\n", *pcSpeakerVolume)
 		return 2
 	}
+	*meshRenderer = strings.ToLower(strings.TrimSpace(*meshRenderer))
+	if *meshRenderer != "" && *meshRenderer != "textured" && *meshRenderer != "sectors" && *meshRenderer != "wireframe" {
+		fmt.Fprintf(stderr, "invalid -mesh-renderer %q (use textured, sectors, or wireframe)\n", *meshRenderer)
+		return 2
+	}
 	if *rendererWorkers < 0 {
 		fmt.Fprintf(stderr, "invalid -renderer-workers %d (must be >= 0)\n", *rendererWorkers)
 		return 2
@@ -749,7 +789,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if watchFlagSet {
 		resolvedWatchAddr = normalizeWatchAddr(*watchAddr)
 	}
-	networkActive := broadcastFlagSet || watchFlagSet
+	networkActive := broadcastFlagSet || watchFlagSet || connectActive
+	if connectActive && (broadcastFlagSet || watchFlagSet) {
+		fmt.Fprintln(stderr, "-connect cannot be combined with -broadcast or -watch")
+		return 2
+	}
+	if connectActive && (resolvedCheatLevel != 0 || resolvedInvuln || *showAllItems || *showNoSkillItems) {
+		fmt.Fprintln(stderr, "authoritative multiplayer requires cheats and item visibility overrides to be disabled")
+		return 2
+	}
 	resolvedFilePaths := resolveWADOverlayPaths(*filePaths)
 	resolvedWADPath := resolveIWADAliasPath(*wadPath)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
@@ -765,11 +813,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	if networkActive && !*render {
-		fmt.Fprintln(stderr, "-broadcast and -watch require render=true")
+		fmt.Fprintln(stderr, "network sessions require render=true")
 		return 2
 	}
 	if networkActive && (resolvedDemoPath != "" || resolvedRecordDemoPath != "" || resolvedDemoTracePath != "") {
-		fmt.Fprintln(stderr, "-broadcast and -watch do not support demo playback, demo recording, or demo tracing")
+		fmt.Fprintln(stderr, "network sessions do not support demo playback, demo recording, or demo tracing")
 		return 2
 	}
 	if resolvedDemoTracePath != "" && resolvedDemoPath == "" {
@@ -857,16 +905,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer stopCPUProfile()
 	noExplicitWAD := !wadFlagSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
-	forceWASMPicker := isWASMBuild() && *render && !wadFlagSet
+	forceWASMPicker := isWASMBuild() && *render
 	choices := detectAvailableIWADChoices(".")
 	pickerChoices := choices
+	if forceWASMPicker && wadFlagSet {
+		pickerChoices = wasmPickerChoices(pickerChoices, resolvedWADPath)
+	}
 	if len(pickerChoices) == 0 && isWASMBuild() {
 		if fallback, ok := knownIWADChoiceForPath(defaultWAD); ok {
 			pickerChoices = []iwadChoice{fallback}
 		}
 	}
+	if noExplicitWAD && len(resolvedFilePaths) == 0 {
+		pickerChoices = appendFreeGameChoices(pickerChoices)
+	}
 	if !networkActive && shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
 		buildCfg := renderBuildConfig{
+			authorityJoinDefaults:      joinDefaults,
+			authorityLobbyURL:          lobbyURL,
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
 			mapExplicit:                mapExplicit,
 			width:                      *width,
@@ -919,6 +975,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			wallSliceOcclusion:         defaultWallSliceOcclusion,
 			billboardClipping:          defaultBillboardClipping,
 			gpuRenderer:                *gpuRenderer,
+			meshRenderer:               *meshRenderer,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
@@ -944,20 +1001,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			cfg = applyPickerSFX(cfg, sfxIndex)
 			cfg = applyPickerPCSpeakerVariant(cfg, pcSpeakerVariantIndex)
 			cfg = applyPickerSynth(cfg, synthIndex)
+			if strings.EqualFold(filepath.Base(path), "freedm.wad") {
+				cfg.gameMode, cfg.noMonsters = "deathmatch", true
+			}
 			return buildRenderBundle(resolveIWADAliasPath(path), cfg, stderr)
 		})
 		if perr != nil {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
 			return 1
 		}
-		if forceWASMPicker {
+		defer picker.Close()
+		picker.freeGameServer = lobbyURL
+		if forceWASMPicker && !wadFlagSet {
 			picker.stage = pickerStageIWAD
 		}
 		if err := runGameWithPlatformOptions(picker); err != nil && !errors.Is(err, ebiten.Termination) {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", err)
 			return 1
 		}
-		defer picker.Close()
 		if picker.Session() == nil {
 			return 1
 		}
@@ -1214,7 +1275,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Width:                      *width,
 			Height:                     *height,
 			StartZoom:                  defaultZoom,
-			InitialDetailLevel:         *detailLevel,
+			InitialDetailLevel:         startupDetailLevel(*detailLevel, *autoDetail, detailLevelSet),
 			AutoDetail:                 *autoDetail,
 			InitialGammaLevel:          *gammaLevel,
 			WADHash:                    wadHash,
@@ -1265,6 +1326,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DisableBillboardClipping:   !defaultBillboardClipping,
 			DisableMaskedMidFastPaths:  *legacyMaskedMids,
 			GPURenderer:                *gpuRenderer,
+			MeshRenderer:               *meshRenderer,
 			RendererWorkers:            *rendererWorkers,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
@@ -1419,6 +1481,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if lerr != nil {
 			fmt.Fprintf(stderr, "load map %s: %v\n", selected, lerr)
 			return 1
+		}
+		if !broadcastFlagSet && !watchFlagSet && resolvedDemoPath == "" && resolvedRecordDemoPath == "" && resolvedDemoTracePath == "" {
+			opts.AuthorityJoin = authorityJoiner(wadPaths, wf)
+			opts.AuthorityJoinDefaults = joinDefaults
+			configureAuthorityBrowser(&opts, wadPaths, configPath)
+			if err := configureAuthorityLobby(&opts, wadPaths, lobbyURL); err != nil {
+				fmt.Fprintf(stderr, "multiplayer lobby: %v\n", err)
+				return 1
+			}
+		}
+		if connectActive {
+			client, joinedMap, cerr := connectAuthority(context.Background(), authorityLaunch{Address: *connectAddr, Name: *netName, Spectator: *netSpectator}, wadPaths, wf, &opts)
+			if cerr != nil {
+				fmt.Fprintf(stderr, "multiplayer: %v\n", cerr)
+				return 1
+			}
+			defer client.Leave()
+			m, selected = joinedMap, joinedMap.Name
+			fmt.Fprintf(stderr, "multiplayer: connected to %s, map=%s player=%d mode=%s\n", *connectAddr, selected, opts.PlayerSlot, opts.GameMode)
 		}
 		if resolvedBroadcastAddr != "" {
 			sessionCfg := broadcastSessionConfig(selected, opts)
@@ -1615,6 +1696,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			wallSliceOcclusion:         defaultWallSliceOcclusion,
 			billboardClipping:          defaultBillboardClipping,
 			gpuRenderer:                *gpuRenderer,
+			meshRenderer:               *meshRenderer,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
@@ -1748,222 +1830,31 @@ func runGameWithPlatformOptions(game ebiten.Game) error {
 }
 
 func resolveWADOverlayPaths(value string) []string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		path := strings.TrimSpace(part)
-		if path == "" {
-			continue
-		}
-		out = append(out, resolveIWADAliasPath(path))
-	}
-	return out
+	return launchcatalog.ResolveWADOverlayPaths(value)
 }
 
 func openWADStack(basePath string, overlayPaths []string) (*wad.File, []string, error) {
-	paths := make([]string, 0, 1+len(overlayPaths))
-	basePath = strings.TrimSpace(resolveIWADAliasPath(basePath))
-	if basePath == "" {
-		return nil, nil, fmt.Errorf("missing base wad path")
-	}
-	paths = append(paths, basePath)
-	for _, path := range overlayPaths {
-		path = strings.TrimSpace(resolveIWADAliasPath(path))
-		if path == "" {
-			continue
-		}
-		paths = append(paths, path)
-	}
-	wf, err := wad.OpenFiles(paths...)
-	if err != nil {
-		return nil, nil, err
-	}
-	return wf, paths, nil
+	return launchcatalog.OpenWADStack(basePath, overlayPaths)
 }
 
 func defaultStartMap(wf *wad.File, overlayPaths []string) (mapdata.MapName, error) {
-	for i := len(overlayPaths) - 1; i >= 0; i-- {
-		overlay, err := wad.Open(overlayPaths[i])
-		if err != nil {
-			return "", err
-		}
-		if name, err := mapdata.FirstMapName(overlay); err == nil {
-			return name, nil
-		}
-	}
-	return mapdata.FirstMapName(wf)
+	return launchcatalog.DefaultStartMap(wf, overlayPaths)
 }
 
 func hashWADStackSHA1(paths []string) string {
-	if len(paths) == 0 {
-		return ""
-	}
-	h := sha1.New()
-	for _, path := range paths {
-		if data, ok := wad.EmbeddedDataForPath(path); ok {
-			if _, err := h.Write(data); err != nil {
-				return ""
-			}
-			continue
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return ""
-		}
-		_, copyErr := io.Copy(h, f)
-		closeErr := f.Close()
-		if copyErr != nil || closeErr != nil {
-			return ""
-		}
-	}
-	return fmt.Sprintf("%x", h.Sum(nil))
+	return launchcatalog.HashWADStackSHA1(paths)
 }
 
 func buildWADSources(paths []string) []runtimecfg.WADSource {
-	if len(paths) == 0 {
-		return nil
-	}
-	out := make([]runtimecfg.WADSource, 0, len(paths))
-	for _, path := range paths {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			continue
-		}
-		out = append(out, runtimecfg.WADSource{
-			Name: filepath.Base(path),
-			Hash: hashWADPathBlake3(path),
-		})
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return launchcatalog.BuildWADSources(paths)
 }
 
 func hashWADPathBlake3(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if data, ok := wad.EmbeddedDataForPath(path); ok {
-		sum := blake3.Sum256(data)
-		return fmt.Sprintf("%x", sum[:])
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		_ = f.Close()
-		return ""
-	}
-	if err := f.Close(); err != nil {
-		return ""
-	}
-	sum := blake3.Sum256(data)
-	return fmt.Sprintf("%x", sum[:])
+	return launchcatalog.HashWADPathBlake3(path)
 }
 
 func mapMusicLumpName(name mapdata.MapName) (string, bool) {
-	s := strings.ToUpper(strings.TrimSpace(string(name)))
-	switch s {
-	case "E4M1":
-		return "D_E3M4", true
-	case "E4M2":
-		return "D_E3M2", true
-	case "E4M3":
-		return "D_E3M3", true
-	case "E4M4":
-		return "D_E1M5", true
-	case "E4M5":
-		return "D_E2M7", true
-	case "E4M6":
-		return "D_E2M4", true
-	case "E4M7":
-		return "D_E2M6", true
-	case "E4M8":
-		return "D_E2M5", true
-	case "E4M9":
-		return "D_E1M9", true
-	}
-	if len(s) == 4 && s[0] == 'E' && s[2] == 'M' &&
-		s[1] >= '1' && s[1] <= '9' && s[3] >= '1' && s[3] <= '9' {
-		return "D_" + s, true
-	}
-	if strings.HasPrefix(s, "MAP") && len(s) == 5 && s[3] >= '0' && s[3] <= '9' && s[4] >= '0' && s[4] <= '9' {
-		n := int(s[3]-'0')*10 + int(s[4]-'0')
-		switch n {
-		case 1:
-			return "D_RUNNIN", true
-		case 2:
-			return "D_STALKS", true
-		case 3:
-			return "D_COUNTD", true
-		case 4:
-			return "D_BETWEE", true
-		case 5:
-			return "D_DOOM", true
-		case 6:
-			return "D_THE_DA", true
-		case 7:
-			return "D_SHAWN", true
-		case 8:
-			return "D_DDTBLU", true
-		case 9:
-			return "D_IN_CIT", true
-		case 10:
-			return "D_DEAD", true
-		case 11:
-			return "D_STLKS2", true
-		case 12:
-			return "D_THE_DA2", true
-		case 13:
-			return "D_DOOM2", true
-		case 14:
-			return "D_DDTBL2", true
-		case 15:
-			return "D_RUNNI2", true
-		case 16:
-			return "D_DEAD2", true
-		case 17:
-			return "D_STLKS3", true
-		case 18:
-			return "D_ROMERO", true
-		case 19:
-			return "D_SHAWN2", true
-		case 20:
-			return "D_MESSAG", true
-		case 21:
-			return "D_COUNT2", true
-		case 22:
-			return "D_DDTBL3", true
-		case 23:
-			return "D_AMPIE", true
-		case 24:
-			return "D_THEDA3", true
-		case 25:
-			return "D_ADRIAN", true
-		case 26:
-			return "D_MESSG2", true
-		case 27:
-			return "D_ROMER2", true
-		case 28:
-			return "D_TENSE", true
-		case 29:
-			return "D_SHAWN3", true
-		case 30:
-			return "D_OPENIN", true
-		case 31:
-			return "D_EVIL", true
-		case 32:
-			return "D_ULTIMA", true
-		}
-	}
-	return "", false
+	return music.MapLumpName(string(name))
 }
 
 func finaleMusicLumpName(name mapdata.MapName) string {
@@ -1974,356 +1865,13 @@ func finaleMusicLumpName(name mapdata.MapName) string {
 	return ""
 }
 
-func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD, func(string, string) ([]byte, error)) {
-	currentWADPath = strings.TrimSpace(resolveIWADAliasPath(currentWADPath))
-	if currentWADPath == "" {
-		return nil, nil
-	}
-	seen := make(map[string]struct{}, 8)
-	choices := make([]iwadChoice, 0, 8)
-	appendChoice := func(path, label string) {
-		path = strings.TrimSpace(resolveIWADAliasPath(path))
-		if path == "" {
-			return
-		}
-		if _, ok := seen[path]; ok {
-			return
-		}
-		seen[path] = struct{}{}
-		choices = append(choices, iwadChoice{Path: path, Label: label})
-	}
-	appendChoice(currentWADPath, strings.TrimSpace(filepath.Base(currentWADPath)))
-	for _, choice := range detectAvailableIWADChoices(filepath.Dir(currentWADPath)) {
-		appendChoice(choice.Path, choice.Label)
-	}
-	catalog := make([]runtimecfg.MusicPlayerWAD, 0, len(choices))
-	for _, choice := range choices {
-		wf, err := wad.Open(choice.Path)
-		if err != nil {
-			continue
-		}
-		episodes := musicPlayerEpisodesForWAD(wf)
-		if len(episodes) == 0 {
-			continue
-		}
-		label := strings.TrimSpace(choice.Label)
-		if label == "" {
-			label = filepath.Base(choice.Path)
-		}
-		catalog = append(catalog, runtimecfg.MusicPlayerWAD{
-			Key:      choice.Path,
-			Label:    label,
-			Episodes: episodes,
-		})
-	}
-	if len(catalog) == 0 {
-		return nil, nil
-	}
-	loader := func(wadKey string, lumpName string) ([]byte, error) {
-		wadKey = strings.TrimSpace(wadKey)
-		if wadKey == "" {
-			return nil, nil
-		}
-		lump := strings.ToUpper(strings.TrimSpace(lumpName))
-		if lump == "" {
-			return nil, nil
-		}
-		wf, err := wad.Open(wadKey)
-		if err != nil {
-			return nil, err
-		}
-		l, ok := wf.LumpByName(lump)
-		if !ok {
-			return nil, nil
-		}
-		data, err := wf.LumpDataView(l)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := music.ParseMUS(data); err != nil {
-			return nil, err
-		}
-		return data, nil
-	}
-	return catalog, loader
-}
+type iwadChoice = launchcatalog.IWADChoice
 
-func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
-	if wf == nil {
-		return nil
-	}
-	names := mapdata.AvailableMapNames(wf)
-	if len(names) == 0 {
-		return nil
-	}
-	type group struct {
-		label  string
-		tracks []runtimecfg.MusicPlayerTrack
-	}
-	order := make([]string, 0, 8)
-	groups := make(map[string]*group, 8)
-	seenLumps := make(map[string]struct{}, 64)
-	groupFor := func(label string) *group {
-		if g, ok := groups[label]; ok {
-			return g
-		}
-		g := &group{label: label}
-		groups[label] = g
-		order = append(order, label)
-		return g
-	}
-	for _, name := range names {
-		lump, ok := mapMusicLumpName(name)
-		if !ok {
-			continue
-		}
-		if _, ok := wf.LumpByName(lump); !ok {
-			continue
-		}
-		mapLabel := strings.ToUpper(strings.TrimSpace(string(name)))
-		episodeLabel := "MAPS"
-		if len(mapLabel) == 4 && mapLabel[0] == 'E' && mapLabel[2] == 'M' && mapLabel[1] >= '1' && mapLabel[1] <= '9' {
-			episodeLabel = fmt.Sprintf("EPISODE %c", mapLabel[1])
-		}
-		g := groupFor(episodeLabel)
-		g.tracks = append(g.tracks, runtimecfg.MusicPlayerTrack{
-			MapName:   name,
-			Label:     mapDisplayLabel(name),
-			LumpName:  lump,
-			MusicName: musicTitleForLump(lump),
-		})
-		seenLumps[lump] = struct{}{}
-	}
-	const otherMusicLabel = "OTHER MUSIC"
-	other := groupFor(otherMusicLabel)
-	seenOther := make(map[string]struct{}, 32)
-	for _, lump := range wf.Lumps {
-		name := strings.ToUpper(strings.TrimSpace(lump.Name))
-		if !strings.HasPrefix(name, "D_") {
-			continue
-		}
-		if _, ok := seenLumps[name]; ok {
-			continue
-		}
-		if _, ok := seenOther[name]; ok {
-			continue
-		}
-		other.tracks = append(other.tracks, runtimecfg.MusicPlayerTrack{
-			Label:     musicTitleForLump(name),
-			LumpName:  name,
-			MusicName: musicTitleForLump(name),
-		})
-		seenOther[name] = struct{}{}
-	}
-	episodes := make([]runtimecfg.MusicPlayerEpisode, 0, len(order))
-	for _, label := range order {
-		g := groups[label]
-		if g == nil || len(g.tracks) == 0 {
-			continue
-		}
-		episodes = append(episodes, runtimecfg.MusicPlayerEpisode{
-			Label:  g.label,
-			Tracks: g.tracks,
-		})
-	}
-	return episodes
-}
-
-func resolveIWADAliasPath(path string) string {
-	trimmed := strings.TrimSpace(path)
-	if trimmed == "" {
-		return path
-	}
-	if resolved, ok := resolvePathCaseInsensitive(trimmed); ok {
-		return resolved
-	}
-	base := strings.ToUpper(filepath.Base(trimmed))
-	var aliases []string
-	switch base {
-	case "DOOM1.WAD":
-		aliases = []string{"DOOMU.WAD", "DOOM.WAD", "DOOM2.WAD"}
-	case "DOOMU.WAD", "DOOM.WAD":
-		aliases = []string{"DOOMU.WAD", "DOOM.WAD"}
-	default:
-		return path
-	}
-	dir := filepath.Dir(trimmed)
-	for _, candidate := range aliases {
-		if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
-			return alias
-		}
-	}
-	return path
-}
-
-func resolvePathCaseInsensitive(path string) (string, bool) {
-	if _, err := os.Stat(path); err == nil {
-		return path, true
-	}
-	dir := filepath.Dir(path)
-	name := filepath.Base(path)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", false
-	}
-	for _, entry := range entries {
-		if strings.EqualFold(entry.Name(), name) {
-			return filepath.Join(dir, entry.Name()), true
-		}
-	}
-	return "", false
-}
-
-func detectAvailableSoundFonts(dir string) []string {
-	out := append([]string(nil), music.EmbeddedSoundFontChoices()...)
-	out = append(out, music.BrowserSoundFontChoices()...)
-	entries, err := os.ReadDir(dir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := strings.TrimSpace(entry.Name())
-			if !strings.HasSuffix(strings.ToLower(name), ".sf2") {
-				continue
-			}
-			out = append(out, filepath.Join(dir, name))
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		pi := soundFontDefaultRank(out[i])
-		pj := soundFontDefaultRank(out[j])
-		if pi != pj {
-			return pi < pj
-		}
-		return strings.ToUpper(out[i]) < strings.ToUpper(out[j])
-	})
-	if len(out) == 0 {
-		return nil
-	}
-	dedup := out[:0]
-	var prev string
-	for _, path := range out {
-		if prev != "" && strings.EqualFold(prev, path) {
-			continue
-		}
-		dedup = append(dedup, path)
-		prev = path
-	}
-	return dedup
-}
-
-func soundFontDefaultRank(path string) int {
-	base := strings.ToLower(strings.TrimSpace(filepath.Base(path)))
-	switch base {
-	case "sc55.sf2":
-		return 0
-	case "sgm-hq.sf2":
-		return 1
-	case "general-midi.sf2":
-		return 2
-	default:
-		return 3
-	}
-}
-
-type iwadChoice struct {
-	Path  string
-	Label string
-}
-
-type knownIWADChoice struct {
-	Label string
-	Paths []string
-}
-
-func detectAvailableIWADChoices(dir string) []iwadChoice {
-	known := knownIWADChoices()
-	browserPaths := wad.BrowserLocalWADPaths()
-	out := make([]iwadChoice, 0, len(known)+len(browserPaths))
-	usedBrowser := make(map[string]struct{}, len(browserPaths))
-	for _, k := range known {
-		for _, candidate := range k.Paths {
-			if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
-				out = append(out, iwadChoice{
-					Path:  p,
-					Label: k.Label,
-				})
-				goto nextKnownIWAD
-			}
-		}
-		for _, path := range browserPaths {
-			if !browserWADMatchesKnownChoice(path, k) {
-				continue
-			}
-			out = append(out, iwadChoice{
-				Path:  path,
-				Label: k.Label,
-			})
-			usedBrowser[strings.ToUpper(strings.TrimSpace(path))] = struct{}{}
-			goto nextKnownIWAD
-		}
-		for _, candidate := range k.Paths {
-			if _, ok := wad.EmbeddedDataForPath(candidate); ok {
-				out = append(out, iwadChoice{
-					Path:  candidate,
-					Label: k.Label,
-				})
-				goto nextKnownIWAD
-			}
-		}
-	nextKnownIWAD:
-	}
-	for _, path := range browserPaths {
-		key := strings.ToUpper(strings.TrimSpace(path))
-		if _, ok := usedBrowser[key]; ok {
-			continue
-		}
-		label := "LOCAL WAD"
-		if wf, err := wad.Open(path); err == nil && strings.EqualFold(wf.Header.Identification, "PWAD") {
-			label = "LOCAL PWAD"
-		}
-		out = append(out, iwadChoice{
-			Path:  path,
-			Label: label,
-		})
-	}
-	return out
-}
-
-func browserWADMatchesKnownChoice(path string, choice knownIWADChoice) bool {
-	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
-	for _, candidate := range choice.Paths {
-		if strings.EqualFold(candidate, base) {
-			return true
-		}
-	}
-	return false
-}
-
-func knownIWADChoices() []knownIWADChoice {
-	return []knownIWADChoice{
-		{Label: "The Ultimate DOOM", Paths: []string{"DOOMU.WAD", "DOOM.WAD"}},
-		{Label: "DOOM II: Hell on Earth", Paths: []string{"DOOM2.WAD"}},
-		{Label: "Final DOOM: TNT", Paths: []string{"TNT.WAD"}},
-		{Label: "Final DOOM: Plutonia", Paths: []string{"PLUTONIA.WAD"}},
-		{Label: "DOOM Shareware", Paths: []string{"DOOM1.WAD"}},
-	}
-}
-
-func knownIWADChoiceForPath(path string) (iwadChoice, bool) {
-	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
-	for _, choice := range knownIWADChoices() {
-		for _, candidate := range choice.Paths {
-			if strings.EqualFold(candidate, base) {
-				return iwadChoice{Path: candidate, Label: choice.Label}, true
-			}
-		}
-	}
-	return iwadChoice{}, false
-}
+type knownIWADChoice = launchcatalog.KnownIWADChoice
 
 type renderBuildConfig struct {
+	authorityJoinDefaults      runtimecfg.AuthorityJoinRequest
+	authorityLobbyURL          string
 	selectedMap                string
 	mapExplicit                bool
 	width                      int
@@ -2376,6 +1924,7 @@ type renderBuildConfig struct {
 	wallSliceOcclusion         bool
 	billboardClipping          bool
 	gpuRenderer                bool
+	meshRenderer               string
 	rendererWorkers            int
 	textureAnimCrossfadeFrames int
 	noVsync                    bool
@@ -2532,23 +2081,7 @@ func resolveMusicSoundFont(backend music.Backend, path string, stderr io.Writer)
 }
 
 func broadcastSessionConfig(mapName mapdata.MapName, opts doomsession.Options) netplay.SessionConfig {
-	return netplay.SessionConfig{
-		WADHash:          opts.WADHash,
-		MapName:          string(mapName),
-		MaxPlayers:       0,
-		PlayerSlot:       opts.PlayerSlot,
-		SkillLevel:       opts.SkillLevel,
-		GameMode:         opts.GameMode,
-		ShowNoSkillItems: opts.ShowNoSkillItems,
-		ShowAllItems:     opts.ShowAllItems,
-		FastMonsters:     opts.FastMonsters,
-		RespawnMonsters:  opts.RespawnMonsters,
-		NoMonsters:       opts.NoMonsters,
-		AutoWeaponSwitch: opts.AutoWeaponSwitch,
-		CheatLevel:       opts.CheatLevel,
-		Invulnerable:     opts.Invulnerable,
-		SourcePortMode:   opts.SourcePortMode,
-	}
+	return launchcatalog.BroadcastSessionConfig(mapName, opts)
 }
 
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
@@ -2581,6 +2114,12 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		pcSpeakerBank = buildPCSpeakerBank(dpr)
 	}
 	sharedPCSpeaker := buildSharedPCSpeakerPlayer(cfg.musicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant), audiofx.ParsePCSpeakerOutput("emulated"), cfg.pcSpeakerVolume, stderr)
+	keepPCSpeaker := false
+	defer func() {
+		if !keepPCSpeaker && sharedPCSpeaker != nil {
+			sharedPCSpeaker.Close()
+		}
+	}()
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -2672,7 +2211,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		Width:                      cfg.width,
 		Height:                     cfg.height,
 		StartZoom:                  cfg.zoom,
-		InitialDetailLevel:         cfg.detailLevel,
+		InitialDetailLevel:         startupDetailLevel(cfg.detailLevel, cfg.autoDetail, cfg.detailLevelExplicit),
 		AutoDetail:                 cfg.autoDetail,
 		InitialGammaLevel:          cfg.gammaLevel,
 		WADHash:                    wadHash,
@@ -2720,6 +2259,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		DisableBillboardClipping:   !cfg.billboardClipping,
 		DisableMaskedMidFastPaths:  false,
 		GPURenderer:                cfg.gpuRenderer,
+		MeshRenderer:               cfg.meshRenderer,
 		RendererWorkers:            cfg.rendererWorkers,
 		TextureAnimCrossfadeFrames: cfg.textureAnimCrossfadeFrames,
 		NoVsync:                    cfg.noVsync,
@@ -2819,6 +2359,15 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		}
 		return nm, next, nil
 	}
+	if cfg.demoPath == "" && cfg.recordDemoPath == "" && cfg.demoTracePath == "" {
+		opts.AuthorityJoin = authorityJoiner(wadPaths, wf)
+		opts.AuthorityJoinDefaults = cfg.authorityJoinDefaults
+		configureAuthorityBrowser(&opts, wadPaths, cfg.configPath)
+		if err := configureAuthorityLobby(&opts, wadPaths, cfg.authorityLobbyURL); err != nil {
+			return nil, fmt.Errorf("multiplayer lobby: %w", err)
+		}
+	}
+	keepPCSpeaker = true
 	return &renderBundle{m: m, opts: opts, nextMap: nextMap}, nil
 }
 
@@ -2906,6 +2455,11 @@ type iwadPickerGame struct {
 	confirmArmed          bool
 	status                string
 	loadingPath           string
+	freeGameServer        string
+	freeGameDownload      *pickerFreeGameDownload
+	freeGameID            string
+	freeGamePath          string
+	freeGameCleanup       func()
 	tic                   int
 	launchQueued          bool
 	launchDrawn           bool
@@ -3086,6 +2640,7 @@ func (g *iwadPickerGame) shouldDrawPickerTouchControls() bool {
 }
 
 func (g *iwadPickerGame) pickerBack() error {
+	g.status = ""
 	switch g.stage {
 	case pickerStageSynth:
 		g.stage = pickerStageSFX
@@ -3162,6 +2717,15 @@ func (g *iwadPickerGame) Update() error {
 		return g.sessionGame.Update()
 	}
 	g.sampleTouchControls()
+	if g.freeGameDownload != nil {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || g.pickerTouchActivated(pickerTouchBack) {
+			g.cancelFreeGameDownload()
+			g.status = "DOWNLOAD CANCELLED - ENTER TO RETRY"
+			return nil
+		}
+		g.pollFreeGameDownload()
+		return nil
+	}
 	if len(g.choices) == 0 {
 		g.err = fmt.Errorf("no IWADs available")
 		return ebiten.Termination
@@ -3186,7 +2750,15 @@ func (g *iwadPickerGame) Update() error {
 			g.err = fmt.Errorf("iwad loader unavailable")
 			return ebiten.Termination
 		}
-		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
+		path := g.choices[g.selected].Path
+		if game, ok := freeGameChoice(path); ok {
+			if g.freeGameID != game.ID {
+				g.beginFreeGameDownload(game)
+				return nil
+			}
+			path = g.freeGamePath
+		}
+		bundle, err := g.load(path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
 		if err != nil {
 			g.status = err.Error()
 			g.launchQueued = false
@@ -3349,7 +2921,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	}
 	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
 	textScale := g.pickerTextScaleForLayout(sw, sh)
-	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || g.launchQueued
+	loadingSoundFont := g.pickerLoading()
 	if g.launchQueued {
 		g.launchDrawn = true
 	}
@@ -3441,7 +3013,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		fileWidth := 0
 		for i, choice := range g.choices {
 			labelTexts[i] = strings.ToUpper(choice.Label)
-			fileTexts[i] = strings.ToUpper(filepath.Base(choice.Path))
+			fileTexts[i] = pickerChoiceDetail(choice)
 			labelWidth = max(labelWidth, g.pickerTextWidthScaled("> "+labelTexts[i], textScale))
 			fileWidth = max(fileWidth, g.pickerTextWidthScaled(fileTexts[i], textScale))
 		}
@@ -3458,6 +3030,10 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			}
 			g.drawPickerTextScaled(screen, labelTexts[i], labelX, y+i*rowHeight, textScale)
 			g.drawPickerTextScaled(screen, fileTexts[i], fileX, y+i*rowHeight, textScale)
+		}
+		if _, ok := freeGameChoice(g.choices[g.selected].Path); ok {
+			detailScale := max(1, textScale/2)
+			g.drawPickerTextCenteredScaled(screen, freeGameStandaloneHint, sw/2, y+blockHeight+12*textScale, detailScale)
 		}
 	}
 	if strings.TrimSpace(g.status) != "" {
@@ -3508,6 +3084,13 @@ func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *e
 }
 
 func (g *iwadPickerGame) Close() {
+	g.cancelFreeGameDownload()
+	defer func() {
+		if g.freeGameCleanup != nil {
+			g.freeGameCleanup()
+			g.freeGameCleanup = nil
+		}
+	}()
 	if g.sfx != nil {
 		g.sfx.StopAll()
 	}
@@ -3697,7 +3280,7 @@ func (g *iwadPickerGame) pickerTextFitsLayout(screenW, screenH, scale int) bool 
 	contentMaxH := max(screenH-24, 1)
 	skullW := g.pickerSelectionMarkerWidth(scale)
 	selectionPad := skullW + 3
-	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || g.launchQueued
+	loadingSoundFont := g.pickerLoading()
 
 	fitsBlock := func(blockW, topY, blockH int) bool {
 		return blockW <= contentMaxW && topY >= 0 && topY+blockH <= contentMaxH
@@ -3756,7 +3339,7 @@ func (g *iwadPickerGame) pickerTextFitsLayout(screenW, screenH, scale int) bool 
 		fileW := 0
 		for _, choice := range g.choices {
 			labelW = max(labelW, g.pickerTextWidthScaled("> "+strings.ToUpper(choice.Label), scale))
-			fileW = max(fileW, g.pickerTextWidthScaled(strings.ToUpper(filepath.Base(choice.Path)), scale))
+			fileW = max(fileW, g.pickerTextWidthScaled(pickerChoiceDetail(choice), scale))
 		}
 		blockW := labelW + 8*scale + fileW + selectionPad
 		rowH := 10 * scale
@@ -3764,6 +3347,15 @@ func (g *iwadPickerGame) pickerTextFitsLayout(screenW, screenH, scale int) bool 
 		startY := screenH/2 - blockH/2
 		if !fitsBlock(blockW, startY, blockH) {
 			return false
+		}
+		if g.selected >= 0 && g.selected < len(g.choices) {
+			if _, ok := freeGameChoice(g.choices[g.selected].Path); ok {
+				detailScale := max(1, scale/2)
+				footerY := startY + blockH + 12*scale
+				if !fitsBlock(g.pickerTextWidthScaled(freeGameStandaloneHint, detailScale), footerY, 8*detailScale) {
+					return false
+				}
+			}
 		}
 	}
 
@@ -4044,7 +3636,17 @@ func spriteSeriesFromSeed(seed string, bank map[string]media.WallTexture) []stri
 	return series
 }
 
+// BuildRuntimeSoundAliases exposes the main host's imported sample selection
+// without padding or generating PCM for an alternate host's audio backend.
+func BuildRuntimeSoundAliases(r sound.DigitalImportReport) media.SoundBank {
+	return buildRuntimeSoundBank(r, true, false)
+}
+
 func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) media.SoundBank {
+	return buildRuntimeSoundBank(r, sourcePortMode, true)
+}
+
+func buildRuntimeSoundBank(r sound.DigitalImportReport, sourcePortMode, prepare bool) media.SoundBank {
 	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
 	for _, s := range r.Sounds {
 		byName[s.Name] = s
@@ -4179,6 +3781,9 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
+	if !prepare {
+		return bank
+	}
 	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
 	if shouldPrepareSourcePortSoundBank(sourcePortMode) {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
@@ -4189,16 +3794,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 // buildPCSpeakerBank converts DP* lumps into the compact tone-sequence map
 // used by the streaming PCSpeakerPlayer.  Keys are DS* names (DP→DS prefix).
 func buildPCSpeakerBank(dpr sound.PCSpeakerImportReport) map[string][]sound.PCSpeakerTone {
-	bank := make(map[string][]sound.PCSpeakerTone, len(dpr.Sounds))
-	for _, s := range dpr.Sounds {
-		seq := sound.BuildToneSequence(s)
-		if len(seq) == 0 {
-			continue
-		}
-		dsName := "DS" + s.Name[2:] // DPPISTOL → DSPISTOL
-		bank[dsName] = seq
-	}
-	return bank
+	return sound.BuildPCSpeakerBank(dpr)
 }
 
 func buildSharedPCSpeakerPlayer(backend music.Backend, pcSpeakerBank map[string][]sound.PCSpeakerTone, variant audiofx.PCSpeakerVariant, output audiofx.PCSpeakerOutput, volume float64, stderr io.Writer) audiofx.PCSpeaker {
@@ -4377,7 +3973,7 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 		return nil
 	}
 	names := []string{
-		"M_DOOM", "M_NGAME", "M_OPTION", "M_LOADG", "M_SAVEG", "M_RDTHIS", "M_QUITG",
+		"M_DOOM", "M_NGAME", "M_OPTION", "M_LOADG", "M_SAVEG", "M_RDTHIS", "M_QUITG", "M_MULTI",
 		"M_SKULL1", "M_SKULL2",
 		"M_PAUSE",
 		"M_NEWG", "M_SKILL", "M_JKILL", "M_ROUGH", "M_HURT", "M_ULTRA", "M_NMARE",
@@ -4408,6 +4004,12 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 			OffsetX: ox,
 			OffsetY: oy,
 		})
+	}
+	// Authored menu artwork takes precedence over the reusable generated font.
+	if _, exists := out["M_MULTI"]; !exists {
+		if patch, ok := menufont.New(out).Compose("Multiplayer"); ok {
+			out["M_MULTI"] = prepareOpaquePatchTexture(patch)
+		}
 	}
 	if len(out) == 0 {
 		return nil
@@ -4693,49 +4295,11 @@ func availableEpisodes(wf *wad.File) []int {
 }
 
 func resolveDemoStartMap(wf *wad.File, script *demo.Script, fallback mapdata.MapName) (mapdata.MapName, error) {
-	if wf == nil || script == nil {
-		return "", fmt.Errorf("missing demo")
-	}
-	candidates := make([]mapdata.MapName, 0, 2)
-	if script.Header.Map > 0 {
-		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("MAP%02d", script.Header.Map)))
-	}
-	if script.Header.Episode > 0 && script.Header.Map > 0 && script.Header.Map <= 9 {
-		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("E%dM%d", script.Header.Episode, script.Header.Map)))
-	}
-	for _, candidate := range candidates {
-		if _, err := mapdata.LoadMap(wf, candidate); err == nil {
-			return candidate, nil
-		}
-	}
-	if fallback != "" {
-		return "", fmt.Errorf("demo map episode=%d map=%d not present in wad (requested map %s ignored)", script.Header.Episode, script.Header.Map, fallback)
-	}
-	return "", fmt.Errorf("demo map episode=%d map=%d not present in wad", script.Header.Episode, script.Header.Map)
+	return launchcatalog.ResolveDemoStartMap(wf, script, fallback)
 }
 
 func loadBuiltInDemos(wf *wad.File) []*demo.Script {
-	if wf == nil {
-		return nil
-	}
-	out := make([]*demo.Script, 0, 4)
-	for _, name := range []string{"DEMO1", "DEMO2", "DEMO3", "DEMO4"} {
-		lump, ok := wf.LumpByName(name)
-		if !ok {
-			continue
-		}
-		data, err := wf.LumpDataView(lump)
-		if err != nil {
-			continue
-		}
-		demo, err := demo.Parse(data)
-		if err != nil {
-			continue
-		}
-		demo.Path = name
-		out = append(out, demo)
-	}
-	return out
+	return launchcatalog.LoadBuiltInDemos(wf)
 }
 
 func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
@@ -4743,4 +4307,44 @@ func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
 		return
 	}
 	*opts = runtimecfg.PrepareDemoPlaybackOptions(*opts, script)
+}
+
+func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD, func(string, string) ([]byte, error)) {
+	return launchcatalog.BuildMusicPlayerCatalog(currentWADPath)
+}
+
+func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
+	return launchcatalog.MusicPlayerEpisodesForWAD(wf)
+}
+
+func resolveIWADAliasPath(path string) string {
+	return launchcatalog.ResolveIWADAliasPath(path)
+}
+
+func resolvePathCaseInsensitive(path string) (string, bool) {
+	return launchcatalog.ResolvePathCaseInsensitive(path)
+}
+
+func detectAvailableSoundFonts(dir string) []string {
+	return launchcatalog.DetectAvailableSoundFonts(dir)
+}
+
+func soundFontDefaultRank(path string) int {
+	return launchcatalog.SoundFontDefaultRank(path)
+}
+
+func detectAvailableIWADChoices(dir string) []iwadChoice {
+	return launchcatalog.DetectAvailableIWADChoices(dir)
+}
+
+func browserWADMatchesKnownChoice(path string, choice knownIWADChoice) bool {
+	return launchcatalog.BrowserWADMatchesKnownChoice(path, choice)
+}
+
+func knownIWADChoices() []knownIWADChoice {
+	return launchcatalog.KnownIWADChoices()
+}
+
+func knownIWADChoiceForPath(path string) (iwadChoice, bool) {
+	return launchcatalog.KnownIWADChoiceForPath(path)
 }

@@ -1,14 +1,12 @@
 package doomruntime
 
 import (
-	"image/color"
 	"math"
 	"strings"
 
 	"gddoom/internal/runtimecfg"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 func (sg *sessionGame) openFrontendKeybindMenu() {
@@ -97,21 +95,27 @@ func (sg *sessionGame) drawFrontendKeybindMenu(screen *ebiten.Image, scale, ox, 
 	const menuX = 16
 	const menuY = 40
 	const lineHeight = 16
-	start := keybindMenuStartRow(sg.frontendKeybindRow)
+	count := int(bindingActionCount)
+	actionAt := func(row int) bindingAction { return bindingAction(row) }
+	if sg.nativeBindingActions != nil {
+		count = len(sg.nativeBindingActions)
+		actionAt = func(row int) bindingAction { return bindingAction(sg.nativeBindingActions[row]) }
+	}
+	start := keybindMenuStartRowCount(sg.frontendKeybindRow, count)
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.0))
-	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
-	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.0, scale*1.0)
-	sg.rt.sessionDrawHUTextAt(screen, "PRIMARY", ox+float64(188)*scale, oy+float64(28)*scale, scale*1.0, scale*1.0)
-	sg.rt.sessionDrawHUTextAt(screen, "ALT", ox+float64(258)*scale, oy+float64(28)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.drawFrontendTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "PRIMARY", ox+float64(188)*scale, oy+float64(28)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendTextAt(screen, "ALT", ox+float64(258)*scale, oy+float64(28)*scale, scale*1.0, scale*1.0)
 	for i := 0; i < keybindMenuVisibleRows; i++ {
 		row := start + i
-		if row >= int(bindingActionCount) {
+		if row >= count {
 			break
 		}
-		action := bindingAction(row)
+		action := actionAt(row)
 		y := menuY + i*lineHeight + 2
-		sg.rt.sessionDrawHUTextAt(screen, bindingActionLabel(action), ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.0, scale*1.0)
+		sg.drawFrontendTextAt(screen, bindingActionLabel(action), ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.0, scale*1.0)
 		value := bindingValue(sg.opts.InputBindings, action)
 		for slot := 0; slot < 2; slot++ {
 			x := 188
@@ -122,18 +126,21 @@ func (sg *sessionGame) drawFrontendKeybindMenu(screen *ebiten.Image, scale, ox, 
 			if row == sg.frontendKeybindRow && slot == sg.frontendKeybindSlot {
 				label = "[" + label + "]"
 			}
-			sg.rt.sessionDrawHUTextAt(screen, label, ox+float64(x)*scale, oy+float64(y)*scale, scale*1.0, scale*1.0)
+			sg.drawFrontendTextAt(screen, label, ox+float64(x)*scale, oy+float64(y)*scale, scale*1.0, scale*1.0)
 		}
 	}
 	footer := "ARROWS MOVE  ENTER REBIND  BKSP CLEAR  F5 DEFAULTS"
-	if msg := bindingConflictMessage(sg.opts.InputBindings, bindingAction(sg.frontendKeybindRow), sg.frontendKeybindSlot); msg != "" {
-		footer = msg
+	if sg.frontendKeybindRow >= 0 && sg.frontendKeybindRow < count {
+		if msg := bindingConflictMessage(sg.opts.InputBindings, actionAt(sg.frontendKeybindRow), sg.frontendKeybindSlot); msg != "" {
+			footer = msg
+		}
 	}
 	if sg.frontendKeybindCapture {
 		footer = "PRESS KEY OR MOUSE  ESC CANCEL"
-		ebitenutil.DrawRect(screen, 0, 0, float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy()), color.RGBA{A: 20})
+		sg.drawFrontendShade(screen, 20)
 	}
-	sg.rt.sessionDrawHUTextAt(screen, footer, ox+float64(menuX)*scale, oy+float64(182)*scale, scale*0.9, scale*0.9)
+	footerScale := math.Min(.9, float64(320-menuX-8)/float64(max(sg.intermissionTextWidth(footer), 1)))
+	sg.drawFrontendTextAt(screen, footer, ox+float64(menuX)*scale, oy+float64(182)*scale, scale*footerScale, scale*footerScale)
 }
 
 func (g *game) tickPauseKeybindMenu() {

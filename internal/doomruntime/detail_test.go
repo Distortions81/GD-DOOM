@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"gddoom/internal/mapdata"
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/mapview"
 )
@@ -17,23 +18,66 @@ func TestDetailPresetIndex(t *testing.T) {
 	}
 }
 
-func TestDefaultDetailLevelForModeSourcePortHalfDetail(t *testing.T) {
-	if got := defaultDetailLevelForMode(1280, 800, true); got != 1 {
-		t.Fatalf("defaultDetailLevelForMode(sourceport)=%d want=1", got)
+func TestDefaultDetailLevelForModeSourcePortFullDetail(t *testing.T) {
+	if got := defaultDetailLevelForMode(1280, 800, true); got != 0 {
+		t.Fatalf("defaultDetailLevelForMode(sourceport)=%d want=0", got)
 	}
 }
 
-func TestDefaultDetailLevelForModeWASMSourcePortStartsAtHalfDetail(t *testing.T) {
+func TestDefaultDetailLevelForModeWASMSourcePortStartsAtFullDetail(t *testing.T) {
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(false)
-	if got := defaultDetailLevelForMode(1280, 800, true); got != 1 {
-		t.Fatalf("defaultDetailLevelForMode(wasm sourceport)=%d want=1", got)
+	if got := defaultDetailLevelForMode(1280, 800, true); got != 0 {
+		t.Fatalf("defaultDetailLevelForMode(wasm sourceport)=%d want=0", got)
 	}
 }
 
 func TestDefaultDetailLevelForModeFaithfulStartsHigh(t *testing.T) {
 	if got := defaultDetailLevelForMode(640, 400, false); got != 0 {
 		t.Fatalf("defaultDetailLevelForMode(faithful)=%d want=0", got)
+	}
+}
+
+func TestNewGameAutoDetailStartsFullAndPreservesExplicitLevels(t *testing.T) {
+	previousWASM := platformcfg.ForcedWASMMode()
+	defer platformcfg.SetForcedWASMMode(previousWASM)
+	for _, wasm := range []bool{false, true} {
+		platformcfg.SetForcedWASMMode(wasm)
+		for _, tc := range []struct {
+			name          string
+			auto          bool
+			initial, want int
+		}{
+			{name: "automatic default", auto: true, initial: -1, want: 0},
+			{name: "manual default", auto: false, initial: -1, want: 0},
+			{name: "explicit manual half", auto: false, initial: 1, want: 1},
+			{name: "explicit manual quarter", auto: false, initial: 3, want: 3},
+			{name: "carried adaptive level", auto: true, initial: 2, want: 2},
+		} {
+			g := newGame(&mapdata.Map{}, Options{Headless: true, Width: 1280, Height: 800, SourcePortMode: true, AutoDetail: tc.auto, InitialDetailLevel: tc.initial})
+			if g.detailLevel != tc.want || g.autoDetailEnabled != tc.auto {
+				t.Fatalf("wasm=%t %s: detail=%d auto=%t; want %d/%t", wasm, tc.name, g.detailLevel, g.autoDetailEnabled, tc.want, tc.auto)
+			}
+		}
+	}
+}
+
+func TestAutoDetailMapRebuildPreservesAdaptedLevel(t *testing.T) {
+	opts := Options{Headless: true, Width: 1280, Height: 800, SourcePortMode: true, AutoDetail: true, InitialDetailLevel: -1}
+	g := newGame(&mapdata.Map{}, opts)
+	if g.detailLevel != 0 {
+		t.Fatal("AUTO did not begin at full detail")
+	}
+	for range 4 {
+		g.applyAutoDetailSample(50, 20)
+	}
+	if g.detailLevel != 1 {
+		t.Fatal("AUTO did not adapt before the map change")
+	}
+	sg := &sessionGame{g: g, rt: g, opts: opts}
+	sg.rebuildGameWithPersistentSettings(&mapdata.Map{})
+	if sg.g.detailLevel != 1 || !sg.g.autoDetailEnabled {
+		t.Fatalf("map rebuild reset adaptation: detail=%d auto=%t", sg.g.detailLevel, sg.g.autoDetailEnabled)
 	}
 }
 
@@ -127,7 +171,7 @@ func TestCycleSourcePortDetailLevelRepeatsAllResolutions(t *testing.T) {
 						label string
 						div   int
 						auto  bool
-					}{{"1x", 1, false}, {"1/2x", 2, false}, {"1/3x", 3, false}, {"1/4x", 4, false}, {"AUTO", 4, true}} {
+					}{{"1x", 1, false}, {"1/2x", 2, false}, {"1/3x", 3, false}, {"1/4x", 4, false}, {"AUTO", 1, true}} {
 						g.sessionCycleDetail()
 						if g.autoDetailEnabled != want.auto || g.sourcePortDetailDivisor() != want.div || g.useText != "Detail: "+want.label {
 							t.Fatalf("initial level=%d cycle=%d step=%s: auto=%t divisor=%d message=%q", initialLevel, cycle, want.label, g.autoDetailEnabled, g.sourcePortDetailDivisor(), g.useText)

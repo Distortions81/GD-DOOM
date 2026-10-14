@@ -68,7 +68,12 @@ Feedback interrupted by wall clipping still approximates the software framebuffe
 
 VSync is enabled by default on desktop and WASM. Browser rendering follows the
 display refresh without the former 75 FPS sleep throttle; `-no-vsync` remains an
-explicit override. Doom simulation continues at 35 tics per second.
+explicit override. Faithful mode locks simulation and visual updates to 35 Hz,
+holding each frame between ticks without camera, actor, weapon, or mover
+interpolation, including in multiplayer. Game-speed hotkeys are available only
+in single-player Source Port mode; multiplayer always uses 35 Hz. The display
+can present a held faithful frame at its own refresh rate; Source Port mode
+renders fresh frames at display refresh.
 
 ```bash
 # Faithful look with GPU drawing.

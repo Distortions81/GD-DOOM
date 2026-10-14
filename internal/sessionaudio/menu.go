@@ -108,20 +108,22 @@ func (c *MenuController) PlayQuit(commercial bool, seq int) {
 		return
 	}
 	if c.pcSpeaker != nil {
-		// Mirror the quit sequence DS names from NewMenuPlayer.
-		quit1 := []string{"DSPLDETH", "DSPOPAIN", "DSPOPAIN", "DSRXPLOD", "DSGETPOW", "DSPOSIT1", "DSPOSIT3", "DSSGTATK"}
-		quit2 := []string{"DSVILACT", "DSGETPOW", "DSCYBSIT", "DSRXPLOD", "DSCLAW", "DSKNTDTH", "DSBSPACT", "DSSGTATK"}
-		names := quit1
-		if commercial {
-			names = quit2
-		}
-		if len(names) == 0 {
-			return
-		}
-		c.pcPlay(names[seq%len(names)])
+		c.pcPlay(PCSpeakerQuitSoundName(commercial, seq))
 		return
 	}
 	if c.player != nil {
 		c.player.PlayQuit(commercial, seq)
 	}
+}
+
+// PCSpeakerQuitSoundName keeps the shared single-speaker quit sequence.
+func PCSpeakerQuitSoundName(commercial bool, seq int) string {
+	names := [...]string{"DSPLDETH", "DSPOPAIN", "DSPOPAIN", "DSRXPLOD", "DSGETPOW", "DSPOSIT1", "DSPOSIT3", "DSSGTATK"}
+	if commercial {
+		names = [...]string{"DSVILACT", "DSGETPOW", "DSCYBSIT", "DSRXPLOD", "DSCLAW", "DSKNTDTH", "DSBSPACT", "DSSGTATK"}
+	}
+	if seq < 0 {
+		seq = 0
+	}
+	return names[seq%len(names)]
 }

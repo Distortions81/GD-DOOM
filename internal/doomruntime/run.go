@@ -106,10 +106,18 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 		},
 		Start: func(sg *sessionGame) {
 			sg.initSession()
+			if sg.opts.AuthorityAutoJoin {
+				sg.opts.AuthorityAutoJoin = false
+				sg.beginAuthorityAutoJoin()
+			}
 		},
 	})
 	return runtimehost.NewGame(sg, runtimehost.Accessors{
 		Close: func() {
+			sg.closeAuthorityMultiplayer()
+			if sg.rt != nil {
+				sg.rt.clearPendingSoundState()
+			}
 			if sg.menuSfx != nil {
 				sg.menuSfx.Close()
 			}
@@ -117,6 +125,10 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			if sg.opts.SharedPCSpeaker != nil {
 				_ = sg.opts.SharedPCSpeaker.Close()
 				sg.opts.SharedPCSpeaker = nil
+			}
+			if sg.opts.AuthorityContentCleanup != nil {
+				sg.opts.AuthorityContentCleanup()
+				sg.opts.AuthorityContentCleanup = nil
 			}
 		},
 		Err: func() error {
@@ -162,14 +174,28 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 }
 
 func (sg *sessionGame) Update() error {
+	// Faithful presentation holds one complete frame until the next 35 Hz
+	// session tick, even while multiplayer keeps pumping at the host rate.
+	sg.faithfulFrameReady = false
+	// Refill before snapshot processing or level transitions can occupy the
+	// browser main thread. ChunkPlayer bounds and schedules the refill work.
+	if sg.musicCtl != nil && isWASMBuild() {
+		sg.musicCtl.Tick()
+	}
+	sg.pollAuthorityJoin()
+	if err := sg.updateAuthoritySession(); err != nil {
+		sg.err = err
+		if sg.g != nil && sg.opts.AuthorityClient != nil {
+			sg.g.setAuthorityConnectionFailure(err)
+			return nil
+		}
+		return ebiten.Termination
+	}
 	if sg.g != nil && sg.g.demoWorldDone {
 		sg.finishIntermission()
 	}
 	sg.releaseStartupMusicIfReady()
 	sg.releaseTransitionMusicIfReady()
-	if sg.musicCtl != nil && isWASMBuild() {
-		sg.musicCtl.Tick()
-	}
 	flushTouchLatch := sg.bumpHostFramePhase()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },
@@ -235,7 +261,13 @@ func (sg *sessionGame) Update() error {
 			if err := sg.applyMandatoryWatchKeyframes(); err != nil {
 				return err
 			}
-			return sg.rt.Update()
+			err := sg.rt.Update()
+			if err != nil && sg.opts.AuthorityClient != nil {
+				sg.err = err
+				sg.g.setAuthorityConnectionFailure(err)
+				return nil
+			}
+			return err
 		},
 		HandleRuntimeProgress: func() (bool, error) {
 			sig := sg.rt.sessionSignals()
@@ -382,6 +414,31 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		screen.Fill(color.Black)
 		return
 	}
+	if sg.opts.SourcePortMode {
+		sg.faithfulFrameReady = false
+		sg.drawFrame(screen)
+		return
+	}
+	w, h := screen.Bounds().Dx(), screen.Bounds().Dy()
+	if sg.faithfulFrame == nil || sg.faithfulFrame.Bounds().Dx() != w || sg.faithfulFrame.Bounds().Dy() != h {
+		sg.faithfulFrame = newUnmanagedImage(w, h)
+		sg.faithfulFrameReady = false
+	}
+	if !sg.faithfulFrameReady || sg.faithfulFrameGame != sg.g {
+		sg.drawFrame(sg.faithfulFrame)
+		sg.faithfulFrameGame = sg.g
+		sg.faithfulFrameReady = true
+	}
+	screen.Fill(color.Black)
+	screen.DrawImage(sg.faithfulFrame, nil)
+}
+
+func (sg *sessionGame) drawFrame(screen *ebiten.Image) {
+	defer sg.drawAuthorityConnectionOverlay(screen)
+	// Gameplay can occupy a narrower aspect-correct viewport than menus.
+	// Clear the whole target so closing a menu cannot leave its text in the
+	// letterbox margins outside the next gameplay presentation.
+	screen.Fill(color.Black)
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	tw, th := sg.transitionSurfaceSize(sw, sh)
@@ -462,6 +519,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 }
 
 func (sg *sessionGame) handleGameplayTermination() error {
+	if sg.opts.AuthorityClient != nil {
+		return runtimehost.ErrTerminate
+	}
 	sig := sg.rt.sessionSignals()
 	if !sig.LevelExit {
 		return runtimehost.ErrTerminate
@@ -501,6 +561,10 @@ func (sg *sessionGame) SampleInput() {
 		return
 	}
 	sg.input.justPressedKeys = addPressCounts(sg.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
+	if sg.frontend.Mode == frontendModeMultiplayer && sg.multiplayer.editing {
+		sg.input.inputChars = ebiten.AppendInputChars(sg.input.inputChars)
+		sg.input.controlHeld = ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsKeyPressed(ebiten.KeyMetaLeft) || ebiten.IsKeyPressed(ebiten.KeyMetaRight)
+	}
 	sg.input.justPressedMouseButtons = addPressCounts(
 		sg.input.justPressedMouseButtons,
 		justPressedMouseButtons(),
@@ -546,7 +610,9 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 	}
 	inGame := !sig.DemoActive
 	itemOn := 0
-	if inGame && sg.frontendWatchMode() {
+	if sg.opts.AuthorityClient != nil && sg.multiplayerMenuAvailable() {
+		itemOn = frontendMultiplayerMenuItem
+	} else if inGame && sg.frontendWatchMode() {
 		itemOn = frontendWatchMenuSelectableRows[0]
 	}
 	sg.frontend = frontendState{
@@ -819,6 +885,9 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	sg.touch.screenW = max(outsideWidth, 1)
 	sg.touch.screenH = max(outsideHeight, 1)
 	sg.g.ensureDefaultHUDScaleForViewport(outsideWidth, outsideHeight)
+	// Both modes return a window-sized input layout. Cursor deltas are
+	// already in those coordinates, independent of the internal render buffer.
+	sg.g.mouseInputScaleX = 1
 	aspectH := faithfulAspectLogicalH
 	if sg.opts.DisableAspectCorrection {
 		aspectH = doomLogicalH
@@ -826,7 +895,6 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		layoutW := max(outsideWidth, 1)
 		layoutH := max(outsideHeight, 1)
-		sg.g.mouseInputScaleX = float64(layoutW) / float64(max(layoutW, 1))
 		if sg.g.skyOutputW != layoutW || sg.g.skyOutputH != layoutH {
 			sg.rt.setSkyOutputSize(layoutW, layoutH)
 		}
@@ -852,7 +920,6 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	layoutW := max(outsideWidth, 1)
 	layoutH := max(outsideHeight, 1)
 	rw, rh := faithfulDetailPresetSize(sg.g.detailLevel)
-	sg.g.mouseInputScaleX = float64(layoutW) / float64(faithfulBufferW)
 	sg.rt.Layout(rw, rh)
 	_ = aspectH
 	return layoutW, layoutH

@@ -1,7 +1,6 @@
 package doomruntime
 
 import (
-	"fmt"
 	"strings"
 
 	"gddoom/internal/mapdata"
@@ -207,35 +206,8 @@ func (sg *sessionGame) findCurrentCatalogTrackByLump(lumpName string) (*runtimec
 }
 
 func (sg *sessionGame) resolveIDMUSSelection(currentMapName, code string) (mapdata.MapName, string, bool) {
-	currentMapName = strings.ToUpper(strings.TrimSpace(currentMapName))
-	code = strings.TrimSpace(code)
-	if len(code) != 2 || code[0] < '0' || code[0] > '9' || code[1] < '0' || code[1] > '9' {
-		return "", "", false
-	}
-	if strings.HasPrefix(currentMapName, "MAP") {
-		n := int(code[0]-'0')*10 + int(code[1]-'0')
-		switch {
-		case n == 0:
-			return "", "", true
-		case n >= 1 && n <= 32:
-			return mapdata.MapName(fmt.Sprintf("MAP%02d", n)), "", true
-		case n == 33:
-			return "", "D_READ_M", true
-		case n == 34:
-			return "", "D_DM2TTL", true
-		case n == 35:
-			return "", "D_DM2INT", true
-		default:
-			return "", "", false
-		}
-	}
-	if len(currentMapName) == 4 && currentMapName[0] == 'E' && currentMapName[2] == 'M' {
-		if code[0] < '1' || code[0] > '9' || code[1] < '1' || code[1] > '9' {
-			return "", "", false
-		}
-		return mapdata.MapName(fmt.Sprintf("E%cM%c", code[0], code[1])), "", true
-	}
-	return "", "", false
+	target, lump, ok := music.CheatSelection(currentMapName, code)
+	return mapdata.MapName(target), lump, ok
 }
 
 func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool, error) {
