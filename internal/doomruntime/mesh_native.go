@@ -59,7 +59,6 @@ type NativeMeshFrame struct {
 	Sky                     levelmesh.Texture
 	Message                 string
 	DamageFlash, BonusFlash int
-	FlashPalette            []byte // 256 RGBA entries mapping each input color channel.
 	WeaponInvisible         bool
 	FlashOverlay            color.RGBA // Shared status counters and powerup palette priority.
 }
@@ -168,8 +167,8 @@ func (n *NativeMeshGame) Frame(alpha float64) NativeMeshFrame {
 		Sprites:       n.sprites, HUD: n.hud, WeaponPatches: n.weapon, Sky: sky,
 		HUDMode: n.HUDMode(), HUDScale: g.hudScaleValue(),
 		Message: message, DamageFlash: g.damageFlashTic, BonusFlash: g.bonusFlashTic,
-		FlashPalette: g.flashPaletteTable(), WeaponInvisible: g.weaponInvisible(),
-		FlashOverlay: hud.FlashOverlayColor(g.statusDamageCount, g.statusBonusCount, g.inventory.StrengthCount, g.inventory.RadSuitTics),
+		WeaponInvisible: g.weaponInvisible(),
+		FlashOverlay:    hud.FlashOverlayColor(g.statusDamageCount, g.statusBonusCount, g.inventory.StrengthCount, g.inventory.RadSuitTics),
 	}
 }
 

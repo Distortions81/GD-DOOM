@@ -68,7 +68,8 @@ def main():
         "scope": "320x200 isolated weapon patches at 3 fixed-point positions and 5 light levels; "
                  "72 single-player and 64 multiplayer status fixtures; 520 bob states; "
                  "100 raising, moving, firing and death frames; 80 weapon power-up fixtures; "
-                 "96 PLAYPAL flash fixtures on both CPU and shader paths. "
+                 "96 blended flash fixtures with Kage disabled and enabled, "
+                 "allowing at most 2/255 channel error against PLAYPAL. "
                  "Raw palette RGB, no gamma postprocess, world occlusion or face-selection history.",
         "gddoom_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "gddoom_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)),
@@ -81,7 +82,14 @@ def main():
     (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Weapon and HUD parity</title><style>body{background:#181b20;color:white;font:16px system-ui;margin:24px}img{image-rendering:pixelated;width:640px;max-width:100%}.row{display:flex;flex-wrap:wrap}select{padding:8px}pre{white-space:pre-wrap}</style><h1>Weapon / HUD comparison</h1><select id="sel"></select><pre id="stats"></pre><div class="row"><div>Classic<br><img id="ref"></div><div>GD-DOOM<br><img id="gd"></div><div>Difference ×4<br><img id="diff"></div></div><script>const data='''+json.dumps(results)+''';sel.innerHTML=data.map((r,i)=>`<option value="${i}">${r.name}: ${r.different_percent.toFixed(3)}%</option>`).join('');function update(){let r=data[+sel.value];stats.textContent=JSON.stringify(r,null,2);ref.src=r.name+'-classic.png';gd.src=r.name+'-gd.png';diff.src=r.name+'-diff.png'}sel.onchange=update;update()</script>''')
     different = sum(result["different_percent"] != 0 for result in results)
     print(f"{len(results)} captures; {different} differ. Report: {out / 'index.html'}")
-    if different:
+    # Flashes intentionally use a cheap blended overlay in both modes;
+    # retain exact comparisons for all other presentation fixtures.
+    failed = sum(
+        result["over_2_percent" if result["name"].startswith(("effect-", "shader-effect-")) else "different_percent"] != 0
+        for result in results
+    )
+    if failed:
+        print(f"{failed} captures exceed their comparison tolerance.")
         raise SystemExit(1)
 
 

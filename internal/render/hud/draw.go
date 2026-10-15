@@ -202,52 +202,21 @@ func DrawFlashOverlay(screen *ebiten.Image, viewW, viewH, damageCount, bonusCoun
 // FlashOverlayColor is shared by the software and native GPU hosts. Damage
 // and berserk take precedence over pickups, then radiation-suit blinking.
 func FlashOverlayColor(damageCount, bonusCount, strengthCount, radSuitTics int) color.RGBA {
-	stage, clr := flashOverlayState(damageCount, bonusCount, strengthCount, radSuitTics)
-	clr.A = flashOverlayAlpha(stage, clr)
-	return clr
-}
-
-func flashOverlayState(damageCount, bonusCount, strengthCount, radSuitTics int) (int, color.RGBA) {
-	cnt := damageCount
-	if strengthCount > 0 {
-		berserk := 12 - (strengthCount >> 6)
-		if berserk > cnt {
-			cnt = berserk
-		}
-	}
-	if cnt > 0 {
-		stage := (cnt + 7) >> 3
-		if stage > 8 {
-			stage = 8
-		}
-		return stage, color.RGBA{R: 176, G: 32, B: 32}
-	}
-	if bonusCount > 0 {
-		stage := (bonusCount + 7) >> 3
-		if stage > 4 {
-			stage = 4
-		}
-		return stage, color.RGBA{R: 216, G: 188, B: 72}
-	}
-	if radSuitTics > 4*32 || radSuitTics&8 != 0 {
-		return 1, color.RGBA{R: 48, G: 160, B: 48}
-	}
-	return 0, color.RGBA{}
-}
-
-func flashOverlayAlpha(stage int, clr color.RGBA) uint8 {
-	if stage <= 0 {
-		return 0
-	}
-	switch clr {
-	case (color.RGBA{R: 176, G: 32, B: 32}):
-		return uint8(min(160, 18+stage*18))
-	case (color.RGBA{R: 216, G: 188, B: 72}):
-		return uint8(min(96, 12+stage*18))
-	case (color.RGBA{R: 48, G: 160, B: 48}):
-		return 56
+	// Keep Doom's palette selection timing, but approximate PLAYPAL with one
+	// premultiplied-alpha rectangle. This avoids framebuffer copies, readbacks
+	// and flash-specific shaders in both faithful and modern presentation.
+	index := FlashPaletteIndex(damageCount, bonusCount, strengthCount, radSuitTics)
+	switch {
+	case index >= 1 && index <= 8:
+		a := uint8(255 * index / 9)
+		return color.RGBA{R: a, A: a}
+	case index >= 9 && index <= 12:
+		step := index - 8
+		return color.RGBA{R: uint8(215 * step / 8), G: uint8(186 * step / 8), B: uint8(69 * step / 8), A: uint8(255 * step / 8)}
+	case index == 13:
+		return color.RGBA{G: 32, A: 32}
 	default:
-		return 0
+		return color.RGBA{}
 	}
 }
 

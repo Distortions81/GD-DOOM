@@ -1268,13 +1268,7 @@ func run() (runErr error) {
 				death := campaign.DeathOverlay(w, h)
 				raymesh.DrawScreenTint(death.Tint, w, h)
 				presentation.DrawScreenPatches(death.Patches)
-				if len(snapshot.FlashPalette) > 0 {
-					if err := presentation.DrawPaletteFlash(snapshot.FlashPalette, w, h); err != nil {
-						return err
-					}
-				} else {
-					raymesh.DrawScreenTint(snapshot.FlashOverlay, w, h)
-				}
+				raymesh.DrawScreenTint(snapshot.FlashOverlay, w, h)
 				if !automap {
 					presentation.DrawScreenPatches(campaign.MessagePatches(w, h))
 					presentation.DrawScreenPatches(campaign.ChatPatches(w, viewH))

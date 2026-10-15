@@ -47,14 +47,14 @@ func TestNativeFlashUsesStatusCountersPowerupPriorityAndBlink(t *testing.T) {
 		want                   color.RGBA
 	}{
 		{"idle", 0, 0, 0, 0, color.RGBA{}},
-		{"damage beats pickup and suit", 80, 40, 0, 200, color.RGBA{176, 32, 32, 160}},
-		{"last damage stage", 1, 40, 0, 200, color.RGBA{176, 32, 32, 36}},
-		{"bonus beats suit", 0, 40, 0, 200, color.RGBA{216, 188, 72, 84}},
-		{"berserk beats pickup", 0, 40, 1, 200, color.RGBA{176, 32, 32, 54}},
+		{"damage beats pickup and suit", 80, 40, 0, 200, color.RGBA{226, 0, 0, 226}},
+		{"last damage stage", 1, 40, 0, 200, color.RGBA{56, 0, 0, 56}},
+		{"bonus beats suit", 0, 40, 0, 200, color.RGBA{107, 93, 34, 127}},
+		{"berserk beats pickup", 0, 40, 1, 200, color.RGBA{85, 0, 0, 85}},
 		{"berserk fades", 0, 0, 12 << 6, 0, color.RGBA{}},
-		{"suit steady", 0, 0, 0, 129, color.RGBA{48, 160, 48, 56}},
+		{"suit steady", 0, 0, 0, 129, color.RGBA{0, 32, 0, 32}},
 		{"suit blink off", 0, 0, 0, 128, color.RGBA{}},
-		{"suit blink on", 0, 0, 0, 8, color.RGBA{48, 160, 48, 56}},
+		{"suit blink on", 0, 0, 0, 8, color.RGBA{0, 32, 0, 32}},
 	}
 	for _, tc := range cases {
 		g.statusDamageCount, g.statusBonusCount = tc.damage, tc.bonus
@@ -66,7 +66,7 @@ func TestNativeFlashUsesStatusCountersPowerupPriorityAndBlink(t *testing.T) {
 	g.statusDamageCount, g.statusBonusCount = 9, 0
 	g.inventory.StrengthCount, g.inventory.RadSuitTics = 0, 0
 	c.Game.Tick(NativeMeshInput{})
-	if got := c.Game.Frame(1).FlashOverlay; got != (color.RGBA{176, 32, 32, 36}) {
+	if got := c.Game.Frame(1).FlashOverlay; got != (color.RGBA{56, 0, 0, 56}) {
 		t.Fatalf("flash did not follow shared tic decay: %v", got)
 	}
 }

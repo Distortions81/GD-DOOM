@@ -44,40 +44,32 @@ func TestDrawStatusBarWeaponSlotPositionsMatchDoomLayout(t *testing.T) {
 	}
 }
 
-func TestFlashOverlayStateMatchesDoomPalettePriority(t *testing.T) {
-	stage, clr := flashOverlayState(0, 0, 0, 0)
-	if stage != 0 || clr != (color.RGBA{}) {
-		t.Fatalf("idle flash=%d %#v want 0 zero", stage, clr)
-	}
-
-	stage, clr = flashOverlayState(0, 6, 0, 0)
-	if stage != 1 || clr != (color.RGBA{R: 216, G: 188, B: 72}) {
-		t.Fatalf("bonus flash=%d %#v want 1 gold", stage, clr)
-	}
-
-	stage, clr = flashOverlayState(12, 6, 0, 0)
-	if stage != 2 || clr != (color.RGBA{R: 176, G: 32, B: 32}) {
-		t.Fatalf("damage priority flash=%d %#v want 2 red", stage, clr)
-	}
-
-	stage, clr = flashOverlayState(0, 0, 1, 0)
-	if stage != 2 || clr != (color.RGBA{R: 176, G: 32, B: 32}) {
-		t.Fatalf("berserk flash=%d %#v want 2 red", stage, clr)
-	}
-
-	stage, clr = flashOverlayState(0, 0, 12<<6, 0)
-	if stage != 0 || clr != (color.RGBA{}) {
-		t.Fatalf("expired berserk flash=%d %#v want 0 zero", stage, clr)
-	}
-
-	stage, clr = flashOverlayState(0, 0, 0, 5*32)
-	if stage != 1 || clr != (color.RGBA{R: 48, G: 160, B: 48}) {
-		t.Fatalf("radiation flash=%d %#v want 1 green", stage, clr)
-	}
-
-	stage, clr = flashOverlayState(0, 0, 0, 8)
-	if stage != 1 || clr != (color.RGBA{R: 48, G: 160, B: 48}) {
-		t.Fatalf("radiation blink flash=%d %#v want 1 green", stage, clr)
+func TestFlashOverlayTimingAndPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		damage, bonus, strength, suit int
+		want                          color.RGBA
+	}{
+		{"idle", 0, 0, 0, 0, color.RGBA{}},
+		{"last damage", 1, 16, 0, 200, color.RGBA{56, 0, 0, 56}},
+		{"damage boundary", 8, 0, 0, 0, color.RGBA{56, 0, 0, 56}},
+		{"next damage", 9, 0, 0, 0, color.RGBA{85, 0, 0, 85}},
+		{"max damage", 80, 0, 0, 0, color.RGBA{226, 0, 0, 226}},
+		{"last pickup", 0, 1, 0, 200, color.RGBA{53, 46, 17, 63}},
+		{"pickup boundary", 0, 8, 0, 0, color.RGBA{53, 46, 17, 63}},
+		{"next pickup", 0, 9, 0, 0, color.RGBA{80, 69, 25, 95}},
+		{"max pickup", 0, 40, 0, 0, color.RGBA{107, 93, 34, 127}},
+		{"berserk priority", 0, 40, 1, 200, color.RGBA{85, 0, 0, 85}},
+		{"berserk faded", 0, 0, 12 << 6, 0, color.RGBA{}},
+		{"suit steady", 0, 0, 0, 129, color.RGBA{0, 32, 0, 32}},
+		{"suit blink off", 0, 0, 0, 128, color.RGBA{}},
+		{"suit blink on", 0, 0, 0, 8, color.RGBA{0, 32, 0, 32}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := FlashOverlayColor(tc.damage, tc.bonus, tc.strength, tc.suit); got != tc.want {
+				t.Fatalf("flash=%v want=%v", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -718,7 +718,6 @@ type game struct {
 	weaponPSpriteY             int
 	weaponPose, prevWeaponPose weaponPresentationPose
 	weaponClassicImage         *ebiten.Image
-	paletteFlash               paletteFlashState
 	weaponClassicPixels        []byte
 	weaponFuzzPixels           []byte
 	weaponFuzzLogical          []byte
@@ -13659,9 +13658,6 @@ func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {
-	if g.drawPaletteFlash(screen) {
-		return
-	}
 	hud.DrawFlashOverlay(
 		screen,
 		g.viewW,

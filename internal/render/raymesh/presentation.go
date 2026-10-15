@@ -28,7 +28,6 @@ void main() {
 }`
 
 type Presentation struct {
-	paletteFlash                                *paletteFlash
 	Sprites                                     *Renderer
 	triangles                                   []levelmesh.Triangle
 	patches                                     map[presentationTextureKey]rl.Texture2D
@@ -276,9 +275,6 @@ func (p *Presentation) DrawScreenPatches(patches []levelmesh.Patch) {
 }
 
 func (p *Presentation) Close() {
-	if p.paletteFlash != nil {
-		p.paletteFlash.close()
-	}
 	if p.fuzz != nil {
 		p.fuzz.close()
 	}
