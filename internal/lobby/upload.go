@@ -98,6 +98,11 @@ func Upload(ctx context.Context, address string, request UploadRequest) (Pack, e
 	defer stop()
 	var pack Pack
 	if err := requestWithBody(ctx, address, "/api/v1/packs", http.MethodPost, body, contentType, &pack, 2*time.Minute); err != nil {
+		// Cancellation closes the source readers to unblock HTTP writes. That
+		// close can win the transport race and surface as a reader error.
+		if ctx.Err() != nil {
+			return Pack{}, ctx.Err()
+		}
 		return Pack{}, err
 	}
 	if err := ValidatePack(pack); err != nil {
