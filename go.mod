@@ -1,6 +1,6 @@
 module gddoom
 
-go 1.26.6
+go 1.26.10
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -25,10 +25,10 @@ require (
 	github.com/jfreymuth/pulse v0.1.3 // indirect
 	github.com/jupiterrider/ffi v0.7.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 )
 
 replace github.com/sinshu/go-meltysynth => github.com/Distortions81/go-meltysynth v0.1.2
@@ -43,5 +43,5 @@ require (
 	github.com/ebitengine/oto/v3 v3.5.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
 )
