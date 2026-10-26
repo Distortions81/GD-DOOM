@@ -616,6 +616,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
 	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	noMonsters := fs.Bool("no-monsters", defaultNoMonsters, "disable monster spawns")
+	playAsMonster := fs.Bool("play-as-monster", false, "possession sandbox: fire at a monster to control it; Use returns to marine (single-player only)")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
 	disableCameraBob := fs.Bool("disable-camera-bob", defaultDisableCameraBob, "disable camera bob in Modern mode")
 	disableWeaponBob := fs.Bool("disable-weapon-bob", defaultDisableWeaponBob, "disable weapon bob in Modern mode")
@@ -951,6 +952,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			showNoSkillItems:           *showNoSkillItems,
 			showAllItems:               *showAllItems,
 			noMonsters:                 *noMonsters,
+			playAsMonster:              *playAsMonster,
 			mouseLook:                  *mouseLook,
 			mouseInvert:                *mouseInvert,
 			disableCameraBob:           *disableCameraBob,
@@ -1309,6 +1311,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			ShowNoSkillItems:           *showNoSkillItems,
 			ShowAllItems:               *showAllItems,
 			NoMonsters:                 *noMonsters,
+			PlayAsMonster:              *playAsMonster,
 			MouseLook:                  *mouseLook,
 			MouseInvert:                *mouseInvert,
 			DisableCameraBob:           *disableCameraBob,
@@ -1687,6 +1690,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			showNoSkillItems:           *showNoSkillItems,
 			showAllItems:               *showAllItems,
 			noMonsters:                 *noMonsters,
+			playAsMonster:              *playAsMonster,
 			mouseLook:                  *mouseLook,
 			mouseInvert:                *mouseInvert,
 			disableCameraBob:           *disableCameraBob,
@@ -1917,6 +1921,7 @@ type renderBuildConfig struct {
 	showNoSkillItems           bool
 	showAllItems               bool
 	noMonsters                 bool
+	playAsMonster              bool
 	mouseLook                  bool
 	mouseInvert                bool
 	disableCameraBob           bool
@@ -2260,6 +2265,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		ShowNoSkillItems:           cfg.showNoSkillItems,
 		ShowAllItems:               cfg.showAllItems,
 		NoMonsters:                 cfg.noMonsters,
+		PlayAsMonster:              cfg.playAsMonster,
 		MouseLook:                  cfg.mouseLook,
 		MouseInvert:                cfg.mouseInvert,
 		DisableCameraBob:           cfg.disableCameraBob,

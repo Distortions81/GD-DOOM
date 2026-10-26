@@ -129,7 +129,7 @@ func remotePlayerSpriteName(worldTic int, rot int) string {
 // appendRemotePlayerCutoutItems projects all remote players as PLAY-sprite
 // billboards and appends them to the billboard queue.
 func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
-	if len(g.remotePlayers) == 0 {
+	if len(g.remotePlayers) == 0 && g.possession == nil {
 		return
 	}
 	viewW := g.viewW
@@ -143,6 +143,9 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 
 	for slot := 1; slot <= 4; slot++ {
 		rp := g.remotePlayers[slot]
+		if g.possession != nil && slot == g.localSlot {
+			rp = &remotePlayer{p: g.p}
+		}
 		if rp == nil {
 			continue
 		}
@@ -159,6 +162,9 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 
 		rot := monsterSpriteRotationIndexAt(pose.angle, float64(txFixed)/fracUnit, float64(tyFixed)/fracUnit, camX, camY)
 		frame := byte('A' + (g.worldTic/playerWalkFrameTics)%4)
+		if g.possession != nil && slot == g.localSlot {
+			frame = 'A'
+		}
 		if authoritativeFrame, ok := g.authoritativePlayerFrame(slot); ok {
 			frame = authoritativeFrame
 		}

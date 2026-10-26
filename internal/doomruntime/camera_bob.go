@@ -40,6 +40,9 @@ func (g *game) cameraBobRenderFrame() cameraBobFrame {
 }
 
 func (g *game) renderCameraEyeZ() float64 {
+	if eye, ok := g.possessionEyeZ(); ok {
+		return eye
+	}
 	if g.opts.SourcePortMode && g.opts.DisableCameraBob && g.authorityRules == nil && g.clientPrediction == nil && !g.predictionMovement {
 		if g.cameraBob.valid && g.prevCameraBob.valid && !g.p.teleportedThisTic && g.cameraBob.eye == g.playerViewZ {
 			alpha := math.Max(0, math.Min(1, g.renderAlpha))

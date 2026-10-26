@@ -297,6 +297,7 @@ type Options struct {
 	FastMonsters                 bool
 	RespawnMonsters              bool
 	NoMonsters                   bool
+	PlayAsMonster                bool // Local possession sandbox; excluded from demos and network games.
 	AlwaysRun                    bool
 	AutoWeaponSwitch             bool
 	CheatLevel                   int

@@ -97,6 +97,7 @@ go run . -wad DOOM1.WAD -sourceport-mode=false -gpu-renderer=false
 
 - Mouse look, configurable bindings, improved automap, and browser touch controls.
 - Saves, quicksave, classic demo playback/recording, and per-tic trace export.
+- Experimental [play-as-monster sandbox](docs/usage.md#play-as-a-monster-experimental): aim and fire to possess a monster; Use returns to your marine.
 - Base game WADs and layered add-ons; local WAD loading and browser saves.
 - Live broadcast/watch sessions, spectator chat, and optional voice.
 

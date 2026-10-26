@@ -337,8 +337,10 @@ func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 	// Input/player logic runs before the thinker list. The world advances once
 	// regardless of how many players supplied commands for this tic.
 	g.platTickedThisTic = false
+	cmd, usePressed, fireHeld = g.possessionCommand(cmd, usePressed, fireHeld)
 	g.runPlayerTic(cmd, usePressed, fireHeld)
 	g.tickGameplayWorld()
+	g.finishPossessionTic()
 }
 
 // runPlayerTic performs P_PlayerThink without advancing the shared world. Body
@@ -366,7 +368,9 @@ func (g *game) runPlayerTic(cmd moveCmd, usePressed, fireHeld bool) {
 	} else {
 		g.useButtonDown = false
 	}
-	g.tickWeaponFire()
+	if !g.possessionModeEnabled() {
+		g.tickWeaponFire()
+	}
 	g.tickPlayerCounters()
 }
 

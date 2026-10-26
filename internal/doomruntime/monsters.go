@@ -777,6 +777,10 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 		return
 	}
+	if g.possession != nil && g.possession.thing == i {
+		g.tickPossessedMonster(i, th)
+		return
+	}
 	if g.thingState[i] == monsterStateRaise || g.thingState[i] == monsterStateHeal {
 		g.tickMonsterRaiseOrHeal(i, th)
 		return
@@ -2438,7 +2442,7 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 	// P_ZMovement checks actor->target, not whether that target is still a
 	// live actor. An already-targeted monster corpse still guides floating
 	// height, even though chase and attack actions can no longer select it.
-	if canFloat && (g.monsterHasExplicitTarget(i) || g.monsterHasSimulationTarget(i)) {
+	if canFloat && (g.possession == nil || g.possession.thing != i) && (g.monsterHasExplicitTarget(i) || g.monsterHasSimulationTarget(i)) {
 		inFloat := i >= 0 && i < len(g.thingInFloat) && g.thingInFloat[i]
 		if !inFloat {
 			targetX, targetY, targetZ, _, _, ok := g.monsterTargetPos(i)

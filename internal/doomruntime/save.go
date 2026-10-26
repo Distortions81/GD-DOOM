@@ -1364,6 +1364,8 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	if g == nil {
 		return
 	}
+	g.possession = nil
+	g.possessionFireDown = true
 	applySavedSessionOptions(&g.opts, s.Session)
 	g.p = restorePlayerSaveState(s.Player)
 	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)

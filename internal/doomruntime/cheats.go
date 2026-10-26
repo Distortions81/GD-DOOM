@@ -129,6 +129,8 @@ func (g *game) applyTypedCheatSuffix() {
 	case g.peekTypedCheat("idbehold"):
 		fmt.Println("typed cheat: idbehold")
 		g.setHUDMessage("inVuln, Str, Inviso, Rad, Allmap, or Lite-amp", 70)
+	case g.consumeTypedCheat("idmonster"):
+		g.togglePossessionMode()
 	case g.consumeTypedCheat("iddqd"):
 		fmt.Println("typed cheat: iddqd")
 		g.invulnerable = !g.invulnerable

@@ -112,6 +112,38 @@ go run . -wad DOOM1.WAD -cheat-level=3
 go run . -wad DOOM1.WAD -all-cheats
 ```
 
+## Play as a monster (experimental)
+
+Start a local possession sandbox:
+
+```bash
+go run . -wad DOOM1.WAD -sourceport-mode -play-as-monster
+```
+
+You can also type **IDMONSTER** during a single-player game to toggle the mode.
+While controlling the marine, aim the crosshair at a living monster and press
+**Fire** to possess it. Release Fire after selecting the body, then press or
+hold it again to attack. Movement and mouse turning use your usual bindings.
+Press **Use** (E/Space by default) to return to your marine. Return to the marine
+before aiming at another body. Fire selects bodies instead of firing the marine's
+weapon until you disable the mode with IDMONSTER.
+
+Possession uses the monster's existing health, collision size and movement speed.
+Attacks are simplified, manually triggered versions of its native hitscan,
+projectile, melee, charge or special attack; this is a sandbox rather than a
+balanced new game mode. Floating monsters retain their altitude and adjust to
+obstacles, with no separate flight controls.
+
+Your marine stays at its original location and remains vulnerable. You return
+automatically if the controlled monster dies; if the marine dies, the normal
+player death flow resumes. Released monsters retain their position and health
+and resume their AI. Loading a save returns control to the marine. Marine
+inventory and ammunition remain separate from the controlled monster.
+
+This first version is single-player only, without marine bots. Possession is
+disabled for multiplayer, demo playback/recording, and live broadcast/watch
+sessions; those paths continue using their normal commands.
+
 ## Relay Watch / Voice
 
 Run the relay server:

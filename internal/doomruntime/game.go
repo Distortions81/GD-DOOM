@@ -433,6 +433,9 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	possession         *monsterPossession
+	possessionFireDown bool
+
 	wallRangeTrace           func(seg, x1, x2 int, sampler classicWallSampler)
 	maskedClassicClipScratch []int16
 
@@ -3143,7 +3146,8 @@ func (g *game) updateWalkMode() {
 	cmd.run = speed == 1
 	g.runLocalGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
-	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+	x, y, _ := g.possessionViewpoint()
+	g.State.SetCamera(float64(x)/fracUnit, float64(y)/fracUnit)
 }
 
 func (g *game) mapRotationActive() bool {
@@ -3386,6 +3390,9 @@ func clampDemoMove(v int64) int8 {
 }
 
 func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
+	if g.possessionModeEnabled() {
+		return
+	}
 	if !g.edgeInputPass {
 		return
 	}
@@ -3734,7 +3741,7 @@ func (g *game) walkStatusBarTop() int {
 func (g *game) walkRenderViewportRect() image.Rectangle {
 	viewW := max(g.viewW, 1)
 	viewH := max(g.viewH, 1)
-	if g == nil {
+	if g == nil || g.possession != nil {
 		return image.Rect(0, 0, viewW, viewH)
 	}
 	switch g.statusBarDisplayMode() {
@@ -3856,8 +3863,11 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 	if g == nil {
 		return
 	}
-	g.drawWeaponOverlay(screen)
-	g.drawDoomStatusBar(screen)
+	if g.possession == nil {
+		g.drawWeaponOverlay(screen)
+		g.drawDoomStatusBar(screen)
+	}
+	g.drawPossessionOverlay(screen)
 	if g.isDead {
 		g.drawDeathOverlay(screen)
 	}
@@ -4774,10 +4784,11 @@ func (g *game) flushSoundEvents() {
 				}
 			}
 		}
+		lx, ly, la := g.possessionViewpoint()
 		if g.snd != nil {
-			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+			g.snd.playEventSpatial(ev, origin, lx, ly, la, soundMapUsesFullClip(g.m.Name))
 		} else {
-			((*soundSystem)(nil)).playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+			((*soundSystem)(nil)).playEventSpatial(ev, origin, lx, ly, la, soundMapUsesFullClip(g.m.Name))
 		}
 		totalCount++
 	}
@@ -13309,6 +13320,9 @@ func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 }
 
 func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX, viewY float64) (string, bool) {
+	if g.possession != nil && g.possession.thing == i {
+		return "", false
+	}
 	if ref, flip, ok := g.monsterSpriteRefForView(i, th, tic, viewX, viewY); ok && ref != nil {
 		return ref.key, flip
 	}
@@ -13343,6 +13357,9 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 }
 
 func (g *game) monsterSpriteRefForView(i int, th mapdata.Thing, tic int, viewX, viewY float64) (*spriteRenderRef, bool, bool) {
+	if g.possession != nil && g.possession.thing == i {
+		return nil, false, false
+	}
 	prefix, ok := monsterSpritePrefix(th.Type)
 	if !ok {
 		ref, ok := g.spriteRenderRef(g.monsterSpriteName(th.Type, tic))
@@ -19811,6 +19828,7 @@ func (g *game) prepareRenderStateAt(now time.Time) {
 		g.clientPrediction.prepareRenderCorrection(now)
 	}
 	g.prepareAuthorityObserverCamera()
+	g.preparePossessionCamera(alpha)
 	g.renderAlpha = alpha
 	g.beginSourcePortSpectreFuzzFrame(alpha)
 	g.debugAimSS = debugFixedSubsector
