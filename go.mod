@@ -11,7 +11,7 @@ require (
 	github.com/gen2brain/raylib-go/raylib v0.60.1
 	github.com/hajimehoshi/ebiten/v2 v2.10.4
 	github.com/klauspost/compress v1.20.3
-	github.com/quic-go/quic-go v0.62.0
+	github.com/quic-go/quic-go v0.64.1
 	github.com/quic-go/webtransport-go v0.13.0
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/sinshu/go-meltysynth v0.1.2
