@@ -143,7 +143,7 @@ func TestTickMonstersWakesByNoiseWithoutLOSForNonAmbush(t *testing.T) {
 				{X: 1024, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -178,7 +178,7 @@ func TestTickMonstersAmbushNoiseSetsTargetWithoutWakeWhenLOSBlocked(t *testing.T
 				{X: 1024, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -436,7 +436,7 @@ func TestTickMonsterMomentum_TeleportPreservesSplitMoveRemainder(t *testing.T) {
 		m: &mapdata.Map{
 			Things:   []mapdata.Thing{{Type: 3001}, {Type: 14, X: 100, Y: 100, Angle: 315}},
 			Vertexes: []mapdata.Vertex{{X: -128, Y: 4}, {X: 128, Y: 4}},
-			Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Flags: mlTwoSided, Special: 97, Tag: 7, SideNum: [2]int16{0, 0}}},
+			Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Flags: mlTwoSided, Special: 97, Tag: 7, SideNum: [2]int32{0, 0}}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}},
 			Sectors:  []mapdata.Sector{{CeilingHeight: 216, Tag: 7}},
 		},
@@ -622,7 +622,7 @@ func TestTickMonstersLostTargetReturnsToSpawnStateLikeDoom(t *testing.T) {
 				{X: 1024, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2207,7 +2207,7 @@ func TestTickMonstersAmbushDoesNotWakeFromNoiseWithoutLOS(t *testing.T) {
 				{X: 1024, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2294,8 +2294,8 @@ func TestPropagateSectorNoise_StopsAfterSecondSoundBlock(t *testing.T) {
 				{X: 128, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlTwoSided | lineSoundBlock, SideNum: [2]int16{0, 1}},
-				{V1: 2, V2: 3, Flags: mlTwoSided | lineSoundBlock, SideNum: [2]int16{2, 3}},
+				{V1: 0, V2: 1, Flags: mlTwoSided | lineSoundBlock, SideNum: [2]int32{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided | lineSoundBlock, SideNum: [2]int32{2, 3}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0}, {Sector: 1}, {Sector: 1}, {Sector: 2},
@@ -2429,7 +2429,7 @@ func TestMonsterTryMoveProbe_RespectsBlockMonstersFlag(t *testing.T) {
 				{X: 0, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlTwoSided | mlBlockMonsters, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Flags: mlTwoSided | mlBlockMonsters, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2615,7 +2615,7 @@ func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 				{X: 0, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2673,7 +2673,7 @@ func TestMonsterMoveInDir_UsesManualDoor(t *testing.T) {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2709,7 +2709,7 @@ func TestMonsterMoveInDir_UsesManualDoorWhenOpeningIsTooShortToFit(t *testing.T)
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2750,7 +2750,7 @@ func TestMonsterMoveInDir_DoesNotCloseActiveManualDoorForMonster(t *testing.T) {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2794,7 +2794,7 @@ func TestMonsterMoveInDir_OrdinaryBlockedMovePreservesMoveDir(t *testing.T) {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: 0, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Flags: 0, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2831,7 +2831,7 @@ func TestMonsterMoveInDir_FloatingMonsterDoesNotFloatAdjustWithoutHeadroom(t *te
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2876,7 +2876,7 @@ func TestMonsterMoveInDir_DoesNotUseSecretDoor(t *testing.T) {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided | mlSecret, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided | mlSecret, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2911,7 +2911,7 @@ func TestUseSpecialLineForActor_LockedManualOpenDoorCountsAsHandledButDoesNotAct
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 34, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 34, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2946,7 +2946,7 @@ func TestMonsterMoveInDir_DoesNotUseManualOpenDoor(t *testing.T) {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 31, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 31, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -2983,8 +2983,8 @@ func TestMonsterMoveInDir_TriggersWalkDoorRaise(t *testing.T) {
 				{X: 128, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 4, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
-				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int16{2, 3}},
+				{V1: 0, V2: 1, Special: 4, Flags: mlTwoSided, Tag: 7, SideNum: [2]int32{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int32{2, 3}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -3025,7 +3025,7 @@ func TestMonsterMoveInDir_DoesNotTriggerWalkStairs(t *testing.T) {
 				{X: 0, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 8, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 8, Flags: mlTwoSided, Tag: 7, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -3063,8 +3063,8 @@ func TestTickMonsterMomentum_DeadMonsterTriggersWalkPlat(t *testing.T) {
 				{X: -128, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 88, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
-				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int16{2, 3}},
+				{V1: 0, V2: 1, Special: 88, Flags: mlTwoSided, Tag: 7, SideNum: [2]int32{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int32{2, 3}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -3122,8 +3122,8 @@ func TestTickMonsterMomentum_DeadMonsterTriggersOneShotWalkPlat(t *testing.T) {
 				{X: -128, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 10, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
-				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int16{2, 3}},
+				{V1: 0, V2: 1, Special: 10, Flags: mlTwoSided, Tag: 7, SideNum: [2]int32{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int32{2, 3}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -3581,10 +3581,10 @@ func TestTickMonstersDeadMonsterStillSlidesLikeDoom(t *testing.T) {
 				{X: -128, Y: 128},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, SideNum: [2]int16{0, -1}},
-				{V1: 1, V2: 2, SideNum: [2]int16{0, -1}},
-				{V1: 2, V2: 3, SideNum: [2]int16{0, -1}},
-				{V1: 3, V2: 0, SideNum: [2]int16{0, -1}},
+				{V1: 0, V2: 1, SideNum: [2]int32{0, -1}},
+				{V1: 1, V2: 2, SideNum: [2]int32{0, -1}},
+				{V1: 2, V2: 3, SideNum: [2]int32{0, -1}},
+				{V1: 3, V2: 0, SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -3726,7 +3726,7 @@ func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedChase
 						{X: 1024, Y: 64},
 					},
 					Linedefs: []mapdata.Linedef{
-						{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+						{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int32{0, -1}},
 					},
 					Sidedefs: []mapdata.Sidedef{
 						{Sector: 0},

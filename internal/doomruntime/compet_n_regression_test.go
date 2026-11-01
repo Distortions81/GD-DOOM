@@ -718,7 +718,7 @@ func TestLongSightInterceptPreservesOriginalFixedPointOverflow(t *testing.T) {
 	}
 	g := &game{m: &mapdata.Map{
 		Vertexes:   []mapdata.Vertex{{X: -512, Y: 6080}, {X: 1408, Y: 6080}},
-		Linedefs:   []mapdata.Linedef{{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}}},
+		Linedefs:   []mapdata.Linedef{{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}}},
 		Sidedefs:   []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
 		Sectors:    []mapdata.Sector{{CeilingHeight: 256}, {CeilingHeight: 128}},
 		Segs:       []mapdata.Seg{{StartVertex: 0, EndVertex: 1, Linedef: 0}},
@@ -2016,7 +2016,7 @@ func TestMonsterSpawnPointsSurviveBinarySnapshots(t *testing.T) {
 
 func TestTaggedDoorSwitchClearsOnlyOnSuccessfulActivation(t *testing.T) {
 	g := &game{m: &mapdata.Map{
-		Linedefs: []mapdata.Linedef{{Special: 103, Tag: 7, SideNum: [2]int16{0, -1}}},
+		Linedefs: []mapdata.Linedef{{Special: 103, Tag: 7, SideNum: [2]int32{0, -1}}},
 		Sidedefs: []mapdata.Sidedef{{Sector: 0}}, Sectors: []mapdata.Sector{{Tag: 7, CeilingHeight: 128}},
 	}, lineSpecial: []uint16{103}, sectorFloor: []int64{0}, sectorCeil: []int64{128 * fracUnit},
 		doors: map[int]*doorThinker{0: {sector: 0, direction: 1}},
@@ -2191,7 +2191,7 @@ func TestDamageWakeChecksMeleeBeforeMissileRNG(t *testing.T) {
 func TestPlatCompletionPreservesHazard(t *testing.T) {
 	for _, action := range []mapdata.PlatAction{mapdata.PlatRaiseAndChange24, mapdata.PlatRaiseAndChange32, mapdata.PlatDownWaitUpStay} {
 		g := &game{m: &mapdata.Map{
-			Linedefs: []mapdata.Linedef{{Tag: 7, SideNum: [2]int16{0, -1}}},
+			Linedefs: []mapdata.Linedef{{Tag: 7, SideNum: [2]int32{0, -1}}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 1}},
 			Sectors: []mapdata.Sector{{Tag: 7, Special: 7, CeilingHeight: 128, FloorPic: "SLIME"},
 				{CeilingHeight: 128, FloorPic: "FLOOR"}},
@@ -2275,7 +2275,7 @@ func TestMeleeImpactOpensShootableDoor(t *testing.T) {
 	g := &game{m: &mapdata.Map{
 		Vertexes: []mapdata.Vertex{{X: 32, Y: -64}, {X: 32, Y: 64}},
 		Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Flags: mlTwoSided,
-			Special: 46, Tag: 7, SideNum: [2]int16{0, 1}}},
+			Special: 46, Tag: 7, SideNum: [2]int32{0, 1}}},
 		Sidedefs: []mapdata.Sidedef{{Sector: 1}, {Sector: 0}},
 		Sectors:  []mapdata.Sector{{Tag: 7}, {CeilingHeight: 128}},
 	}}
@@ -2375,8 +2375,8 @@ func TestMissilePlayerAndSolidCorpseFollowBlockmapOrder(t *testing.T) {
 
 func TestFloorLowerAndChangeInheritsModelOnCompletion(t *testing.T) {
 	g := &game{m: &mapdata.Map{
-		Linedefs: []mapdata.Linedef{{Tag: 7, SideNum: [2]int16{0, -1}},
-			{Flags: mlTwoSided, SideNum: [2]int16{1, 2}}},
+		Linedefs: []mapdata.Linedef{{Tag: 7, SideNum: [2]int32{0, -1}},
+			{Flags: mlTwoSided, SideNum: [2]int32{1, 2}}},
 		Sidedefs: []mapdata.Sidedef{{Sector: 2}, {Sector: 0}, {Sector: 1}},
 		Sectors: []mapdata.Sector{{Tag: 7, CeilingHeight: 128, FloorPic: "FLOOR"},
 			{FloorHeight: -24, CeilingHeight: 128, FloorPic: "SLIME", Special: 7},
@@ -2399,7 +2399,7 @@ func TestFloorLowerAndChangeInheritsModelOnCompletion(t *testing.T) {
 
 func TestFloorRaise24AndChangeCopiesSpecialImmediately(t *testing.T) {
 	g := &game{m: &mapdata.Map{
-		Linedefs: []mapdata.Linedef{{Tag: 7, SideNum: [2]int16{0, -1}}},
+		Linedefs: []mapdata.Linedef{{Tag: 7, SideNum: [2]int32{0, -1}}},
 		Sidedefs: []mapdata.Sidedef{{Sector: 1}},
 		Sectors: []mapdata.Sector{{Tag: 7, CeilingHeight: 128, FloorPic: "FLOOR"},
 			{CeilingHeight: 128, FloorPic: "SECRET", Special: 9}},

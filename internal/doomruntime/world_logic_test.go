@@ -659,7 +659,7 @@ func TestSectorLightGlow_TicksBetweenMinAndMax(t *testing.T) {
 				{Light: 160, Special: 8},
 				{Light: 96},
 			},
-			Linedefs: []mapdata.Linedef{{SideNum: [2]int16{0, 1}}},
+			Linedefs: []mapdata.Linedef{{SideNum: [2]int32{0, 1}}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
 		},
 	}

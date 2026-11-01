@@ -138,12 +138,12 @@ func (s classicWallSampler) sample(x int, depth, u float64) (float64, float64) {
 
 func (s planeRowRenderState) textureStart(x int) (int64, int64) {
 	if s.classicProjection == nil {
-		return s.rowBaseWXFixed + int64(x)*s.stepWXFixed, s.rowBaseWYFixed + int64(x)*s.stepWYFixed
+		return s.rowBaseWXFixed + int64(x)*s.stepWXFixed + s.textureOffsetX, s.rowBaseWYFixed + int64(x)*s.stepWYFixed + s.textureOffsetY
 	}
 	// fixed_t wraps to signed 32 bits before the subsequent trig multiply.
 	length := int64(int32(fixedMul(s.classicDistance, s.classicProjection.distanceScale[x])))
 	angle := s.classicAngle + s.classicProjection.angles[x]
-	return int64(int32(s.classicViewX + fixedMul(doomFineCosine(angle), length))), int64(int32(-s.classicViewY - fixedMul(doomFineSineAtAngle(angle), length)))
+	return int64(int32(s.classicViewX + fixedMul(doomFineCosine(angle), length) + s.textureOffsetX)), int64(int32(-s.classicViewY - fixedMul(doomFineSineAtAngle(angle), length) + s.textureOffsetY))
 }
 
 // R_AddLine uses quantized angles and a half-open horizontal range. Expanding

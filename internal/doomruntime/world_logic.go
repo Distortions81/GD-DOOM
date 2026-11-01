@@ -2,9 +2,10 @@ package doomruntime
 
 import (
 	"fmt"
-)
 
-import "gddoom/internal/doomrand"
+	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
+)
 
 type sectorLightEffectKind uint8
 
@@ -54,32 +55,36 @@ func (g *game) initSectorLightEffects() {
 	g.sectorLightFx = make([]sectorLightEffect, len(g.m.Sectors))
 	for sec := range g.m.Sectors {
 		special := g.m.Sectors[sec].Special
-		switch special {
+		switch special & mapdata.SectorTypeMask {
 		case 1:
 			g.spawnSectorLightFlash(sec)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		case 2:
 			g.spawnSectorStrobeFlash(sec, sectorLightFastDark, false)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		case 3:
 			g.spawnSectorStrobeFlash(sec, sectorLightSlowDark, false)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		case 4:
 			g.spawnSectorStrobeFlash(sec, sectorLightFastDark, false)
 			// Doom keeps special 4 as damaging strobe slime.
-			g.m.Sectors[sec].Special = 4
+			if special < 32 {
+				g.m.Sectors[sec].Special = 4
+			} else {
+				g.m.Sectors[sec].Special = special&^mapdata.SectorTypeMask | mapdata.SectorDamageMask
+			}
 		case 8:
 			g.spawnSectorGlow(sec)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		case 12:
 			g.spawnSectorStrobeFlash(sec, sectorLightSlowDark, true)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		case 13:
 			g.spawnSectorStrobeFlash(sec, sectorLightFastDark, true)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		case 17:
 			g.spawnSectorFireFlicker(sec)
-			g.m.Sectors[sec].Special = 0
+			g.m.Sectors[sec].Special = special &^ mapdata.SectorTypeMask
 		}
 	}
 }
@@ -350,12 +355,12 @@ func (g *game) trackSecrets() {
 	if g.p.z != sectorFloor {
 		return
 	}
-	if g.m.Sectors[sec].Special != 9 || g.secretFound[sec] {
+	if !mapdata.SectorIsSecret(g.m.Sectors[sec].Special) || g.secretFound[sec] {
 		return
 	}
 	g.secretFound[sec] = true
 	g.secretsFound++
-	g.m.Sectors[sec].Special = 0
+	g.m.Sectors[sec].Special = mapdata.ClearSectorSecret(g.m.Sectors[sec].Special)
 }
 
 func (g *game) applySectorHazardDamage() {
@@ -393,6 +398,19 @@ func (g *game) applySectorHazardDamage() {
 }
 
 func hazardDamage(special int16, hasSuit bool) int {
+	if special >= 32 {
+		// Boom damage is independent of the low five lighting/type bits.
+		switch special & mapdata.SectorDamageMask {
+		case 0x20:
+			special = 7
+		case 0x40:
+			special = 5
+		case 0x60:
+			special = 16
+		default:
+			return 0
+		}
+	}
 	switch special {
 	case 7:
 		if !hasSuit {

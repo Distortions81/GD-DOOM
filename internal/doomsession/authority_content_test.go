@@ -35,7 +35,7 @@ func TestSessionContentReplacementClosesOldOwnerAndInstallsFreshRuntime(t *testi
 		Sidedefs: []mapdata.Sidedef{{Sector: 0}}, Sectors: []mapdata.Sector{{CeilingHeight: 128}},
 		SubSectors: []mapdata.SubSector{{SegCount: 4}}}
 	for i := range 4 {
-		newMap.Linedefs = append(newMap.Linedefs, mapdata.Linedef{V1: uint16(i), V2: uint16((i + 1) % 4), Flags: 1, SideNum: [2]int16{0, -1}})
+		newMap.Linedefs = append(newMap.Linedefs, mapdata.Linedef{V1: uint16(i), V2: uint16((i + 1) % 4), Flags: 1, SideNum: [2]int32{0, -1}})
 		newMap.Segs = append(newMap.Segs, mapdata.Seg{StartVertex: uint16(i), EndVertex: uint16((i + 1) % 4), Linedef: uint16(i)})
 	}
 	var oldCloses, newCloses atomic.Int32

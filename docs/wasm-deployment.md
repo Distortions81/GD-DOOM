@@ -26,8 +26,8 @@ frame at 35 Hz and uses current tick state without interpolation or prediction
 smoothing. Game-speed controls are limited to single-player Source Port play.
 
 Multiplayer uses GDMP protocol version 3 with binary roster updates and the
-binary-only `gd-doom-authority-dev-3` simulation. The simulation revision adds
-vanilla repeatable fast floor raises used by Freedoom. Update `gdserver`,
+binary-only `gd-doom-authority-dev-5` simulation. The simulation revision adds
+Boom generalized floors/doors and static conveyor physics. Update `gdserver`,
 `gdlobby`, the deployment probe and browser assets together, and restart the lobby to replace existing room workers.
 The v0.1.8 presentation release also changes the authoritative snapshot schema
 to retain weapon poses and skull-key variants. All clients and room workers must

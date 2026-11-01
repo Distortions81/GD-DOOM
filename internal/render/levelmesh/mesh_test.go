@@ -10,7 +10,7 @@ import (
 func portalMap() *mapdata.Map {
 	return &mapdata.Map{
 		Vertexes: []mapdata.Vertex{{X: 0, Y: 0}, {X: 64, Y: 0}},
-		Linedefs: []mapdata.Linedef{{V2: 1, Flags: 4, SideNum: [2]int16{0, 1}}},
+		Linedefs: []mapdata.Linedef{{V2: 1, Flags: 4, SideNum: [2]int32{0, 1}}},
 		Sidedefs: []mapdata.Sidedef{{Sector: 0, TextureOffset: 7, RowOffset: 3, Top: "TOP", Bottom: "BOT", Mid: "FENCE"}, {Sector: 1, Top: "-", Bottom: "-", Mid: "-"}},
 		Sectors:  []mapdata.Sector{{FloorPic: "FLOOR", CeilingPic: "CEIL"}, {FloorPic: "FLOOR", CeilingPic: "CEIL"}},
 	}

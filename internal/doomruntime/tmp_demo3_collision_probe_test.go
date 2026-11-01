@@ -31,7 +31,7 @@ func TestTmpDemo3WestMoveTouchedLines(t *testing.T) {
 	}
 }
 
-func secForSideProbe(m *mapdata.Map, side int16) int {
+func secForSideProbe(m *mapdata.Map, side int32) int {
 	if side < 0 || int(side) >= len(m.Sidedefs) {
 		return -1
 	}

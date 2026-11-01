@@ -34,7 +34,9 @@ const (
 )
 
 type LineSpecialInfo struct {
-	Special  uint16
+	Special uint16
+	// Boom marks extended actions whose W1 triggers clear only on success.
+	Boom     bool
 	Name     string
 	Trigger  TriggerType
 	Repeat   bool
@@ -51,9 +53,15 @@ type LineSpecialInfo struct {
 }
 
 type DoorInfo struct {
-	Action  DoorAction
-	Key     KeyType
-	UsesTag bool
+	Action      DoorAction
+	Key         KeyType
+	UsesTag     bool
+	Generalized *GeneralizedDoorInfo
+}
+
+type GeneralizedDoorInfo struct {
+	Speed, Delay, Kind uint8
+	Monsters           bool
 }
 
 type FloorAction string
@@ -71,11 +79,21 @@ const (
 	FloorTurboLower       FloorAction = "turbo_lower"
 	FloorRaiseTurbo       FloorAction = "raise_turbo"
 	FloorRaise512         FloorAction = "raise_512"
+	FloorGeneralized      FloorAction = "generalized"
 )
 
 type FloorInfo struct {
-	Action  FloorAction
-	UsesTag bool
+	Action      FloorAction
+	UsesTag     bool
+	Generalized *GeneralizedFloorInfo
+}
+
+// GeneralizedFloorInfo is the Boom 0x6000..0x7fff parameter layout.
+type GeneralizedFloorInfo struct {
+	Speed                             uint8
+	Target                            uint8
+	Change                            uint8
+	Up, NumericModel, Crush, Monsters bool
 }
 
 type PlatAction string
@@ -348,6 +366,28 @@ var donutSpecials = map[uint16]LineSpecialInfo{
 }
 
 func LookupLineSpecial(special uint16) LineSpecialInfo {
+	if special >= 0x3c00 && special <= 0x3fff {
+		v := special - 0x3c00
+		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
+		gen := &GeneralizedDoorInfo{Speed: uint8(v>>3) & 3, Delay: uint8(v>>8) & 3, Kind: uint8(v>>5) & 3, Monsters: v&128 != 0}
+		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized door", Trigger: trigger, Repeat: v&1 != 0, Door: &DoorInfo{Action: [...]DoorAction{DoorRaise, DoorOpen, DoorClose30ThenOpen, DoorClose}[gen.Kind], Key: KeyNone, UsesTag: trigger != TriggerManual, Generalized: gen}}
+	}
+	if special >= 0x6000 && special <= 0x7fff {
+		v := special - 0x6000
+		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
+		gen := &GeneralizedFloorInfo{Speed: uint8(v>>3) & 3, Target: uint8(v>>7) & 7, Change: uint8(v>>10) & 3, Up: v&64 != 0, NumericModel: v&32 != 0, Crush: v&4096 != 0}
+		gen.Monsters = gen.Change == 0 && gen.NumericModel
+		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized floor", Trigger: trigger, Repeat: v&1 != 0, Floor: &FloorInfo{Action: FloorGeneralized, UsesTag: trigger != TriggerManual, Generalized: gen}}
+	}
+	if alias, ok := boomLineAliases[special]; ok {
+		info := LookupLineSpecial(alias.base)
+		info.Special = special
+		info.Boom = true
+		info.Name = fmt.Sprintf("Boom extended %d", special)
+		info.Trigger = alias.trigger
+		info.Repeat = alias.repeat
+		return info
+	}
 	if info, ok := doorSpecials[special]; ok {
 		return info
 	}

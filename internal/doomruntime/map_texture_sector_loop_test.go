@@ -21,10 +21,10 @@ func TestBuildSectorLoopSets_SimpleSquare(t *testing.T) {
 			{Sector: 0},
 		},
 		Linedefs: []mapdata.Linedef{
-			{V1: 0, V2: 1, SideNum: [2]int16{0, -1}},
-			{V1: 1, V2: 2, SideNum: [2]int16{0, -1}},
-			{V1: 2, V2: 3, SideNum: [2]int16{0, -1}},
-			{V1: 3, V2: 0, SideNum: [2]int16{0, -1}},
+			{V1: 0, V2: 1, SideNum: [2]int32{0, -1}},
+			{V1: 1, V2: 2, SideNum: [2]int32{0, -1}},
+			{V1: 2, V2: 3, SideNum: [2]int32{0, -1}},
+			{V1: 3, V2: 0, SideNum: [2]int32{0, -1}},
 		},
 	}
 	g := &game{m: m}
@@ -67,15 +67,15 @@ func TestBuildSectorLoopSets_HoleEvenOdd(t *testing.T) {
 		},
 		Linedefs: []mapdata.Linedef{
 			// outer one-sided lines for sector 0
-			{V1: 0, V2: 1, SideNum: [2]int16{0, -1}},
-			{V1: 1, V2: 2, SideNum: [2]int16{0, -1}},
-			{V1: 2, V2: 3, SideNum: [2]int16{0, -1}},
-			{V1: 3, V2: 0, SideNum: [2]int16{0, -1}},
+			{V1: 0, V2: 1, SideNum: [2]int32{0, -1}},
+			{V1: 1, V2: 2, SideNum: [2]int32{0, -1}},
+			{V1: 2, V2: 3, SideNum: [2]int32{0, -1}},
+			{V1: 3, V2: 0, SideNum: [2]int32{0, -1}},
 			// inner two-sided lines; sector 0 is on back side
-			{V1: 4, V2: 5, SideNum: [2]int16{1, 2}},
-			{V1: 5, V2: 6, SideNum: [2]int16{1, 2}},
-			{V1: 6, V2: 7, SideNum: [2]int16{1, 2}},
-			{V1: 7, V2: 4, SideNum: [2]int16{1, 2}},
+			{V1: 4, V2: 5, SideNum: [2]int32{1, 2}},
+			{V1: 5, V2: 6, SideNum: [2]int32{1, 2}},
+			{V1: 6, V2: 7, SideNum: [2]int32{1, 2}},
+			{V1: 7, V2: 4, SideNum: [2]int32{1, 2}},
 		},
 	}
 	g := &game{m: m}

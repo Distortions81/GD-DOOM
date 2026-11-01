@@ -10,6 +10,41 @@ import (
 	"gddoom/internal/wad"
 )
 
+func TestDecodeLinedefsPreservesUnsignedSideIndices(t *testing.T) {
+	indices := []uint16{0, 32767, 32768, 65534, 65535}
+	data := make([]byte, 14*len(indices))
+	for i, index := range indices {
+		binary.LittleEndian.PutUint16(data[14*i+10:], index)
+		binary.LittleEndian.PutUint16(data[14*i+12:], 65535)
+	}
+	f, err := wad.OpenData("unsigned-sides.wad", buildTestWAD(t, []wadLumpData{{name: "LINEDEFS", data: data}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lump, _ := f.LumpByName("LINEDEFS")
+	lines, err := decodeLinedefs(f, lump)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, index := range indices {
+		want := int32(index)
+		if index == 65535 {
+			want = -1
+		}
+		if lines[i].SideNum != [2]int32{want, -1} {
+			t.Fatalf("raw index %d decoded as %v", index, lines[i].SideNum)
+		}
+	}
+	m := &Map{Vertexes: []Vertex{{}}, Linedefs: lines, Sidedefs: make([]Sidedef, 65535), Sectors: []Sector{{}}}
+	if err := Validate(m); err != nil {
+		t.Fatalf("valid unsigned indices rejected: %v", err)
+	}
+	m.Linedefs[0].SideNum[0] = -2
+	if err := Validate(m); err == nil {
+		t.Fatal("invalid negative side accepted")
+	}
+}
+
 func TestFirstMapNameSkipsInvalidMarkerBundle(t *testing.T) {
 	f := &wad.File{Lumps: []wad.Lump{
 		{Name: "E1M1"},

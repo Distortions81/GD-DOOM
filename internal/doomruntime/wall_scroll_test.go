@@ -12,4 +12,7 @@ func TestWallSpecialScrollXOffset(t *testing.T) {
 	if got := wallSpecialScrollXOffset(48, 35); got != 35 {
 		t.Fatalf("special 48 at tic 35 scroll=%v want=35", got)
 	}
+	if got := wallSpecialScrollXOffset(85, 35); got != -35 {
+		t.Fatalf("Boom special 85 at tic 35 scroll=%v want=-35", got)
+	}
 }

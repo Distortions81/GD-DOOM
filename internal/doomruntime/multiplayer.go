@@ -99,14 +99,18 @@ func playerSlotFromThingType(typ int16) int {
 }
 
 func chooseSpawnStart(starts []playerStart, requestedSlot int) (playerStart, bool) {
+	// P_SpawnMapThing replaces playerstarts[slot] as it walks THINGS. The last
+	// matching start owns the player; earlier duplicates can be voodoo dolls.
 	if requestedSlot >= 1 && requestedSlot <= 4 {
-		for _, s := range starts {
+		for i := len(starts) - 1; i >= 0; i-- {
+			s := starts[i]
 			if s.slot == requestedSlot {
 				return s, true
 			}
 		}
 	}
-	for _, s := range starts {
+	for i := len(starts) - 1; i >= 0; i-- {
+		s := starts[i]
 		if s.slot == 1 {
 			return s, true
 		}

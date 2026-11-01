@@ -192,7 +192,7 @@ func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{Special: 88, Tag: 7, SideNum: [2]int16{0, 1}},
+				{Special: 88, Tag: 7, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -259,7 +259,7 @@ func TestCheckWalkSpecialLines_PlayerTriggersBlazePlatWhenRadiusTouchesLineExten
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{Special: 120, Tag: 2, SideNum: [2]int16{0, 1}},
+				{Special: 120, Tag: 2, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -318,7 +318,7 @@ func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{SideNum: [2]int16{0, 1}},
+				{SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -449,7 +449,7 @@ func TestTeleportDestinationDoesNotEnterBlockmapOrHeightClipLikeDoom(t *testing.
 func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Linedefs: []mapdata.Linedef{{Special: 1, SideNum: [2]int16{0, 1}}},
+			Linedefs: []mapdata.Linedef{{Special: 1, SideNum: [2]int32{0, 1}}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},
@@ -516,9 +516,9 @@ func TestUseSpecialLine_ClearsStalePlatTickLatchBeforeActivation(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{Special: 20, Tag: 7, SideNum: [2]int16{0, 1}},
-				{SideNum: [2]int16{2, 3}},
-				{SideNum: [2]int16{3, 4}},
+				{Special: 20, Tag: 7, SideNum: [2]int32{0, 1}},
+				{SideNum: [2]int32{2, 3}},
+				{SideNum: [2]int32{3, 4}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 3},
@@ -567,7 +567,7 @@ func TestUseSpecialLine_ReusesDoorThinkerCountdownOnRespawn(t *testing.T) {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -614,7 +614,7 @@ func TestUseSpecialLine_ReusesDoorThinkerCountdownOnRespawn(t *testing.T) {
 func TestActivatePlatRaiseToNearestAndChangeClearsSectorDamageImmediately(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Linedefs: []mapdata.Linedef{{Special: 62, Tag: 7, SideNum: [2]int16{0, -1}}},
+			Linedefs: []mapdata.Linedef{{Special: 62, Tag: 7, SideNum: [2]int32{0, -1}}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 1}},
 			Sectors: []mapdata.Sector{
 				{Tag: 7, FloorHeight: 0, CeilingHeight: 128, Special: 7},
@@ -1120,7 +1120,7 @@ func TestCheckWalkSpecialLines_PlayerPreservesMonsterOnlyTeleport(t *testing.T) 
 			m: &mapdata.Map{
 				Things:   []mapdata.Thing{{Type: 3003, X: 8}},
 				Vertexes: []mapdata.Vertex{{X: 0, Y: 64}, {X: 0, Y: -64}},
-				Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Special: special, Tag: 7, Flags: mlTwoSided, SideNum: [2]int16{0, 0}}},
+				Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Special: special, Tag: 7, Flags: mlTwoSided, SideNum: [2]int32{0, 0}}},
 				Sidedefs: []mapdata.Sidedef{{Sector: 0}},
 				Sectors:  []mapdata.Sector{{CeilingHeight: 128, Tag: 7}},
 			},
@@ -1654,7 +1654,7 @@ func TestUseSpecialLine_ActivatesCeilingSpecial(t *testing.T) {
 func TestUseSpecialLine_ButtonLightTurnOffUsesMinNeighbor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Linedefs: []mapdata.Linedef{{Special: 139, Tag: 7, SideNum: [2]int16{0, 1}}, {SideNum: [2]int16{2, 3}}},
+			Linedefs: []mapdata.Linedef{{Special: 139, Tag: 7, SideNum: [2]int32{0, 1}}, {SideNum: [2]int32{2, 3}}},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0}, {Sector: 1},
 				{Sector: 0}, {Sector: 2},
@@ -1698,8 +1698,8 @@ func TestActivateStairsLine_DoesNotLoopBetweenAdjacentSectors(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{Special: 8, Tag: 7, SideNum: [2]int16{0, -1}},
-				{SideNum: [2]int16{1, 2}},
+				{Special: 8, Tag: 7, SideNum: [2]int32{0, -1}},
+				{SideNum: [2]int32{1, 2}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},
@@ -1734,8 +1734,8 @@ func TestActivateStairsLine_OnlyTraversesFrontToBack(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{Special: 8, Tag: 7, SideNum: [2]int16{0, -1}},
-				{SideNum: [2]int16{1, 2}},
+				{Special: 8, Tag: 7, SideNum: [2]int32{0, -1}},
+				{SideNum: [2]int32{1, 2}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},

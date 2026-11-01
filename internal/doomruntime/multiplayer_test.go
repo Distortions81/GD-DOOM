@@ -48,6 +48,16 @@ func TestChooseSpawnStartFallbackToSlot1(t *testing.T) {
 	}
 }
 
+func TestChooseSpawnStartUsesLastMatchingThing(t *testing.T) {
+	starts := []playerStart{{slot: 1, index: 0}, {slot: 2, index: 1}, {slot: 1, index: 2}, {slot: 2, index: 3}}
+	for _, tc := range []struct{ slot, want int }{{1, 2}, {2, 3}, {4, 2}, {0, 2}} {
+		got, ok := chooseSpawnStart(starts, tc.slot)
+		if !ok || got.index != tc.want {
+			t.Fatalf("slot %d chose thing %d, want %d", tc.slot, got.index, tc.want)
+		}
+	}
+}
+
 func TestNonLocalStarts(t *testing.T) {
 	starts := []playerStart{
 		{slot: 1},

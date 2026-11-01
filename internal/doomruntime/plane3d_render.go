@@ -15,6 +15,7 @@ type planeTexStepper struct {
 }
 
 type planeRowRenderState struct {
+	textureOffsetX, textureOffsetY              int64
 	classicProjection                           *classicProjection
 	classicAngle                                uint32
 	classicDistance, classicViewX, classicViewY int64
@@ -343,6 +344,7 @@ func (g *game) planeRowRenderState(y int, key plane3DKey, eyeZ, camX, camY, ca, 
 	rowBaseWX := camX + depth*ca - ((cx-0.5)*depth/focal)*sa
 	rowBaseWY := camY + depth*sa + ((cx-0.5)*depth/focal)*ca
 	state := planeRowRenderState{
+		textureOffsetX: key.offsetX, textureOffsetY: key.offsetY,
 		depth:          depth,
 		depthQ:         depthQ,
 		rowBaseWXFixed: floorFixed(rowBaseWX),

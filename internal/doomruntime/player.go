@@ -94,8 +94,8 @@ type physLine struct {
 	flags    uint16
 	special  uint16
 	tag      uint16
-	sideNum0 int16
-	sideNum1 int16
+	sideNum0 int32
+	sideNum1 int32
 }
 
 type intercept struct {
@@ -114,6 +114,7 @@ const (
 	doorBlazeClose
 	doorOpen
 	doorRaiseIn5Mins
+	doorGenCloseWaitOpen
 )
 
 type doorThinker struct {
@@ -185,7 +186,8 @@ func (g *game) initTimedDoorSpecials() {
 		if g.doors[sec] != nil {
 			continue
 		}
-		switch g.m.Sectors[sec].Special {
+		special := g.m.Sectors[sec].Special
+		switch special & mapdata.SectorTypeMask {
 		case 10: // Door closes after 30 seconds.
 			d := g.allocDoorThinker(sec)
 			d.typ = doorNormal

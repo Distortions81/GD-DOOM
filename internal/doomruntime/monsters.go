@@ -666,6 +666,10 @@ func (g *game) tickMonsters() {
 }
 
 func (g *game) tickThingThinker(i int, th mapdata.Thing) {
+	if isVoodooDollType(th.Type) || (!isMonster(th.Type) && !isBarrelThingType(th.Type) && th.Type != 88 && th.Type != 89 && th.Type != 23) {
+		g.tickMonsterMomentum(i, th)
+		return
+	}
 	if state := g.authoritativeMonsterPlayer(i); state != nil && state.localSlot != g.localSlot {
 		g.withAuthoritativePlayer(state, func() { g.tickThingThinker(i, th) })
 		return
@@ -5403,7 +5407,7 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) (result monsterMov
 			return result
 		}
 	}
-	tmfloor, tmceil, tmdrop, checkPosOK := g.checkPositionForActor(x, y, g.thingCurrentRadius(i, g.m.Things[i]), true, i, true)
+	tmfloor, tmceil, tmdrop, checkPosOK := g.checkPositionForActorWithPickupTouch(x, y, g.thingCurrentRadius(i, g.m.Things[i]), !isVoodooDollType(typ), i, true, false, isVoodooDollType(typ))
 	probeLines := make([]int, 0)
 	if base := g.probeSpecialLinesForMover(i); len(base) > 0 {
 		probeLines = append(probeLines, base...)
@@ -5428,7 +5432,7 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) (result monsterMov
 	if tmfloor-z > stepHeight {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
-	if !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
+	if !isVoodooDollType(typ) && !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
 	return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK, ok: true}
@@ -5682,6 +5686,9 @@ func (g *game) thingCanDropOff(i int, typ int16) bool {
 }
 
 func monsterRadius(typ int16) int64 {
+	if isVoodooDollType(typ) {
+		return playerRadius
+	}
 	switch typ {
 	case 3004, 9, 65, 84, 3001, 64, 66:
 		return 20 * fracUnit

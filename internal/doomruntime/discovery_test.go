@@ -55,11 +55,11 @@ func testMapChain() *mapdata.Map {
 		},
 		Linedefs: []mapdata.Linedef{
 			// sector 0 <-> sector 1 portal
-			{SideNum: [2]int16{0, 1}},
+			{SideNum: [2]int32{0, 1}},
 			// sector 1 <-> sector 2 portal
-			{SideNum: [2]int16{1, 2}},
+			{SideNum: [2]int32{1, 2}},
 			// one-sided wall in sector 0
-			{SideNum: [2]int16{0, -1}},
+			{SideNum: [2]int32{0, -1}},
 		},
 	}
 }

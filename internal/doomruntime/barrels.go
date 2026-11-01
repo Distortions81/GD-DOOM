@@ -31,7 +31,7 @@ func isBarrelThingType(typ int16) bool {
 }
 
 func thingTypeIsShootable(typ int16) bool {
-	return isMonster(typ) || isBarrelThingType(typ) || typ == 88
+	return isVoodooDollType(typ) || isMonster(typ) || isBarrelThingType(typ) || typ == 88
 }
 
 func thingTypeNoBlood(typ int16) bool {
@@ -227,6 +227,8 @@ func (g *game) damageShootableThingFromWithInflictorZ(thingIdx int, damage int, 
 	}
 	typ := g.m.Things[thingIdx].Type
 	switch {
+	case isVoodooDollType(typ):
+		g.damageVoodooDoll(thingIdx, damage, inflictorX, inflictorY, inflictorZ, hasInflictor, sourceThing)
 	case typ == 88:
 		g.damageBossBrain(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 	case isMonster(typ):

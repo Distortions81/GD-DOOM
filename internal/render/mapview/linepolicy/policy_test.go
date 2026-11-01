@@ -95,7 +95,7 @@ func TestParityDecisionAllMapStillHidesNeverSee(t *testing.T) {
 }
 
 func TestParityDecisionIDDTRevealsNoHeightDiff(t *testing.T) {
-	ld := mapdata.Linedef{Flags: 0, SideNum: [2]int16{0, 1}}
+	ld := mapdata.Linedef{Flags: 0, SideNum: [2]int32{0, 1}}
 	front := &mapdata.Sector{FloorHeight: 0, CeilingHeight: 128}
 	back := &mapdata.Sector{FloorHeight: 0, CeilingHeight: 128}
 	d := ParityDecision(ld, front, back, State{Reveal: RevealNormal, IDDT: 1})
@@ -111,7 +111,7 @@ func TestParityDecisionIDDTRevealsNoHeightDiff(t *testing.T) {
 }
 
 func TestParityDecisionSecretActsAsNormalWallWithoutCheat(t *testing.T) {
-	ld := mapdata.Linedef{Flags: mlMapped | mlSecret, SideNum: [2]int16{0, 1}}
+	ld := mapdata.Linedef{Flags: mlMapped | mlSecret, SideNum: [2]int32{0, 1}}
 	front := &mapdata.Sector{FloorHeight: 0, CeilingHeight: 128}
 	back := &mapdata.Sector{FloorHeight: 0, CeilingHeight: 128}
 	d := ParityDecision(ld, front, back, State{Reveal: RevealNormal, IDDT: 0})
@@ -127,7 +127,7 @@ func TestParityDecisionSecretActsAsNormalWallWithoutCheat(t *testing.T) {
 }
 
 func TestParityDecisionTeleporterStyle(t *testing.T) {
-	ld := mapdata.Linedef{Flags: mlMapped, Special: 39, SideNum: [2]int16{0, 1}}
+	ld := mapdata.Linedef{Flags: mlMapped, Special: 39, SideNum: [2]int32{0, 1}}
 	front := &mapdata.Sector{FloorHeight: 0, CeilingHeight: 128}
 	back := &mapdata.Sector{FloorHeight: 0, CeilingHeight: 128}
 	d := ParityDecision(ld, front, back, State{Reveal: RevealNormal, IDDT: 0})

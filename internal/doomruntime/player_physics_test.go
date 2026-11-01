@@ -74,7 +74,7 @@ func TestTryMoveWithPickupProbe_NoClipCrossesBlockingLine(t *testing.T) {
 		noClip: true,
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{Flags: mlBlocking, SideNum: [2]int16{0, 1}},
+				{Flags: mlBlocking, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 0},

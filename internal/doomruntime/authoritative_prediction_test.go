@@ -21,7 +21,7 @@ func predictionTestMap() *mapdata.Map {
 		SubSectors: []mapdata.SubSector{{SegCount: 4}},
 	}
 	for i := range 4 {
-		m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: uint16(i), V2: uint16((i + 1) % 4), Flags: mlBlocking, SideNum: [2]int16{0, -1}})
+		m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: uint16(i), V2: uint16((i + 1) % 4), Flags: mlBlocking, SideNum: [2]int32{0, -1}})
 		m.Segs = append(m.Segs, mapdata.Seg{StartVertex: uint16(i), EndVertex: uint16((i + 1) % 4), Linedef: uint16(i)})
 	}
 	return m
@@ -201,7 +201,7 @@ func TestPredictionDoesNotReplayWorldEffectsOrRNG(t *testing.T) {
 	m.Things = append(m.Things, mapdata.Thing{X: 12, Type: 2014, Flags: skillMediumBits})
 	// A walk-over exit inside the room must remain server-owned.
 	m.Vertexes = append(m.Vertexes, mapdata.Vertex{X: 16, Y: 64}, mapdata.Vertex{X: 16, Y: -64})
-	m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: 4, V2: 5, Flags: mlTwoSided, Special: 52, SideNum: [2]int16{0, 0}})
+	m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: 4, V2: 5, Flags: mlTwoSided, Special: 52, SideNum: [2]int32{0, 0}})
 	g := newGame(m, Options{Headless: true, SkillLevel: 3, NoMonsters: true, PlayerSlot: 1})
 	g.stats.Health = 90
 	before, playBefore := doomrand.State()
@@ -232,7 +232,7 @@ func TestAuthoritativeTeleportEpochSurvivesLaterTics(t *testing.T) {
 	m.Things = append(m.Things, mapdata.Thing{X: 64, Y: 64, Type: teleportThingType, Flags: skillMediumBits})
 	m.Sectors[0].Tag = 7
 	m.Vertexes = append(m.Vertexes, mapdata.Vertex{X: 16, Y: 64}, mapdata.Vertex{X: 16, Y: -64})
-	m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: 4, V2: 5, Flags: mlTwoSided, Special: 97, Tag: 7, SideNum: [2]int16{0, 0}})
+	m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: 4, V2: 5, Flags: mlTwoSided, Special: 97, Tag: 7, SideNum: [2]int32{0, 0}})
 	g := newGame(m, Options{Headless: true, SkillLevel: 3, NoMonsters: true, PlayerSlot: 1})
 	g.authorityRules = &authorityRulesState{}
 	if !g.activateTeleportLine(4, 0, mapdata.TeleportInfo{UsesTag: true}, -1, true) {

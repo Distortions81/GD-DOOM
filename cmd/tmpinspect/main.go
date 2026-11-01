@@ -8,7 +8,7 @@ import (
 	"log"
 )
 
-func secForSide(m *mapdata.Map, side int16) int {
+func secForSide(m *mapdata.Map, side int32) int {
 	if side < 0 || int(side) >= len(m.Sidedefs) {
 		return -1
 	}

@@ -17,7 +17,7 @@ func TestLinedefDecisionUsesParityState(t *testing.T) {
 	}
 	ld := mapdata.Linedef{
 		Flags:   0, // not mapped
-		SideNum: [2]int16{0, -1},
+		SideNum: [2]int32{0, -1},
 	}
 
 	d := g.linedefDecision(ld)
@@ -42,7 +42,7 @@ func TestLinedefDecisionPseudo3DIgnoresMappedGate(t *testing.T) {
 	}
 	ld := mapdata.Linedef{
 		Flags:   0, // not mapped
-		SideNum: [2]int16{0, -1},
+		SideNum: [2]int32{0, -1},
 	}
 	d := g.linedefDecisionPseudo3D(ld)
 	if !d.Visible {
@@ -69,7 +69,7 @@ func TestLinedefDecisionPseudo3DIgnoresIDDTState(t *testing.T) {
 	}
 	ld := mapdata.Linedef{
 		Flags:   lineNeverSee,
-		SideNum: [2]int16{0, 1},
+		SideNum: [2]int32{0, 1},
 	}
 
 	withNoIDDT := g.linedefDecisionPseudo3D(ld)
@@ -100,7 +100,7 @@ func TestVisibleSegIndicesPseudo3D_KeepsLightOnlyPortalSplitter(t *testing.T) {
 				{Sector: 1},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, SideNum: [2]int32{0, 1}},
 			},
 			Vertexes: []mapdata.Vertex{
 				{X: -32, Y: 16},

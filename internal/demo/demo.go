@@ -1,6 +1,7 @@
 package demo
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -9,10 +10,12 @@ import (
 )
 
 const (
-	Version109 = 109
-	Version110 = 110
-	Marker     = 0x80
-	HeaderSize = 13
+	Version109     = 109
+	Version110     = 110
+	VersionBoom201 = 201
+	VersionBoom202 = 202
+	Marker         = 0x80
+	HeaderSize     = 13
 )
 
 const (
@@ -32,16 +35,18 @@ type Tic struct {
 }
 
 type Header struct {
-	Version       byte
-	Skill         byte
-	Episode       byte
-	Map           byte
-	Deathmatch    bool
-	Respawn       bool
-	Fast          bool
-	NoMonsters    bool
-	ConsolePlayer byte
-	PlayerInGame  [4]bool
+	Version           byte
+	Skill             byte
+	Episode           byte
+	Map               byte
+	Deathmatch        bool
+	Respawn           bool
+	Fast              bool
+	NoMonsters        bool
+	ConsolePlayer     byte
+	PlayerInGame      [4]bool
+	BoomCompatibility bool
+	BoomOptions       [64]byte
 }
 
 type Script struct {
@@ -75,29 +80,59 @@ func Parse(data []byte) (*Script, error) {
 	if len(data) < HeaderSize+1 {
 		return nil, fmt.Errorf("demo too short")
 	}
-	h := Header{
-		Version:       data[0],
-		Skill:         data[1],
-		Episode:       data[2],
-		Map:           data[3],
-		Deathmatch:    data[4] != 0,
-		Respawn:       data[5] != 0,
-		Fast:          data[6] != 0,
-		NoMonsters:    data[7] != 0,
-		ConsolePlayer: data[8],
-		PlayerInGame: [4]bool{
-			data[9] != 0,
-			data[10] != 0,
-			data[11] != 0,
-			data[12] != 0,
-		},
+	headerSize := HeaderSize
+	var h Header
+	if data[0] == VersionBoom201 || data[0] == VersionBoom202 {
+		headerSize = 109
+		if len(data) < headerSize+1 {
+			return nil, fmt.Errorf("truncated Boom demo header")
+		}
+		if !bytes.Equal(data[1:7], []byte{0x1d, 'B', 'o', 'o', 'm', 0xe6}) {
+			return nil, fmt.Errorf("invalid Boom demo signature")
+		}
+		h = Header{Version: data[0], BoomCompatibility: data[7] != 0, Skill: data[8], Episode: data[9], Map: data[10], Deathmatch: data[11] != 0, ConsolePlayer: data[12]}
+		copy(h.BoomOptions[:], data[13:77])
+		h.Respawn, h.Fast, h.NoMonsters = data[19] != 0, data[20] != 0, data[21] != 0
+		players := 0
+		for i, b := range data[77:109] {
+			if b != 0 {
+				players++
+				if i >= 4 {
+					return nil, fmt.Errorf("Boom player slot %d is unsupported", i+1)
+				}
+			}
+			if i < 4 {
+				h.PlayerInGame[i] = b != 0
+			}
+		}
+		if players != 1 || h.ConsolePlayer >= 4 || !h.PlayerInGame[h.ConsolePlayer] {
+			return nil, fmt.Errorf("only single-player Boom demos are supported")
+		}
+	} else {
+		h = Header{
+			Version:       data[0],
+			Skill:         data[1],
+			Episode:       data[2],
+			Map:           data[3],
+			Deathmatch:    data[4] != 0,
+			Respawn:       data[5] != 0,
+			Fast:          data[6] != 0,
+			NoMonsters:    data[7] != 0,
+			ConsolePlayer: data[8],
+			PlayerInGame: [4]bool{
+				data[9] != 0,
+				data[10] != 0,
+				data[11] != 0,
+				data[12] != 0,
+			},
+		}
+		if h.Version != Version109 && h.Version != Version110 {
+			return nil, fmt.Errorf("unsupported demo version %d", h.Version)
+		}
 	}
-	if h.Version != Version109 && h.Version != Version110 {
-		return nil, fmt.Errorf("unsupported demo version %d", h.Version)
-	}
-	tics := make([]Tic, 0, maxInt(1, (len(data)-HeaderSize-1)/4))
+	tics := make([]Tic, 0, maxInt(1, (len(data)-headerSize-1)/4))
 	foundMarker := false
-	for i := HeaderSize; i < len(data); {
+	for i := headerSize; i < len(data); {
 		if data[i] == Marker {
 			foundMarker = true
 			break

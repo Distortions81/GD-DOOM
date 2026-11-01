@@ -25,6 +25,7 @@ type floorFinishAction uint8
 const (
 	floorFinishNone floorFinishAction = iota
 	floorFinishSetTexture
+	floorFinishTextureOnly
 )
 
 type floorThinker struct {
@@ -131,6 +132,9 @@ func (g *game) activateShootLineSpecial(lineIdx int, info mapdata.LineSpecialInf
 		return g.handleExitSpecial(lineIdx, uint16(info.Special), mapdata.TriggerShoot)
 	}
 	if info.Door != nil {
+		if info.Door.Generalized != nil {
+			return g.activateGeneralizedDoor(lineIdx, info, true)
+		}
 		return g.evDoDoorTagged(lineIdx, info)
 	}
 	return g.activateNonDoorLineSpecial(lineIdx, 0, info, -1, true)
@@ -839,7 +843,7 @@ func (g *game) findMinSurroundingLight(sec int, maxLight int16) int16 {
 	return minLight
 }
 
-func (g *game) sectorIndexFromSidedef(side int16) (int, bool) {
+func (g *game) sectorIndexFromSidedef(side int32) (int, bool) {
 	if side < 0 || int(side) >= len(g.m.Sidedefs) {
 		return -1, false
 	}
@@ -851,6 +855,9 @@ func (g *game) sectorIndexFromSidedef(side int16) (int, bool) {
 }
 
 func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
+	if info.Generalized != nil {
+		return g.activateGeneralizedFloor(lineIdx, info)
+	}
 	targets := g.taggedSectorsForLine(lineIdx)
 	if len(targets) == 0 {
 		return false
@@ -1256,7 +1263,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		}
 		return false
 	}
-	if info.MonsterOnly && isPlayer {
+	if info.MonsterOnly && (isPlayer || actorIdx >= 0 && actorIdx < len(g.m.Things) && isVoodooDollType(g.m.Things[actorIdx].Type)) {
 		return false
 	}
 	if !isPlayer && (g == nil || g.m == nil || actorIdx < 0 || actorIdx >= len(g.m.Things)) {
@@ -1428,7 +1435,7 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 	if g == nil || g.m == nil {
 		return false
 	}
-	allowStomp := isPlayer || g.currentMapName() == "MAP30"
+	allowStomp := isPlayer || g.currentMapName() == "MAP30" || actorIdx >= 0 && actorIdx < len(g.m.Things) && isVoodooDollType(g.m.Things[actorIdx].Type)
 	sourceSlot := 0
 	if isPlayer && len(g.authorityPlayers) != 0 {
 		sourceSlot = g.localSlot
@@ -1790,9 +1797,11 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 	if !done {
 		return
 	}
-	if ft.finish == floorFinishSetTexture {
+	if ft.finish != floorFinishNone {
 		g.m.Sectors[sec].FloorPic = ft.finishFlat
-		g.m.Sectors[sec].Special = ft.finishSpecial
+		if ft.finish != floorFinishTextureOnly {
+			g.m.Sectors[sec].Special = ft.finishSpecial
+		}
 		g.markDynamicSectorPlaneCacheDirty(sec)
 	}
 	delete(g.floors, sec)

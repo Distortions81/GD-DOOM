@@ -130,7 +130,7 @@ func TestBuildWallSegPrepassSingle_DoesNotEarlyOutForAnimatedLight(t *testing.T)
 		doomSectorLighting = oldSectorLighting
 	})
 
-	ld := mapdata.Linedef{SideNum: [2]int16{0, 1}}
+	ld := mapdata.Linedef{SideNum: [2]int32{0, 1}}
 	g := &game{
 		viewW: 320,
 		m: &mapdata.Map{

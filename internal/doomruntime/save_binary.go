@@ -251,7 +251,10 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 			return err
 		}
 		for _, n := range it.SideNum {
-			if err := w.i16(n); err != nil {
+			if n < -1 || n > 65534 {
+				return fmt.Errorf("invalid sidedef index %d", n)
+			}
+			if err := w.u16(uint16(n)); err != nil {
 				return err
 			}
 		}
@@ -1402,9 +1405,11 @@ func (r saveBinaryReader) mapData() (*mapdata.Map, error) {
 			return it, err
 		}
 		for i := range it.SideNum {
-			if it.SideNum[i], err = r.i16(); err != nil {
+			index, err := r.u16()
+			if err != nil {
 				return it, err
 			}
+			it.SideNum[i] = mapdata.DecodeSidedefIndex(index)
 		}
 		return it, nil
 	}); err != nil {

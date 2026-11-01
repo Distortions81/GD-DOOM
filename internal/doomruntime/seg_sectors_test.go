@@ -11,7 +11,7 @@ func TestSegSectors_OneSidedReversedDirectionKeepsFront(t *testing.T) {
 		m: &mapdata.Map{
 			Sectors:  []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}},
-			Linedefs: []mapdata.Linedef{{SideNum: [2]int16{0, -1}}},
+			Linedefs: []mapdata.Linedef{{SideNum: [2]int32{0, -1}}},
 			Segs:     []mapdata.Seg{{Linedef: 0, Direction: 1}},
 		},
 	}
@@ -30,7 +30,7 @@ func TestSubSectorSectorIndex_UsesSegFrontSide(t *testing.T) {
 		m: &mapdata.Map{
 			Sectors:  []mapdata.Sector{{}, {}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
-			Linedefs: []mapdata.Linedef{{SideNum: [2]int16{0, 1}}},
+			Linedefs: []mapdata.Linedef{{SideNum: [2]int32{0, 1}}},
 			Segs: []mapdata.Seg{
 				{Linedef: 0, Direction: 1},
 			},
@@ -52,7 +52,7 @@ func TestSubSectorSectorIndex_OneSidedReverseFallsBack(t *testing.T) {
 		m: &mapdata.Map{
 			Sectors:  []mapdata.Sector{{}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}},
-			Linedefs: []mapdata.Linedef{{SideNum: [2]int16{0, -1}}},
+			Linedefs: []mapdata.Linedef{{SideNum: [2]int32{0, -1}}},
 			Segs: []mapdata.Seg{
 				{Linedef: 0, Direction: 1},
 			},
@@ -75,8 +75,8 @@ func TestSubSectorSectorIndex_PrefersFirstSeg(t *testing.T) {
 			Sectors:  []mapdata.Sector{{}, {}},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
 			Linedefs: []mapdata.Linedef{
-				{SideNum: [2]int16{0, -1}},
-				{SideNum: [2]int16{1, -1}},
+				{SideNum: [2]int32{0, -1}},
+				{SideNum: [2]int32{1, -1}},
 			},
 			Segs: []mapdata.Seg{
 				{Linedef: 0, Direction: 0},

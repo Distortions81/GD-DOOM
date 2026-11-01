@@ -124,7 +124,7 @@ func TestDoorStatsCountsSectorTimedDoors(t *testing.T) {
 
 func TestDoorTargetSectorsManualDoorUsesBackSector(t *testing.T) {
 	m := &Map{
-		Linedefs: []Linedef{{Special: 1, SideNum: [2]int16{0, 1}}},
+		Linedefs: []Linedef{{Special: 1, SideNum: [2]int32{0, 1}}},
 		Sidedefs: []Sidedef{{Sector: 0}, {Sector: 2}},
 		Sectors:  []Sector{{}, {}, {}},
 	}

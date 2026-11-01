@@ -52,7 +52,7 @@ func newDoorTimingGame(doorSec int) *game {
 				{X: 0, Y: 64},
 			},
 			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Sector: 1},

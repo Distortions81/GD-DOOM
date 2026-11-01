@@ -53,15 +53,6 @@ func isPlayerStart(t int16) bool {
 	return t >= 1 && t <= 4
 }
 
-func sectorSpecialKnown(s int16) bool {
-	switch s {
-	case 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17:
-		return true
-	default:
-		return false
-	}
-}
-
 func appendIssue(dst []issue, mapName string, index int, detail string) []issue {
 	return append(dst, issue{mapName: mapName, index: index, detail: detail})
 }
@@ -100,7 +91,7 @@ func auditWAD(path string) (*wadAudit, error) {
 		mapName := string(name)
 		for i, ld := range m.Linedefs {
 			info := mapdata.LookupLineSpecial(ld.Special)
-			if ld.Special == 48 {
+			if mapdata.IsScrollingWallSpecial(ld.Special) {
 				continue
 			}
 			if ld.Special != 0 && info.Trigger == mapdata.TriggerUnknown {
@@ -108,7 +99,7 @@ func auditWAD(path string) (*wadAudit, error) {
 			}
 		}
 		for i, sec := range m.Sectors {
-			if !sectorSpecialKnown(sec.Special) {
+			if !mapdata.SectorSpecialSupported(sec.Special) {
 				out.unknownSectorSpecs[sec.Special] = appendIssue(out.unknownSectorSpecs[sec.Special], mapName, i, "")
 			}
 		}
@@ -163,9 +154,8 @@ func flattenMap[K comparable](m map[K][]issue) []issue {
 func renderDoc(audits map[string]*wadAudit) string {
 	var b strings.Builder
 	b.WriteString("# Map Audit\n\n")
-	b.WriteString("Generated from local IWADs with a local reference runtime as the behavior baseline.\n\n")
-	b.WriteString("This report only lists map-data oddities found in the IWADs.\n\n")
-	b.WriteString("Actionable engine parity gaps from this audit: none. The remaining entries are either expected Doom behavior or malformed map data.\n\n")
+	b.WriteString("Map-data audit against the implemented Doom and initial Boom subset.\n\n")
+	b.WriteString("Unknown specials can indicate unsupported features or malformed data. An empty report does not establish full map compatibility; resource extensions, node formats, and interactions require separate checks.\n\n")
 	b.WriteString("Notes:\n")
 	b.WriteString("- In vanilla Doom, a non-player thing with no skill bits set does not spawn. This is not harmless data.\n")
 	b.WriteString("- Unknown thing flag bits means map data outside the normal Doom thing-option mask.\n\n")
@@ -196,10 +186,17 @@ func renderDoc(audits map[string]*wadAudit) string {
 }
 
 func main() {
-	inputs := []string{"doom.wad", "doom2.wad"}
+	inputs := os.Args[1:]
+	if len(inputs) == 0 {
+		inputs = []string{"doom.wad", "doom2.wad"}
+	}
 	audits := make(map[string]*wadAudit)
 	for _, path := range inputs {
 		if _, err := os.Stat(path); err != nil {
+			if len(os.Args) > 1 {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
 			continue
 		}
 		audit, err := auditWAD(path)
@@ -210,7 +207,7 @@ func main() {
 		audits[path] = audit
 	}
 	if len(audits) == 0 {
-		fmt.Fprintln(os.Stderr, "no local IWADs found (expected doom.wad / doom2.wad)")
+		fmt.Fprintln(os.Stderr, "no local IWADs found; usage: go run ./cmd/mapaudit WAD [WAD ...]")
 		os.Exit(1)
 	}
 	fmt.Print(renderDoc(audits))

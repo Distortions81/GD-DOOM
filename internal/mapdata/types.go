@@ -21,7 +21,8 @@ type Linedef struct {
 	Flags   uint16
 	Special uint16
 	Tag     uint16
-	SideNum [2]int16
+	// Unsigned 16-bit indices widened to retain the -1 missing-side sentinel.
+	SideNum [2]int32
 }
 
 type Sidedef struct {

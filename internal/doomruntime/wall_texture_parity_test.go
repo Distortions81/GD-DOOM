@@ -224,7 +224,7 @@ func syntheticParityMap(tc wallTextureParityInput) *mapdata.Map {
 			Light:         tc.front.light,
 		},
 	}
-	sideNums := [2]int16{0, -1}
+	sideNums := [2]int32{0, -1}
 	if tc.back != nil {
 		sidedefs = append(sidedefs, mapdata.Sidedef{
 			TextureOffset: 0,

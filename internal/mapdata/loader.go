@@ -191,10 +191,19 @@ func decodeLinedefs(f *wad.File, l wad.Lump) ([]Linedef, error) {
 			Flags:   binary.LittleEndian.Uint16(r[4:6]),
 			Special: binary.LittleEndian.Uint16(r[6:8]),
 			Tag:     binary.LittleEndian.Uint16(r[8:10]),
-			SideNum: [2]int16{int16(binary.LittleEndian.Uint16(r[10:12])), int16(binary.LittleEndian.Uint16(r[12:14]))},
+			SideNum: [2]int32{DecodeSidedefIndex(binary.LittleEndian.Uint16(r[10:12])), DecodeSidedefIndex(binary.LittleEndian.Uint16(r[12:14]))},
 		})
 	}
 	return out, nil
+}
+
+// DecodeSidedefIndex reads an unsigned map index; only 0xffff is
+// the missing-side sentinel. Widen them internally so 32768..65534 stay valid.
+func DecodeSidedefIndex(index uint16) int32 {
+	if index == 0xffff {
+		return -1
+	}
+	return int32(index)
 }
 
 func decodeSidedefs(f *wad.File, l wad.Lump) ([]Sidedef, error) {

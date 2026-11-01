@@ -13,7 +13,7 @@ func authorityHeightVisibilityGame(direction uint16) *game {
 			{CeilingHeight: 0, FloorPic: "FLOOR", CeilingPic: "CEIL", Light: 128},
 		},
 		Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
-		Linedefs: []mapdata.Linedef{{SideNum: [2]int16{0, 1}}},
+		Linedefs: []mapdata.Linedef{{SideNum: [2]int32{0, 1}}},
 		Segs:     []mapdata.Seg{{Linedef: 0, Direction: direction}},
 	}, sectorFloor: []int64{0, 0}, sectorCeil: []int64{128 * fracUnit, 0}}
 }

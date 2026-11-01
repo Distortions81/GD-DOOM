@@ -509,6 +509,9 @@ clients/servers are rejected during the compatibility handshake.
 
 The standalone free-game catalog subsequently advances the simulation to
 `gd-doom-authority-dev-3` for vanilla linedef 129 (repeatable fast floor raise).
+The initial [Boom subset](boom-support.md) advances this to
+`gd-doom-authority-dev-4`. Generalized floors/doors and conveyors subsequently
+advance it to `gd-doom-authority-dev-5`; these reuse existing snapshot fields.
 The binary snapshot schema is unchanged. Deploy matching client and server
 binaries together; the lobby must use the same worker binary and approved
 catalog described in [free games](free-games.md).

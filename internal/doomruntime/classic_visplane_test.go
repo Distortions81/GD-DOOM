@@ -124,7 +124,7 @@ func TestClassicSubsectorFrontComesFromFirstSeg(t *testing.T) {
 	g := &game{m: &mapdata.Map{
 		Sectors:    []mapdata.Sector{{CeilingHeight: 200}, {CeilingHeight: 256}},
 		Sidedefs:   []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
-		Linedefs:   []mapdata.Linedef{{SideNum: [2]int16{0, -1}}, {SideNum: [2]int16{1, 0}}},
+		Linedefs:   []mapdata.Linedef{{SideNum: [2]int32{0, -1}}, {SideNum: [2]int32{1, 0}}},
 		Segs:       []mapdata.Seg{{Linedef: 0}, {Linedef: 1}},
 		SubSectors: []mapdata.SubSector{{FirstSeg: 0, SegCount: 2}},
 	}}

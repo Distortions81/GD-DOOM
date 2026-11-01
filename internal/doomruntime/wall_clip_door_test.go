@@ -22,8 +22,8 @@ func TestPartialThickDoorOpeningSweep_DoesNotFullyCloseFloorColumns(t *testing.T
 				{Sector: 2},
 			},
 			Linedefs: []mapdata.Linedef{
-				{Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
-				{Flags: mlTwoSided, SideNum: [2]int16{2, 3}},
+				{Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
+				{Flags: mlTwoSided, SideNum: [2]int32{2, 3}},
 			},
 			Vertexes: []mapdata.Vertex{
 				{X: 64, Y: 16},
@@ -634,7 +634,7 @@ func TestMovingDoorTopWallRevealThresholdIsMonotonic(t *testing.T) {
 				{Sector: 1},
 			},
 			Linedefs: []mapdata.Linedef{
-				{Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+				{Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
 			},
 			Vertexes: []mapdata.Vertex{
 				{X: 64, Y: 24},

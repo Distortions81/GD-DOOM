@@ -4,6 +4,9 @@ Detailed options, controls, cheats, relay setup, configuration, browser builds,
 and development tools. Start with the [README](../README.md) for an overview.
 Run the commands below from the repository root.
 
+Initial Boom map features and a playable smoke map are described in
+[Boom support](boom-support.md).
+
 ## Common Options
 
 Print all flags:

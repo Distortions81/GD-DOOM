@@ -132,6 +132,7 @@ const (
 	worldThinkerBossCube
 	worldThinkerBossFire
 	worldThinkerPlayer
+	worldThinkerBoomCarry
 )
 
 func (g *game) playerThinkerOrder() int64 {
@@ -266,6 +267,9 @@ func (g *game) nextWorldThinkerAfterForPlayers(lastOrder int64, players []*autho
 			consider(worldThinkerSectorLight, sec, fx.order)
 		}
 	}
+	for i, c := range g.boomCarries {
+		consider(worldThinkerBoomCarry, i, c.order)
+	}
 	return best, found
 }
 
@@ -276,11 +280,13 @@ func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
 	if i < len(g.thingCollected) && g.thingCollected[i] {
 		return false
 	}
-	return isBarrelThingType(th.Type) || isMonster(th.Type) || th.Type == 23 || th.Type == 88 || th.Type == 89
+	return isVoodooDollType(th.Type) || (i < len(g.thingMomX) && (g.thingMomX[i] != 0 || g.thingMomY[i] != 0 || g.thingMomZ[i] != 0)) || isBarrelThingType(th.Type) || isMonster(th.Type) || th.Type == 23 || th.Type == 88 || th.Type == 89
 }
 
 func (g *game) tickWorldThinker(ref worldThinkerRef) {
 	switch ref.kind {
+	case worldThinkerBoomCarry:
+		g.tickBoomCarry(g.boomCarries[ref.key])
 	case worldThinkerPlayer:
 		g.tickPlayerBody()
 	case worldThinkerThing:
@@ -521,7 +527,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			case doorBlazeRaise, doorNormal:
 				d.direction = -1
 				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-			case doorClose30ThenOpen:
+			case doorClose30ThenOpen, doorGenCloseWaitOpen:
 				d.direction = 1
 				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 			}
@@ -547,9 +553,12 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 				g.removeDoorThinkerInstance(sec, d)
 			case doorNormal, doorClose:
 				g.retireDoorThinkerInstance(sec, d)
-			case doorClose30ThenOpen:
+			case doorClose30ThenOpen, doorGenCloseWaitOpen:
 				d.direction = 0
 				d.topCountdown = 35 * 30
+				if d.typ == doorGenCloseWaitOpen && d.topWait > 0 {
+					d.topCountdown = d.topWait
+				}
 			}
 			return
 		}
@@ -584,7 +593,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			case doorBlazeRaise, doorNormal:
 				d.direction = 0
 				d.topCountdown = d.topWait
-			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
+			case doorClose30ThenOpen, doorGenCloseWaitOpen, doorBlazeOpen, doorOpen:
 				g.removeDoorThinkerInstance(sec, d)
 			}
 		} else {
@@ -1169,8 +1178,12 @@ func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThin
 		}
 		// Doom's PIT_CheckThing touches MF_SPECIAL items during the thing
 		// blockmap walk, before a later solid/corpse can reject the move.
-		if touchPickups && moverThingIdx < 0 && !moverIsMonster && !g.isDead {
-			g.processThingPickupAtIndex(i, th, x, y, g.p.z, playerRadius, g.playerMobjHeight(), false)
+		if touchPickups && ((moverThingIdx < 0 && !moverIsMonster) || moverThingIdx >= 0 && isVoodooDollType(g.m.Things[moverThingIdx].Type)) && !g.isDead {
+			pickupZ := g.p.z
+			if moverThingIdx >= 0 {
+				pickupZ, _, _ = g.thingSupportState(moverThingIdx, g.m.Things[moverThingIdx])
+			}
+			g.processThingPickupAtIndex(i, th, x, y, pickupZ, playerRadius, g.playerMobjHeight(), false)
 			if i < len(g.thingCollected) && g.thingCollected[i] {
 				return false
 			}
@@ -1218,7 +1231,7 @@ func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThin
 				return true
 			}
 		}
-		if !thingTypeBlocksActorMovement(th.Type, moverIsMonster) {
+		if !isVoodooDollType(th.Type) && !thingTypeBlocksActorMovement(th.Type, moverIsMonster) {
 			return false
 		}
 		tx, ty = g.thingPosFixed(i, th)

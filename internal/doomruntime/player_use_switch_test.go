@@ -27,7 +27,7 @@ func TestAnimateSwitchTextureRepeatReverts(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{SideNum: [2]int16{0, -1}},
+				{SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Mid: "SW1BRCOM"},
@@ -57,7 +57,7 @@ func TestAnimateSwitchTexture_UsesFrontSidedefOnly(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{SideNum: [2]int16{0, 1}},
+				{SideNum: [2]int32{0, 1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Mid: "SW1BRCOM"},
@@ -78,7 +78,7 @@ func TestAnimateSwitchTextureRepeatRefreshesSameLineEntry(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{SideNum: [2]int16{0, -1}},
+				{SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Mid: "SW1BRCOM"},
@@ -108,7 +108,7 @@ func TestAnimateSwitchTexture_StartsOneShotBlend(t *testing.T) {
 		},
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
-				{SideNum: [2]int16{0, -1}},
+				{SideNum: [2]int32{0, -1}},
 			},
 			Sidedefs: []mapdata.Sidedef{
 				{Mid: "SW1BRCOM"},

@@ -3,11 +3,12 @@ package scene
 const PlaneUnset int16 = -1
 
 type PlaneKey struct {
-	Height float64 // Map units, including interpolated fractional heights.
-	Light  int16
-	Flat   string
-	Sky    bool
-	Floor  bool
+	OffsetX, OffsetY int64
+	Height           float64 // Map units, including interpolated fractional heights.
+	Light            int16
+	Flat             string
+	Sky              bool
+	Floor            bool
 }
 
 type PlaneSpan struct {

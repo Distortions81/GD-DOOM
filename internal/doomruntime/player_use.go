@@ -331,10 +331,15 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if g.m.Linedefs[lineIdx].Flags&mlSecret != 0 {
 			return false
 		}
+		info := mapdata.LookupLineSpecial(special)
 		switch special {
 		case 1, 32, 33, 34:
 		default:
-			return false
+			floorAllowed := info.Floor != nil && info.Floor.Generalized != nil && info.Floor.Generalized.Monsters
+			doorAllowed := info.Door != nil && info.Door.Generalized != nil && info.Door.Generalized.Monsters
+			if !floorAllowed && !doorAllowed {
+				return false
+			}
 		}
 	}
 	if g.handleExitSpecial(lineIdx, special, mapdata.TriggerUse) {
@@ -382,10 +387,15 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 	} else {
 		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
 	}
+	// Boom switches for lights, platform stops and SR perpetual platforms
+	// change texture even when no tagged mover accepted the action.
+	if info.Boom && (info.Light != nil || special == 163 || special == 181 || special == 182) {
+		activated = true
+	}
 	if activated {
 		// P_ChangeSwitchTexture clears a successful one-shot use trigger,
 		// including tagged doors. Manual doors handle their own lifetime.
-		if info.Trigger == mapdata.TriggerUse && !info.Repeat {
+		if !info.Repeat && (info.Trigger == mapdata.TriggerUse || info.Trigger == mapdata.TriggerManual && ((info.Floor != nil && info.Floor.Generalized != nil) || (info.Door != nil && info.Door.Generalized != nil))) {
 			g.lineSpecial[lineIdx] = 0
 		}
 		if debugLineTriggerEnabled(lineIdx) {
@@ -416,6 +426,13 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 }
 
 func walkSpecialAllowedForNonPlayer(special uint16) bool {
+	info := mapdata.LookupLineSpecial(special)
+	if info.Door != nil && info.Door.Generalized != nil {
+		return info.Door.Generalized.Monsters
+	}
+	if info.Floor != nil && info.Floor.Generalized != nil {
+		return info.Floor.Generalized.Monsters
+	}
 	switch special {
 	case 4, 10, 39, 88, 97, 125, 126:
 		return true
@@ -447,6 +464,7 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 	if prevX == curX && prevY == curY {
 		return
 	}
+	playerActor := isPlayer || actorIdx >= 0 && actorIdx < len(g.m.Things) && isVoodooDollType(g.m.Things[actorIdx].Type)
 	teleportMoveSerial := g.teleportMoveSerial
 	radius := radiusOverride
 	if radius < 0 && isPlayer {
@@ -513,7 +531,7 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 		if info.Trigger != mapdata.TriggerWalk {
 			return false
 		}
-		if isPlayer && info.Teleport != nil && info.Teleport.MonsterOnly {
+		if playerActor && info.Teleport != nil && info.Teleport.MonsterOnly {
 			// P_CrossSpecialLine leaves monster-only W1 teleport triggers
 			// intact when crossed by a player, before any activation attempt.
 			return false
@@ -521,7 +539,7 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 		if !lineSpecialSupported(info) {
 			return false
 		}
-		if !isPlayer && !walkSpecialAllowedForNonPlayer(special) {
+		if !playerActor && !walkSpecialAllowedForNonPlayer(special) {
 			return false
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
@@ -552,14 +570,14 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 			return false
 		}
 		if info.Door != nil {
-			if !isPlayer && !info.Door.CanActivate(mapdata.KeyRing{}) {
+			if !playerActor && !info.Door.CanActivate(mapdata.KeyRing{}) {
 				return false
 			}
-			if isPlayer && !info.Door.CanActivate(g.inventory.keys()) {
+			if playerActor && !info.Door.CanActivate(g.inventory.keys()) {
 				return false
 			}
-			activated := g.activateDoorLine(ld.idx, info, isPlayer)
-			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
+			activated := g.activateDoorLine(ld.idx, info, playerActor)
+			if !info.Repeat && (!info.Boom || activated) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 				g.lineSpecial[ld.idx] = 0
 			}
 			if activated {
@@ -568,8 +586,9 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 			return false
 		}
 		activated := g.activateNonDoorLineSpecial(ld.idx, startSide, info, actorIdx, isPlayer)
-		// Vanilla consumes W1 crossings even when a tagged sector is busy.
-		if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
+		// Vanilla consumes failed W1 crossings; Boom extended W1 actions
+		// remain available until a tagged sector accepts the action.
+		if !info.Repeat && (!info.Boom || activated) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 			g.lineSpecial[ld.idx] = 0
 		}
 		if activated {
@@ -655,6 +674,9 @@ func shouldPlaySwitchClick(info mapdata.LineSpecialInfo) bool {
 }
 
 func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo, isPlayer bool) bool {
+	if info.Door.Generalized != nil {
+		return g.activateGeneralizedDoor(lineIdx, info, isPlayer)
+	}
 	if info.Trigger == mapdata.TriggerManual {
 		return g.evVerticalDoor(lineIdx, isPlayer)
 	}

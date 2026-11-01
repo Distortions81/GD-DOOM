@@ -433,6 +433,9 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	boomCarries                        []boomCarryThinker
+	boomFloorScroll, boomCeilingScroll []boomScrollVector
+
 	possession         *monsterPossession
 	possessionFireDown bool
 
@@ -1506,10 +1509,11 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {
-		if sec.Special == 9 {
+		if mapdata.SectorIsSecret(sec.Special) {
 			g.secretsTotal++
 		}
 	}
+	g.initVoodooDolls()
 	g.applyThingSpawnFiltering()
 	g.initLevelStats()
 	g.initThingCombatState()
@@ -1529,6 +1533,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	}
 	g.initPhysics()
 	g.initTimedDoorSpecials()
+	g.initBoomScrollers()
 	// Initialize eye height after physics snaps player Z/floor/ceiling.
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
@@ -5664,6 +5669,13 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 	if sec == nil {
 		return key
 	}
+	if secIdx >= 0 && secIdx < len(g.boomFloorScroll) {
+		vector := g.boomCeilingScroll[secIdx]
+		if floor {
+			vector = g.boomFloorScroll[secIdx]
+		}
+		key.offsetX, key.offsetY = int64(int32(vector.x*int64(g.worldTic))), int64(int32(vector.y*int64(g.worldTic)))
+	}
 	key.light = g.sectorLightForRender(secIdx, sec)
 	pic := sec.CeilingPic
 	key.height = float64(sec.CeilingHeight)
@@ -9310,6 +9322,9 @@ func wallSpecialScrollXOffset(special uint16, worldTic int) float64 {
 	if special == 48 {
 		return float64(worldTic)
 	}
+	if special == 85 {
+		return -float64(worldTic)
+	}
 	return 0
 }
 
@@ -11521,6 +11536,9 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 }
 
 func (g *game) worldThingSpriteNameScaled(typ int16, tickUnits, unitsPerTic int) string {
+	if isVoodooDollType(typ) {
+		return "PLAYA1"
+	}
 	pick := func(seq ...string) string {
 		return g.pickAnimatedThingSpriteNameScaled(tickUnits, 8, unitsPerTic, seq...)
 	}
@@ -20074,7 +20092,7 @@ func (g *game) segSectorIndices(segIdx int) (int, int) {
 	return front, back
 }
 
-func (g *game) sectorFromSideNum(side int16) *mapdata.Sector {
+func (g *game) sectorFromSideNum(side int32) *mapdata.Sector {
 	secIdx := g.sectorIndexFromSideNum(side)
 	if secIdx < 0 || secIdx >= len(g.m.Sectors) {
 		return nil
@@ -20109,7 +20127,7 @@ func (g *game) subSectorSectorFromSeg(segIdx int) (int, bool) {
 	return 0, false
 }
 
-func (g *game) sectorIndexFromSideNum(side int16) int {
+func (g *game) sectorIndexFromSideNum(side int32) int {
 	if side < 0 || int(side) >= len(g.m.Sidedefs) {
 		return -1
 	}

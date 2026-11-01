@@ -11,8 +11,8 @@ func turboWalkFloorGame(special uint16) *game {
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{{Type: 3004, Flags: 7}},
 			Linedefs: []mapdata.Linedef{
-				{Special: special, Tag: 7, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
-				{Flags: mlTwoSided, SideNum: [2]int16{0, 2}},
+				{Special: special, Tag: 7, Flags: mlTwoSided, SideNum: [2]int32{0, 1}},
+				{Flags: mlTwoSided, SideNum: [2]int32{0, 2}},
 			},
 			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}, {Sector: 2}},
 			Sectors: []mapdata.Sector{
