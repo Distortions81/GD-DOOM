@@ -8,7 +8,19 @@ func (g *game) activateGeneralizedDoor(line int, info mapdata.LineSpecialInfo, i
 		return false
 	}
 	gen := info.Door.Generalized
-	if info.Trigger == mapdata.TriggerManual {
+	if gen.Locked {
+		if !isPlayer || !info.Door.CanActivate(g.inventory.keys()) {
+			return false
+		}
+		filtered := targets[:0]
+		for _, sec := range targets {
+			if g.activeDoorThinker(sec) == nil && g.ceilings[sec] == nil {
+				filtered = append(filtered, sec)
+			}
+		}
+		targets = filtered
+	}
+	if info.Trigger == mapdata.TriggerManual && !gen.Locked {
 		for _, sec := range targets {
 			if d := g.activeDoorThinker(sec); d != nil {
 				if gen.Kind != 0 || d.typ != doorNormal {
@@ -27,7 +39,7 @@ func (g *game) activateGeneralizedDoor(line int, info mapdata.LineSpecialInfo, i
 		}
 	}
 	firstOrder := g.nextThinkerOrder
-	activated := g.activateDoorSectors(targets, info.Door.Action)
+	activated := g.activateDoorSectorsWithFloorSlot(targets, info.Door.Action, true)
 	for _, sec := range targets {
 		if d := g.activeDoorThinker(sec); d != nil && d.order >= firstOrder {
 			if gen.Kind == 2 {

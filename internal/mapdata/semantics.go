@@ -28,6 +28,8 @@ type KeyType string
 
 const (
 	KeyNone   KeyType = "none"
+	KeyAny    KeyType = "any"
+	KeyAll    KeyType = "all"
 	KeyBlue   KeyType = "blue"
 	KeyRed    KeyType = "red"
 	KeyYellow KeyType = "yellow"
@@ -62,6 +64,7 @@ type DoorInfo struct {
 type GeneralizedDoorInfo struct {
 	Speed, Delay, Kind uint8
 	Monsters           bool
+	Locked             bool
 }
 
 type FloorAction string
@@ -88,7 +91,8 @@ type FloorInfo struct {
 	Generalized *GeneralizedFloorInfo
 }
 
-// GeneralizedFloorInfo is the Boom 0x6000..0x7fff parameter layout.
+// GeneralizedFloorInfo is the shared bit layout of Boom floors (0x6000..0x7fff)
+// and ceilings (0x4000..0x5fff); target numbers select plane-specific heights.
 type GeneralizedFloorInfo struct {
 	Speed                             uint8
 	Target                            uint8
@@ -108,9 +112,15 @@ const (
 	PlatStop                    PlatAction = "stop"
 )
 
+type GeneralizedLiftInfo struct {
+	Speed, Delay, Target uint8
+	Monsters             bool
+}
+
 type PlatInfo struct {
-	Action  PlatAction
-	UsesTag bool
+	Generalized *GeneralizedLiftInfo
+	Action      PlatAction
+	UsesTag     bool
 }
 
 type StairsAction string
@@ -149,6 +159,7 @@ type TeleportInfo struct {
 type CeilingAction string
 
 const (
+	CeilingGeneralized      CeilingAction = "generalized"
 	CeilingLowerToFloor     CeilingAction = "lower_to_floor"
 	CeilingCrushRaise       CeilingAction = "crush_and_raise"
 	CeilingLowerAndCrush    CeilingAction = "lower_and_crush"
@@ -159,9 +170,9 @@ const (
 )
 
 type CeilingInfo struct {
-	HighestNeighbor *GeneralizedFloorInfo
-	Action          CeilingAction
-	UsesTag         bool
+	Generalized *GeneralizedFloorInfo
+	Action      CeilingAction
+	UsesTag     bool
 }
 
 type ComboAction string
@@ -368,15 +379,43 @@ var donutSpecials = map[uint16]LineSpecialInfo{
 }
 
 func LookupLineSpecial(special uint16) LineSpecialInfo {
-	// Initial generalized ceiling subset: highest neighboring ceiling, no changes/crushing.
-	if special >= 0x4000 && special <= 0x5fff && (special-0x4000)&0x1f80 == 0 {
+
+	if special >= 0x3400 && special <= 0x37ff {
+		v := special - 0x3400
+		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
+		gen := &GeneralizedLiftInfo{Speed: uint8(v>>3) & 3, Delay: uint8(v>>6) & 3, Target: uint8(v>>8) & 3, Monsters: v&32 != 0}
+		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized lift", Trigger: trigger, Repeat: v&1 != 0, Plat: &PlatInfo{UsesTag: trigger != TriggerManual, Generalized: gen}}
+	}
+	if special >= 0x4000 && special <= 0x5fff {
 		v := special - 0x4000
 		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
-		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized ceiling to highest neighbor", Trigger: trigger, Repeat: v&1 != 0, Ceiling: &CeilingInfo{UsesTag: trigger != TriggerManual, HighestNeighbor: &GeneralizedFloorInfo{Speed: uint8(v>>3) & 3, Up: v&64 != 0, Monsters: v&32 != 0}}}
+		gen := &GeneralizedFloorInfo{Speed: uint8(v>>3) & 3, Target: uint8(v>>7) & 7, Change: uint8(v>>10) & 3, Up: v&64 != 0, NumericModel: v&32 != 0, Crush: v&4096 != 0}
+		gen.Monsters = gen.Change == 0 && gen.NumericModel
+		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized ceiling", Trigger: trigger, Repeat: v&1 != 0, Ceiling: &CeilingInfo{Action: CeilingGeneralized, UsesTag: trigger != TriggerManual, Generalized: gen}}
 	}
 
 	if special == 207 || special == 208 {
 		return LineSpecialInfo{Special: special, Name: "Boom silent teleport", Boom: true, Trigger: TriggerWalk, Repeat: special == 208, Teleport: &TeleportInfo{UsesTag: true, Silent: true}}
+	}
+
+	// Without distinct card inventory, advertise only locks accepting either key
+	// of a color, plus AnyKey (which is independent of the equivalence bit).
+	if special >= 0x3800 && special <= 0x3bff && (special&512 != 0 || special&448 == 0) {
+		v := special - 0x3800
+		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
+		gen := &GeneralizedDoorInfo{Speed: uint8(v>>3) & 3, Delay: 1, Kind: uint8(v>>5) & 1, Locked: true}
+		key := [...]KeyType{KeyAny, KeyRed, KeyBlue, KeyYellow, KeyRed, KeyBlue, KeyYellow, KeyAll}[(v>>6)&7]
+		action := DoorRaise
+		if gen.Kind == 1 {
+			action = DoorOpen
+		}
+		if gen.Speed >= 2 {
+			action = DoorBlazeRaise
+			if gen.Kind == 1 {
+				action = DoorBlazeOpen
+			}
+		}
+		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized locked door", Trigger: trigger, Repeat: v&1 != 0, Door: &DoorInfo{Action: action, Key: key, UsesTag: trigger != TriggerManual, Generalized: gen}}
 	}
 
 	if special >= 0x3c00 && special <= 0x3fff {
@@ -479,6 +518,10 @@ func (m *Map) DoorStats() DoorStats {
 
 func (d DoorInfo) CanActivate(keys KeyRing) bool {
 	switch d.Key {
+	case KeyAny:
+		return keys.Blue || keys.Red || keys.Yellow
+	case KeyAll:
+		return keys.Blue && keys.Red && keys.Yellow
 	case KeyBlue:
 		return keys.Blue
 	case KeyRed:

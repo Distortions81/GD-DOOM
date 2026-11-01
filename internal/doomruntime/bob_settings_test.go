@@ -105,7 +105,7 @@ func TestWeaponPoseSnapshotAndPreviousVersionCompatibility(t *testing.T) {
 		magic   []byte
 		version int
 	}{{saveGameMagic, saveGameVersion}, {keyframeMagic, keyframeVersion}} {
-		for _, version := range []int{item.version, item.version - 1, item.version - 2} {
+		for _, version := range []int{item.version, item.version - 1, item.version - 2, item.version - 3} {
 			file := saveFile{Version: version, Game: gameSaveState{WeaponPose: pose}}
 			data, err := encodeSnapshot(item.magic, file)
 			if err != nil {
@@ -116,7 +116,7 @@ func TestWeaponPoseSnapshotAndPreviousVersionCompatibility(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := pose
-			if version == item.version-2 {
+			if version == 26 || version == 13 {
 				want = weaponPresentationPose{}
 			}
 			if !reflect.DeepEqual(got.Game.WeaponPose, want) {

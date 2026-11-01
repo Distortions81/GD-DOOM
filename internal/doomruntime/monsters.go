@@ -5765,18 +5765,23 @@ func (g *game) slideVoodooDoll(i int, th mapdata.Thing) {
 	g.p.z, g.p.floorz, g.p.ceilz = g.thingSupportState(i, th)
 	g.p.momx, g.p.momy = g.thingMomX[i], g.thingMomY[i]
 	g.slideMoveUsing(func(x, y int64) bool {
+		slide := g.p
+		// Collision checks must still see the real camera body. Otherwise the
+		// doll collides with the temporary player state used by the slide traces.
+		g.p = saved
+		defer func() { saved = g.p; g.p = slide }()
 		floor, ceil, lines, ok := g.tryMoveProbeMonster(i, th.Type, x, y)
 		if !ok {
 			return false
 		}
 		oldX, oldY := g.thingPosFixed(i, th)
-		g.thingMomX[i], g.thingMomY[i] = g.p.momx, g.p.momy
+		g.thingMomX[i], g.thingMomY[i] = slide.momx, slide.momy
 		g.setThingPosFixed(i, x, y)
-		g.setThingSupportState(i, g.p.z, floor, ceil)
+		g.setThingSupportState(i, slide.z, floor, ceil)
 		g.checkWalkSpecialLinesForActorWithCandidates(oldX, oldY, x, y, i, false, lines)
-		g.p.x, g.p.y = g.thingPosFixed(i, th)
-		g.p.z, g.p.floorz, g.p.ceilz = g.thingSupportState(i, th)
-		g.p.momx, g.p.momy = g.thingMomX[i], g.thingMomY[i]
+		slide.x, slide.y = g.thingPosFixed(i, th)
+		slide.z, slide.floorz, slide.ceilz = g.thingSupportState(i, th)
+		slide.momx, slide.momy = g.thingMomX[i], g.thingMomY[i]
 		return true
 	})
 	g.thingMomX[i], g.thingMomY[i] = g.p.momx, g.p.momy

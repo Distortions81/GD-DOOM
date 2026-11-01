@@ -25,6 +25,7 @@ WADS = {
     "sunder": ("/files/wads/doom2/2726/sunder.zip", "eab6ebbeafb0afe4a2ccd93c1685484f3a517ab0aec200a9c693e29d4ca87839", "sunder.wad"),
 }
 CASES = [
+    ("aa02o026", "aaliens", 2, "/files/demos/aaliens/70095/aa02o026.zip", "800cbadcb90341e62b424950959c1a7e1770f391b368faa51be1e560cb6b4bc0", "aa02o026.lmp"),
     ("aa01o023", "aaliens", 1, "/files/demos/aaliens/70094/aa01o023.zip", "ab4f4b0e6bcf04da26d2312c49156d252f672cf091e1d02c34389db4c3901131", "aa01o023.lmp"),
     ("sl01o016", "sunlust", 1, "/files/demos/sunlust/23036/sl01o016.zip", "37e1e8779377e35520506a9f9e791ed2316c15951d676e6f664720ab35d50169", "sl01o016.lmp"),
     ("sl02o048", "sunlust", 2, "/files/demos/sunlust/23051/sl02o048.zip", "6ad00f99ce58869fed0eb90a0e06fe16752f4bca5c9978a5bf734302a64bb3a5", "sunlust02nomo48.lmp"),

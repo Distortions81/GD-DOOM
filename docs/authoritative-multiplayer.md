@@ -514,7 +514,10 @@ The initial [Boom subset](boom-support.md) advances this to
 advance it to `gd-doom-authority-dev-5`; these reuse existing snapshot fields.
 Extended BSP geometry, silent thing teleports and corrected teleport freeze
 timing advance this to `gd-doom-authority-dev-6`.
-The binary snapshot schema is unchanged. Deploy matching client and server
+Generalized ceilings/lifts and equivalent-key locked doors advance this to
+`gd-doom-authority-dev-7`. Pending ceiling changes and lift trigger tags extend
+the binary snapshot schema; save/keyframe versions are now 29/16.
+Deploy matching client and server
 binaries together; the lobby must use the same worker binary and approved
 catalog described in [free games](free-games.md).
 

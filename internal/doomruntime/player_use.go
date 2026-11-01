@@ -284,6 +284,10 @@ func doomLockedDoorMessage(info mapdata.LineSpecialInfo) string {
 		return ""
 	}
 	switch info.Door.Key {
+	case mapdata.KeyAny:
+		return "You need a key to open this door"
+	case mapdata.KeyAll:
+		return "You need all three keys to open this door"
 	case mapdata.KeyBlue:
 		if info.Door.UsesTag {
 			return "You need a blue key to activate this object"
@@ -337,8 +341,9 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		default:
 			floorAllowed := info.Floor != nil && info.Floor.Generalized != nil && info.Floor.Generalized.Monsters
 			doorAllowed := info.Door != nil && info.Door.Generalized != nil && info.Door.Generalized.Monsters
-			ceilingAllowed := info.Ceiling != nil && info.Ceiling.HighestNeighbor != nil && info.Ceiling.HighestNeighbor.Monsters
-			if !floorAllowed && !doorAllowed && !ceilingAllowed {
+			ceilingAllowed := info.Ceiling != nil && info.Ceiling.Generalized != nil && info.Ceiling.Generalized.Monsters
+			liftAllowed := info.Plat != nil && info.Plat.Generalized != nil && info.Plat.Generalized.Monsters
+			if !floorAllowed && !doorAllowed && !ceilingAllowed && !liftAllowed {
 				return false
 			}
 		}
@@ -396,7 +401,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 	if activated {
 		// P_ChangeSwitchTexture clears a successful one-shot use trigger,
 		// including tagged doors. Manual doors handle their own lifetime.
-		if !info.Repeat && (info.Trigger == mapdata.TriggerUse || info.Trigger == mapdata.TriggerManual && ((info.Floor != nil && info.Floor.Generalized != nil) || (info.Door != nil && info.Door.Generalized != nil))) {
+		if !info.Repeat && (info.Trigger == mapdata.TriggerUse || info.Trigger == mapdata.TriggerManual && ((info.Floor != nil && info.Floor.Generalized != nil) || (info.Door != nil && info.Door.Generalized != nil) || (info.Ceiling != nil && info.Ceiling.Generalized != nil) || (info.Plat != nil && info.Plat.Generalized != nil))) {
 			g.lineSpecial[lineIdx] = 0
 		}
 		if debugLineTriggerEnabled(lineIdx) {
@@ -428,8 +433,11 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 
 func walkSpecialAllowedForNonPlayer(special uint16) bool {
 	info := mapdata.LookupLineSpecial(special)
-	if info.Ceiling != nil && info.Ceiling.HighestNeighbor != nil {
-		return info.Ceiling.HighestNeighbor.Monsters
+	if info.Plat != nil && info.Plat.Generalized != nil {
+		return info.Plat.Generalized.Monsters
+	}
+	if info.Ceiling != nil && info.Ceiling.Generalized != nil {
+		return info.Ceiling.Generalized.Monsters
 	}
 	if info.Door != nil && info.Door.Generalized != nil {
 		return info.Door.Generalized.Monsters
@@ -788,6 +796,10 @@ func (g *game) activateTaggedDoor(tag uint16, action mapdata.DoorAction) bool {
 }
 
 func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) bool {
+	return g.activateDoorSectorsWithFloorSlot(targets, action, false)
+}
+
+func (g *game) activateDoorSectorsWithFloorSlot(targets []int, action mapdata.DoorAction, independentFloor bool) bool {
 	if len(targets) == 0 {
 		return false
 	}
@@ -802,7 +814,11 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 		// EV_DoDoor checks sector->specialdata, including floors, platforms
 		// and ceilings. Starting a door on an active lift changes its ceiling
 		// and height-clips corpses that the original leaves untouched.
-		if g.sectorHasActiveMover(sec) {
+		blocked := g.sectorHasActiveMover(sec)
+		if independentFloor {
+			blocked = g.activeDoorThinker(sec) != nil || g.ceilings[sec] != nil
+		}
+		if blocked {
 			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
 			continue
 		}
@@ -810,7 +826,7 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 		d.topWait = vDoorWaitTic
 		d.speed = vDoorSpeed
 		d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
-		if d.topHeight < g.sectorFloor[sec] {
+		if !independentFloor && d.topHeight < g.sectorFloor[sec] {
 			d.topHeight = g.sectorFloor[sec]
 		}
 		switch action {

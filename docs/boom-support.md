@@ -12,16 +12,24 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   cyclic trees and oversized decompression are rejected.
 - Silent thing teleports (207–208), preserving relative height and rotating
   angle/momentum. Normal teleport freeze timing follows `P_PlayerThink`.
-- Generalized ceilings targeting the highest neighboring ceiling, without
-  texture/type changes or crushing. Other generalized ceiling targets remain
-  unsupported. Voodoo dolls now use player-style sliding at blocking lines.
+- Generalized ceilings (`0x4000`–`0x5fff`): all eight triggers, four speeds,
+  eight targets, crushing and trigger/numeric model texture/type changes.
+  Changes apply when the mover finishes and survive saves and replication.
+- Generalized lifts (`0x3400`–`0x37ff`): all triggers, speeds, waits and targets,
+  including perpetual motion, stop/resume and independent floor/ceiling slots.
+  Manual lifts retain the activating line's tag when stopped and restored.
+- Generalized locked doors accepting either card/skull of a required color,
+  any key, or all three colors. Distinct card/skull and all-six-key locks remain
+  unsupported. Generalized doors use an independent ceiling slot.
+- Voodoo dolls slide using their own collision shape while collision checks
+  retain the real player's position.
 
 - Generalized floors (`0x6000`–`0x7fff`): all eight trigger modes, four speeds,
   up/down targets, crushing, and trigger/numeric model texture/type changes.
   Generalized floors use the floor mover slot independently of ceiling motion.
 - Basic generalized doors (`0x3c00`–`0x3fff`): triggers, speeds, waits and
-  open/close variants used by the recorded paths below. Locked generalized
-  doors and door lighting transfers remain unsupported.
+  open/close variants used by the recorded paths below. Door lighting
+  transfers remain unsupported.
 - Static ceiling/floor scrollers (250–251), carry-only conveyors (252), and
   combined floor scrolling/carrying (253). Carry impulses participate in the
   ordered thinker loop; CPU/GPU plane sampling includes the texture offsets.
@@ -99,15 +107,18 @@ not established by it.
 GD-DOOM and DSDA-Doom, and compares every exported reference player position
 (X/Y/Z) and angle exactly, plus the level-exit tic. Reference ghost exports
 start at completed gametic 1; GD labels that completed command gametic 0.
-All four cases are single-player **no-monsters** demos.
+All five cases are single-player **no-monsters** demos.
 
 | Map | Demo | Reference frames matched | Level time | Demo format |
 | --- | --- | ---: | ---: | --- |
+| Ancient Aliens MAP02 | `aa02o026.lmp` | 932 / 932 | 26.66 s | Boom 2.02 / complevel 9 |
 | Ancient Aliens MAP01 | `aa01o023.lmp` | 835 / 835 | 23.89 s | Boom 2.02 / complevel 9 |
 | Sunlust MAP01 | `sl01o016.lmp` | 584 / 584 | 16.71 s | Boom 2.02 / complevel 9 |
 | Sunlust MAP02 | `sunlust02nomo48.lmp` | 1,712 / 1,712 | 48.94 s | Boom 2.02 / complevel 9 |
 | Sunder MAP01 | `su01o048.lmp` | 1,709 / 1,709 | 48.86 s | Doom 1.9 / complevel 2 |
 
+Ancient Aliens MAP02 exercises a generalized lift and a generalized blue-key
+door releasing a voodoo-controlled floor. It exits at leveltime 933.
 Sunlust MAP02 contains nine extra player starts, five conveyor lines and
 15 generalized floor lines. Its full recorded path stays in sync with the
 reference. Sunder is a separate map-loading/movement regression; that demo
@@ -126,7 +137,9 @@ reuse a built GD-DOOM binary, or `--case sl02o048` to replay one case. Any
 coordinate/angle mismatch, missing frame or exit mismatch fails the run.
 
 The focused tests also cover parameter decoding, floor targets/speeds/model
-changes, conveyor thinker timing, airborne actors, a voodoo-triggered floor,
+changes, generalized ceiling targets/crushing/model changes, lift waits and
+stasis tags, locked-door key gates, conveyor thinker timing, airborne actors,
+a voodoo-triggered floor,
 shared damage and binary save restoration. The opt-in renderer test compares
 scrolling planes on CPU/GPU in Faithful and Source Port modes:
 
@@ -142,12 +155,16 @@ A temporary copy of MAP01 with its XNOD payload zlib-compressed into ZNOD
 also matched all 835 reference frames and exited at tic 836.
 The [XNOD/ZNOD layout](https://github.com/doom-cross-port-collab/udmf/blob/main/formats/bsp.md)
 and [DSDA loader](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_setup.c)
-provide the format reference. Decoder tests cover both encodings, fractional
+provide the format reference.
+Ancient Aliens MAP02 additionally rendered at demo tics 90, 110, 500, 550 and
+800 at 640×400 with Doom lighting; each CPU/GPU pair matched pixel for pixel.
+The generalized mover behavior follows [DSDA p_genlin.c](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_genlin.c).
+Decoder tests cover both encodings, fractional
 vertices, indices above 65535, truncated payloads, bad counts and cyclic nodes.
 
 ## Remaining work
 
-Other generalized ceilings, lifts/stairs/crushers and locked doors, complete independent
+Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, displacement/accelerative and
 wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers, height/light
 transfers, deep water, translucency, custom `ANIMATED`/`SWITCHES` tables,
@@ -159,7 +176,7 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-6`. Deploy matching clients and servers. The serialized
-layouts remain unchanged; new movers and single-player dolls reuse existing
-sector, thing, health and momentum fields. Voodoo-doll conversion is currently
-limited to single-player sessions.
+`gd-doom-authority-dev-7`. Deploy matching clients and servers. Pending ceiling
+changes and lift trigger tags extend the authoritative snapshot schema. Save
+version 29 reads versions 26–28; keyframe version 16 reads versions 13–15.
+Voodoo-doll conversion remains limited to single-player sessions.

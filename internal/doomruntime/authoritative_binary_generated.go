@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-var authorityBinarySchemaFingerprint = [16]byte{0xd2, 0x5c, 0xc8, 0xca, 0xf1, 0x82, 0x90, 0x24, 0x33, 0x69, 0x14, 0x3a, 0xf3, 0x54, 0x75, 0xee}
+var authorityBinarySchemaFingerprint = [16]byte{0x27, 0xe8, 0xc4, 0xd9, 0xde, 0xf9, 0x61, 0x1f, 0xab, 0xf2, 0xbc, 0x3b, 0xb5, 0x69, 0x41, 0xb9}
 
 func (w *authorityBinaryWriter) writedoomruntime_AuthorityRules(v *AuthorityRules) {
 	if w.err != nil {
@@ -607,6 +607,9 @@ func (w *authorityBinaryWriter) writedoomruntime_ceilingThinkerSaveState(v *ceil
 	if w.err != nil {
 		return
 	}
+	w.byte(byte(v.Finish))
+	w.string(string(v.FinishFlat))
+	w.signed(int64(v.FinishSpecial))
 	w.signed(int64(v.Order))
 	w.signed(int64(v.Sector))
 	w.string(string(v.Action))
@@ -621,6 +624,9 @@ func (r *authorityBinaryReader) readdoomruntime_ceilingThinkerSaveState(v *ceili
 	if r.err != nil {
 		return
 	}
+	v.Finish = floorFinishAction(r.byte())
+	v.FinishFlat = string(r.string())
+	v.FinishSpecial = int16(r.signed(16))
 	v.Order = int64(r.signed(64))
 	v.Sector = int(r.signed(strconv.IntSize))
 	v.Action = mapdata.CeilingAction(r.string())
@@ -2235,7 +2241,7 @@ func (r *authorityBinaryReader) readdoomruntime_gameSaveState(v *gameSaveState) 
 			v.Floors[tmp307] = tmp308
 		}
 	}
-	tmp311, tmp312 := r.collection(13, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[platThinkerSaveState]()+16))
+	tmp311, tmp312 := r.collection(15, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[platThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}
@@ -2258,7 +2264,7 @@ func (r *authorityBinaryReader) readdoomruntime_gameSaveState(v *gameSaveState) 
 			v.Plats[tmp313] = tmp314
 		}
 	}
-	tmp317, tmp318 := r.collection(10, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[ceilingThinkerSaveState]()+16))
+	tmp317, tmp318 := r.collection(13, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[ceilingThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}
@@ -2339,6 +2345,8 @@ func (w *authorityBinaryWriter) writedoomruntime_platThinkerSaveState(v *platThi
 	if w.err != nil {
 		return
 	}
+	w.unsigned(uint64(v.TriggerTag))
+	w.boolean(bool(v.HasTriggerTag))
 	w.signed(int64(v.Order))
 	w.signed(int64(v.Sector))
 	w.byte(byte(v.Type))
@@ -2356,6 +2364,8 @@ func (r *authorityBinaryReader) readdoomruntime_platThinkerSaveState(v *platThin
 	if r.err != nil {
 		return
 	}
+	v.TriggerTag = uint16(r.unsigned(16))
+	v.HasTriggerTag = bool(r.boolean())
 	v.Order = int64(r.signed(64))
 	v.Sector = int(r.signed(strconv.IntSize))
 	v.Type = uint8(r.byte())

@@ -26,14 +26,16 @@ frame at 35 Hz and uses current tick state without interpolation or prediction
 smoothing. Game-speed controls are limited to single-player Source Port play.
 
 Multiplayer uses GDMP protocol version 3 with binary roster updates and the
-binary-only `gd-doom-authority-dev-6` simulation. The simulation revision adds
+binary-only `gd-doom-authority-dev-7` simulation. The simulation revision adds
 Boom generalized floors/doors, static conveyor physics, extended BSP nodes,
-silent thing teleports and corrected teleport freeze timing. Update `gdserver`,
+silent thing teleports, generalized ceilings/lifts, equivalent-key locked doors
+and corrected teleport freeze/voodoo slide behavior. Update `gdserver`,
 `gdlobby`, the deployment probe and browser assets together, and restart the lobby to replace existing room workers.
 The v0.1.8 presentation release also changes the authoritative snapshot schema
 to retain weapon poses and skull-key variants. All clients and room workers must
-use this build together; save version 28 still reads versions 26–27 and keyframe
-version 15 still reads versions 13–14.
+use this build together; save version 29 still reads versions 26–28 and keyframe
+version 16 still reads versions 13–15. Pending ceiling changes and lift tags
+are included in the authoritative snapshot schema.
 Players with an older browser build must reload before joining. The release also
 includes adaptive browser audio buffering and default deathmatch map progression
 when no explicit rotation is configured.

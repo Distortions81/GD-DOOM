@@ -61,6 +61,8 @@ const (
 )
 
 type platThinker struct {
+	triggerTag     uint16
+	hasTriggerTag  bool
 	order          int64
 	skipOrderedTic bool
 	sector         int
@@ -77,15 +79,18 @@ type platThinker struct {
 }
 
 type ceilingThinker struct {
-	order        int64
-	sector       int
-	action       mapdata.CeilingAction
-	direction    int
-	oldDirection int
-	speed        int64
-	topHeight    int64
-	bottomHeight int64
-	crush        bool
+	finish        floorFinishAction
+	finishFlat    string
+	finishSpecial int16
+	order         int64
+	sector        int
+	action        mapdata.CeilingAction
+	direction     int
+	oldDirection  int
+	speed         int64
+	topHeight     int64
+	bottomHeight  int64
+	crush         bool
 }
 
 func lineSpecialSupported(info mapdata.LineSpecialInfo) bool {
@@ -133,6 +138,9 @@ func (g *game) activateShootLineSpecial(lineIdx int, info mapdata.LineSpecialInf
 	}
 	if info.Door != nil {
 		if info.Door.Generalized != nil {
+			if !info.Door.CanActivate(g.inventory.keys()) {
+				return false
+			}
 			return g.activateGeneralizedDoor(lineIdx, info, true)
 		}
 		return g.evDoDoorTagged(lineIdx, info)
@@ -986,6 +994,9 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 }
 
 func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
+	if info.Generalized != nil {
+		return g.activateGeneralizedLift(lineIdx, info)
+	}
 	// Stop/reactivate existing thinkers before testing sector specialdata.
 	// These actions specifically operate on sectors that already own a mover.
 	if info.Action == mapdata.PlatStop {
@@ -1122,6 +1133,7 @@ func (g *game) allocPlatThinker(sec int) *platThinker {
 	} else {
 		pt = &platThinker{}
 	}
+	pt.hasTriggerTag = false
 	pt.order = g.allocThinkerOrder()
 	pt.sector = sec
 	return pt
@@ -1596,32 +1608,8 @@ func fixedToDebugFloat(v int64) float64 {
 }
 
 func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
-	if gen := info.HighestNeighbor; gen != nil {
-		targets := g.taggedSectorsForLine(lineIdx)
-		if !info.UsesTag {
-			sec, ok := g.sectorIndexFromSidedef(g.m.Linedefs[lineIdx].SideNum[1])
-			if !ok {
-				return false
-			}
-			targets = []int{sec}
-		}
-		if g.ceilings == nil {
-			g.ceilings = make(map[int]*ceilingThinker)
-		}
-		active := false
-		for _, sec := range targets {
-			if g.ceilings[sec] != nil || g.doors[sec] != nil {
-				continue
-			}
-			direction := -1
-			if gen.Up {
-				direction = 1
-			}
-			dest := g.findHighestCeilingSurrounding(sec)
-			g.ceilings[sec] = &ceilingThinker{order: g.allocThinkerOrder(), sector: sec, action: mapdata.CeilingRaiseToHighest, direction: direction, speed: fracUnit << gen.Speed, topHeight: dest, bottomHeight: dest}
-			active = true
-		}
-		return active
+	if info.Generalized != nil {
+		return g.activateGeneralizedCeiling(lineIdx, info)
 	}
 
 	targets := g.taggedSectorsForLine(lineIdx)
@@ -1718,7 +1706,7 @@ func (g *game) activateInStasisPlats(tag uint16) bool {
 			continue
 		}
 		sec := pt.sector
-		if sec >= 0 && sec < len(g.m.Sectors) && g.m.Sectors[sec].Tag >= 0 && uint16(g.m.Sectors[sec].Tag) == tag {
+		if pt.hasTriggerTag && pt.triggerTag == tag || !pt.hasTriggerTag && sec >= 0 && sec < len(g.m.Sectors) && g.m.Sectors[sec].Tag >= 0 && uint16(g.m.Sectors[sec].Tag) == tag {
 			pt.status = pt.oldStatus
 			activated = true
 		}
@@ -1733,7 +1721,7 @@ func (g *game) stopTaggedPlats(tag uint16) bool {
 			continue
 		}
 		sec := pt.sector
-		if sec >= 0 && sec < len(g.m.Sectors) && g.m.Sectors[sec].Tag >= 0 && uint16(g.m.Sectors[sec].Tag) == tag {
+		if pt.hasTriggerTag && pt.triggerTag == tag || !pt.hasTriggerTag && sec >= 0 && sec < len(g.m.Sectors) && g.m.Sectors[sec].Tag >= 0 && uint16(g.m.Sectors[sec].Tag) == tag {
 			pt.oldStatus = pt.status
 			pt.status = platStatusInStasis
 			stopped = true
@@ -1966,7 +1954,7 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 				}
 				ct.direction = 1
 			} else {
-				delete(g.ceilings, sec)
+				g.finishCeiling(sec, ct)
 			}
 			return
 		}
@@ -1990,7 +1978,7 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
 				ct.direction = -1
 			} else {
-				delete(g.ceilings, sec)
+				g.finishCeiling(sec, ct)
 			}
 			return
 		}

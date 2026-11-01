@@ -756,7 +756,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 	if err := w.gameSaveState(v.Game); err != nil {
 		return err
 	}
-	if v.Version == saveGameVersion || v.Version == saveGameVersion-1 || v.Version == keyframeVersion || v.Version == keyframeVersion-1 {
+	if (v.Version >= 27 && v.Version <= saveGameVersion) || (v.Version >= 14 && v.Version <= keyframeVersion) {
 		for _, n := range []int64{v.Game.WeaponPose.X, v.Game.WeaponPose.FractionY, v.Game.WeaponPose.BobY} {
 			if err := w.i64(n); err != nil {
 				return err
@@ -766,13 +766,36 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 28 && v.Version <= saveGameVersion) || (v.Version >= 15 && v.Version <= keyframeVersion) {
 		for _, b := range v.Game.Inventory.SkullKeys {
 			if err := w.bool(b); err != nil {
 				return err
 			}
 		}
-		return nil
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, key := range sortedSaveIntKeys(v.Game.Plats) {
+			it := v.Game.Plats[key]
+			if err := w.u16(it.TriggerTag); err != nil {
+				return err
+			}
+			if err := w.bool(it.HasTriggerTag); err != nil {
+				return err
+			}
+		}
+
+		for _, key := range sortedSaveIntKeys(v.Game.Ceilings) {
+			it := v.Game.Ceilings[key]
+			if err := w.u8(uint8(it.Finish)); err != nil {
+				return err
+			}
+			if err := w.str(it.FinishFlat); err != nil {
+				return err
+			}
+			if err := w.i16(it.FinishSpecial); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -1643,7 +1666,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 	if v.Game, err = r.gameSaveState(); err != nil {
 		return v, err
 	}
-	if v.Version == saveGameVersion || v.Version == saveGameVersion-1 || v.Version == keyframeVersion || v.Version == keyframeVersion-1 {
+	if (v.Version >= 27 && v.Version <= saveGameVersion) || (v.Version >= 14 && v.Version <= keyframeVersion) {
 		for _, dst := range []*int64{&v.Game.WeaponPose.X, &v.Game.WeaponPose.FractionY, &v.Game.WeaponPose.BobY} {
 			if *dst, err = r.i64(); err != nil {
 				return v, err
@@ -1653,7 +1676,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			return v, err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 28 && v.Version <= saveGameVersion) || (v.Version >= 15 && v.Version <= keyframeVersion) {
 		for i := range v.Game.Inventory.SkullKeys {
 			if v.Game.Inventory.SkullKeys[i], err = r.bool(); err != nil {
 				return v, err
@@ -1661,6 +1684,34 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 		}
 	}
 
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, key := range sortedSaveIntKeys(v.Game.Plats) {
+			it := v.Game.Plats[key]
+			if it.TriggerTag, err = r.u16(); err != nil {
+				return v, err
+			}
+			if it.HasTriggerTag, err = r.bool(); err != nil {
+				return v, err
+			}
+			v.Game.Plats[key] = it
+		}
+
+		for _, key := range sortedSaveIntKeys(v.Game.Ceilings) {
+			it := v.Game.Ceilings[key]
+			finish, e := r.u8()
+			if e != nil {
+				return v, e
+			}
+			it.Finish = floorFinishAction(finish)
+			if it.FinishFlat, err = r.str(); err != nil {
+				return v, err
+			}
+			if it.FinishSpecial, err = r.i16(); err != nil {
+				return v, err
+			}
+			v.Game.Ceilings[key] = it
+		}
+	}
 	return v, nil
 }
 

@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 28
+	saveGameVersion     = 29
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 15
+	keyframeVersion     = 16
 	saveGameDirName     = "saves"
 )
 
@@ -281,6 +281,8 @@ type floorThinkerSaveState struct {
 }
 
 type platThinkerSaveState struct {
+	TriggerTag    uint16
+	HasTriggerTag bool
 	Order         int64
 	Sector        int
 	Type          uint8
@@ -296,15 +298,18 @@ type platThinkerSaveState struct {
 }
 
 type ceilingThinkerSaveState struct {
-	Order        int64
-	Sector       int
-	Action       mapdata.CeilingAction
-	Direction    int
-	OldDirection int
-	Speed        int64
-	TopHeight    int64
-	BottomHeight int64
-	Crush        bool
+	Finish        floorFinishAction
+	FinishFlat    string
+	FinishSpecial int16
+	Order         int64
+	Sector        int
+	Action        mapdata.CeilingAction
+	Direction     int
+	OldDirection  int
+	Speed         int64
+	TopHeight     int64
+	BottomHeight  int64
+	Crush         bool
 }
 
 type bossSpawnCubeSaveState struct {
@@ -1122,8 +1127,9 @@ func (sg *sessionGame) loadSnapshot(data []byte, magic []byte, version int) (sav
 	if err != nil {
 		return saveFile{}, err
 	}
-	// The two previous versions lack only weapon pose and/or key artwork.
-	if file.Version < version-2 || file.Version > version {
+	// Versions 26-28 (13-15 for keyframes) predate pending ceiling changes;
+	// the oldest versions also lack weapon pose and/or skull-key artwork.
+	if file.Version < version-3 || file.Version > version {
 		return saveFile{}, fmt.Errorf("incompatible save version: %d", file.Version)
 	}
 	return file, nil
@@ -1156,7 +1162,7 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	}
 	g := sg.buildGame(loadedMap, sg.opts)
 	restoreGameSaveState(g, file.Game)
-	if file.Version == saveGameVersion-1 || file.Version == saveGameVersion-2 || file.Version == keyframeVersion-1 || file.Version == keyframeVersion-2 {
+	if file.Version == 26 || file.Version == 27 || file.Version == 13 || file.Version == 14 {
 		g.inventory.SkullKeys = g.collectedSkullKeys()
 	}
 	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
@@ -1734,7 +1740,8 @@ func capturePlatThinkers(src map[int]*platThinker) map[int]platThinkerSaveState 
 			continue
 		}
 		dst[key] = platThinkerSaveState{
-			Order:         thinker.order,
+			Order:      thinker.order,
+			TriggerTag: thinker.triggerTag, HasTriggerTag: thinker.hasTriggerTag,
 			Sector:        thinker.sector,
 			Type:          uint8(thinker.typ),
 			Status:        uint8(thinker.status),
@@ -1758,7 +1765,8 @@ func restorePlatThinkers(src map[int]platThinkerSaveState) map[int]*platThinker 
 	dst := make(map[int]*platThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &platThinker{
-			order:         thinker.Order,
+			order:      thinker.Order,
+			triggerTag: thinker.TriggerTag, hasTriggerTag: thinker.HasTriggerTag,
 			sector:        thinker.Sector,
 			typ:           platType(thinker.Type),
 			status:        platStatus(thinker.Status),
@@ -1785,15 +1793,18 @@ func captureCeilingThinkers(src map[int]*ceilingThinker) map[int]ceilingThinkerS
 			continue
 		}
 		dst[key] = ceilingThinkerSaveState{
-			Order:        thinker.order,
-			Sector:       thinker.sector,
-			Action:       thinker.action,
-			Direction:    thinker.direction,
-			OldDirection: thinker.oldDirection,
-			Speed:        thinker.speed,
-			TopHeight:    thinker.topHeight,
-			BottomHeight: thinker.bottomHeight,
-			Crush:        thinker.crush,
+			Order:         thinker.order,
+			Sector:        thinker.sector,
+			Action:        thinker.action,
+			Direction:     thinker.direction,
+			OldDirection:  thinker.oldDirection,
+			Speed:         thinker.speed,
+			TopHeight:     thinker.topHeight,
+			BottomHeight:  thinker.bottomHeight,
+			Finish:        thinker.finish,
+			FinishFlat:    thinker.finishFlat,
+			FinishSpecial: thinker.finishSpecial,
+			Crush:         thinker.crush,
 		}
 	}
 	return dst
@@ -1806,15 +1817,18 @@ func restoreCeilingThinkers(src map[int]ceilingThinkerSaveState) map[int]*ceilin
 	dst := make(map[int]*ceilingThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &ceilingThinker{
-			order:        thinker.Order,
-			sector:       thinker.Sector,
-			action:       thinker.Action,
-			direction:    thinker.Direction,
-			oldDirection: thinker.OldDirection,
-			speed:        thinker.Speed,
-			topHeight:    thinker.TopHeight,
-			bottomHeight: thinker.BottomHeight,
-			crush:        thinker.Crush,
+			order:         thinker.Order,
+			sector:        thinker.Sector,
+			action:        thinker.Action,
+			direction:     thinker.Direction,
+			oldDirection:  thinker.OldDirection,
+			speed:         thinker.Speed,
+			topHeight:     thinker.TopHeight,
+			bottomHeight:  thinker.BottomHeight,
+			finish:        thinker.Finish,
+			finishFlat:    thinker.FinishFlat,
+			finishSpecial: thinker.FinishSpecial,
+			crush:         thinker.Crush,
 		}
 	}
 	return dst
