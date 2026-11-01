@@ -181,7 +181,10 @@ func (g *game) transferredSkyFrame(lineID int, camAngle, focal float64) *boomSky
 	return frame
 }
 func (g *game) transferredSkyPixel(f *boomSkyFrame, i int) uint32 {
-	if !g.opts.SourcePortMode && i < len(f.indexed) {
+	if (!g.opts.SourcePortMode || g.boomActiveColormap != "") && i < len(f.indexed) {
+		if g.boomActiveColormap != "" {
+			return shadePaletteIndexDOOMRow(f.indexed[i], 0)
+		}
 		return shadePaletteIndexPacked(f.indexed[i], 256)
 	}
 	return f.rgba[i]

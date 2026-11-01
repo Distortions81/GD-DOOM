@@ -6,7 +6,7 @@ import "github.com/hajimehoshi/ebiten/v2"
 // ceil, and column samples use fixed-point texturemid relative to each post.
 // A normal scaled image uses pixel centers and disagrees at fractional poses.
 func (g *game) drawClassicWeaponOverlay(screen *ebiten.Image) bool {
-	if len(g.opts.DoomPaletteRGBA) < 256*4 || len(g.opts.DoomColorMap) < 32*256 {
+	if len(g.opts.DoomPaletteRGBA) < 256*4 || len(g.renderColorMap()) < 32*256 {
 		return false
 	}
 	rect := g.walkWeaponViewportRect()
@@ -91,7 +91,7 @@ func (g *game) rasterClassicWeapon(dst []byte, w, h int, tex WallTexture, sx, sy
 					}
 					idx = tex.Indexed[(top+v)*tex.Width+u]
 				}
-				mapped := g.opts.DoomColorMap[row*256+int(idx)]
+				mapped := g.renderColorMap()[row*256+int(idx)]
 				copy(dst[(y*w+x)*4:(y*w+x)*4+4], g.opts.DoomPaletteRGBA[int(mapped)*4:int(mapped)*4+4])
 			}
 		}

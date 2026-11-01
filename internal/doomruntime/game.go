@@ -244,6 +244,7 @@ const (
 )
 
 type cutoutItem struct {
+	boomLightRow    bool
 	dist            float64
 	depthQ          uint16
 	kind            billboardQueueKind
@@ -757,6 +758,10 @@ type game struct {
 	bonusFlashTic                                 int
 	boomFloorLight, boomCeilingLight, boomSkyLine []int
 	frameTransferSkies                            []*boomSkyFrame
+	boomColormapNames                             [][3]string
+	boomColormapSides                             map[int]mapdata.Sidedef
+	boomColormapCache                             map[string]*boomColormap
+	boomActiveColormap                            string
 	boomHeightControl                             []int
 	boomHasHeightTransfers, boomHeightFrameValid  bool
 	boomHeightFront, boomHeightBack               []boomHeightView
@@ -1540,6 +1545,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.initTimedDoorSpecials()
 	g.initBoomScrollers()
 	g.initBoomTransfers()
+	g.initBoomColormaps()
 	// Initialize eye height after physics snaps player Z/floor/ceiling.
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
@@ -5112,6 +5118,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
 	g.prepareHeightTransfers(camX, camY, eyeZ)
+	g.activateBoomColormap(camX, camY, eyeZ)
 	defer func() { g.boomHeightFrameValid = false }()
 	focal := doomFocalLength(g.viewW)
 	focalV := g.verticalFocalLength(focal)
@@ -5154,7 +5161,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 		var frontSideDef *mapdata.Sidedef
 		if pp.frontSideDefIdx >= 0 && pp.frontSideDefIdx < len(g.m.Sidedefs) {
-			frontSideDef = &g.m.Sidedefs[pp.frontSideDefIdx]
+			frontSideDef = g.renderSidedef(pp.frontSideDefIdx)
 		}
 		front, back := g.segSectors(si)
 		if front == nil {
@@ -5298,6 +5305,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 
+		if planesEnabled && !g.opts.SourcePortMode && g.heightView(frontIdx, false) != nil {
+			// R_StoreWallRange disables plane marking (and its portal clip)
+			// when R_UpdateGlobalPlanes did not create that plane.
+			markFloor = markFloor && classicFloor != nil
+			markCeiling = markCeiling && classicCeil != nil
+		}
 		visibleRanges := g.solidClipScratch[:0]
 		if (solidWall || !g.opts.SourcePortMode) && g.wallSpanClipEnabled() {
 			visibleRanges = clipRangeAgainstSolidSpans(pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, solid, visibleRanges)
@@ -6002,11 +6015,17 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 }
 
 func (g *game) frameSkyPixel(i int) uint32 {
-	if !g.opts.SourcePortMode {
+	if !g.opts.SourcePortMode || g.boomActiveColormap != "" {
 		if i >= 0 && i < len(g.frameSkyIndexed) {
+			if g.boomActiveColormap != "" {
+				return shadePaletteIndexDOOMRow(g.frameSkyIndexed[i], 0)
+			}
 			return shadePaletteIndexPacked(g.frameSkyIndexed[i], 256)
 		}
 		if index, ok := packedColorPaletteIndex(g.frameSkyTex32[i]); ok {
+			if g.boomActiveColormap != "" {
+				return shadePaletteIndexDOOMRow(index, 0)
+			}
 			return shadePaletteIndexPacked(index, 256)
 		}
 	}
@@ -8134,7 +8153,7 @@ func (g *game) ensureProjectileShadeCache() {
 }
 
 func (g *game) cachedThingShadeMul(i int, fullBright bool, lightMul uint32, dist, near float64) uint32 {
-	if g == nil || i < 0 {
+	if g == nil || i < 0 || g.boomHeightFrameValid {
 		return computeCutoutShadeMul(fullBright, lightMul, dist, near)
 	}
 	g.ensureThingShadeCache()
@@ -8152,7 +8171,7 @@ func (g *game) cachedThingShadeMul(i int, fullBright bool, lightMul uint32, dist
 }
 
 func (g *game) cachedProjectileShadeMul(i int, fullBright bool, lightMul uint32, dist, near float64) uint32 {
-	if g == nil || i < 0 {
+	if g == nil || i < 0 || g.boomHeightFrameValid {
 		return computeCutoutShadeMul(fullBright, lightMul, dist, near)
 	}
 	g.ensureProjectileShadeCache()
@@ -8170,7 +8189,7 @@ func (g *game) cachedProjectileShadeMul(i int, fullBright bool, lightMul uint32,
 }
 
 func (g *game) cachedImpactShadeMul(i int, fullBright bool, lightMul uint32, dist, near float64) uint32 {
-	if g == nil || i < 0 {
+	if g == nil || i < 0 || g.boomHeightFrameValid {
 		return computeCutoutShadeMul(fullBright, lightMul, dist, near)
 	}
 	g.ensureProjectileShadeCache()
@@ -9042,6 +9061,9 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		}
 	} else if doomColormapEnabled {
 		fixedDOOMRow = doomColormapRowForShade(shadeMul)
+		if it.boomLightRow {
+			fixedDOOMRow = it.doomRow
+		}
 		if useIndexed {
 			shadeRow = doomColormapPackedRow(fixedDOOMRow)
 		}
@@ -9732,9 +9754,13 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		len(g.frameSkyRowV) == h &&
 		len(g.frameSkyTex32) != 0 &&
 		g.frameSkyTexW > 0
-	skyLayerEnabled := skyTexReady && g.frameSkyLayerEnabled
+	skyLayerEnabled := skyTexReady && g.frameSkyLayerEnabled && g.boomActiveColormap == ""
+	skyLight := 256
+	if g.boomActiveColormap != "" {
+		skyLight = 257
+	}
 	var gpuSky gpuTexture
-	if g.gpuFrame != nil && (!g.opts.SourcePortMode || len(g.frameTransferSkies) > 0) && skyTexReady {
+	if g.gpuFrame != nil && (!g.opts.SourcePortMode || len(g.frameTransferSkies) > 0 || g.boomActiveColormap != "") && skyTexReady {
 		_, skyTex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name)
 		if ok {
 			if !g.opts.SourcePortMode && skyTex.ClassicOpaque != nil {
@@ -9793,7 +9819,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				if g.gpuFrame != nil {
 					if transferred.ready {
 						for _, vis := range planeClipScratch {
-							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, transferred.gpu, transferred.gpu, 10, 256, 0, float32(lookupRows[key.skyLine]), 0, 0, 0)
+							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, transferred.gpu, transferred.gpu, 10, skyLight, 0, float32(lookupRows[key.skyLine]), 0, 0, 0)
 						}
 					}
 					return planeClipScratch
@@ -9817,10 +9843,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			if g.gpuFrame != nil {
 				if skyTexReady {
 					for _, vis := range planeClipScratch {
-						if g.opts.SourcePortMode && len(g.frameTransferSkies) == 0 {
+						if g.opts.SourcePortMode && len(g.frameTransferSkies) == 0 && g.boomActiveColormap == "" {
 							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuTexture{}, gpuTexture{}, 7, 0, 0, 0, 0, 0, 0)
 						} else {
-							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuSky, gpuSky, 10, 256, 0, 0, 0, 0, 0)
+							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuSky, gpuSky, 10, skyLight, 0, 0, 0, 0, 0)
 						}
 					}
 				}
@@ -10266,11 +10292,16 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		}
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
-			lightMul = g.sectorLightMulCached(sec)
+			lightMul = g.spriteSectorLightMul(sec)
 		}
 		depthQ := encodeDepthQ(f)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := yb - float64(ref.tex.OffsetY)*scaleY
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(rx, ry, rz, float64(rz)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
@@ -10292,6 +10323,8 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        g.cachedProjectileShadeMul(pi, ref.fullBright, lightMul, f, near),
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -10347,6 +10380,11 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		depthQ := encodeDepthQ(f)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := yb - float64(ref.tex.OffsetY)*scaleY
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(cube.x, cube.y, cube.z, float64(cube.z)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
@@ -10368,6 +10406,8 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        256,
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         0,
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -10423,6 +10463,11 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		depthQ := encodeDepthQ(f)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := yb - float64(ref.tex.OffsetY)*scaleY
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(fire.x, fire.y, fire.z, float64(fire.z)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
@@ -10444,6 +10489,8 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        256,
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         0,
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -10499,11 +10546,16 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		}
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
-			lightMul = g.sectorLightMulCached(sec)
+			lightMul = g.spriteSectorLightMul(sec)
 		}
 		depthQ := encodeDepthQ(f)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := yb - float64(ref.tex.OffsetY)*scaleY
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(fx.x, fx.y, fx.z, float64(fx.z)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
@@ -10525,6 +10577,8 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        g.cachedImpactShadeMul(fi, ref.fullBright, lightMul, f, near),
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -10594,6 +10648,11 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, n
 		depthQ := encodeDepthQ(f)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(p.x, p.y, p.z, float64(p.z)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
@@ -10615,6 +10674,8 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, n
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        256,
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         0,
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -11192,6 +11253,11 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, focalV, near 
 		if !hasSprite || spriteTex == nil || spriteTex.Width <= 0 || spriteTex.Height <= 0 {
 			continue
 		}
+		clipTop, clipBottom, clipOK = g.boomSpriteClip(p.x, p.y, p.z, pz+float64(spriteTex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !clipOK {
+			continue
+		}
+
 		it := projectedPuffItem{
 			dist:       f,
 			sx:         sx,
@@ -11297,11 +11363,19 @@ func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal, focalV float64
 			if ((pix >> pixelAShift) & 0xFF) == 0 {
 				continue
 			}
-			if !g.opts.SourcePortMode {
+			if !g.opts.SourcePortMode || g.boomActiveColormap != "" {
 				if len(it.spriteTex.Indexed) == tw*th {
-					pix = shadePaletteIndexPacked(it.spriteTex.Indexed[ty*tw+txLUT[x-x0]], 256)
+					if g.boomActiveColormap != "" {
+						pix = shadePaletteIndexDOOMRow(it.spriteTex.Indexed[ty*tw+txLUT[x-x0]], 0)
+					} else {
+						pix = shadePaletteIndexPacked(it.spriteTex.Indexed[ty*tw+txLUT[x-x0]], 256)
+					}
 				} else if index, ok := packedColorPaletteIndex(pix); ok {
-					pix = shadePaletteIndexPacked(index, 256)
+					if g.boomActiveColormap != "" {
+						pix = shadePaletteIndexDOOMRow(index, 0)
+					} else {
+						pix = shadePaletteIndexPacked(index, 256)
+					}
 				}
 			}
 			g.writeWallPixel(i, pix)
@@ -11360,6 +11434,11 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 		h := float64(ref.tex.Height) * scaleY
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(txFixed, tyFixed, baseZFixed, float64(baseZFixed)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if h <= 0 || w <= 0 {
 			continue
@@ -11372,7 +11451,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 		sec := g.thingSectorCached(i, th)
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
-			lightMul = g.sectorLightMulCached(sec)
+			lightMul = g.spriteSectorLightMul(sec)
 		}
 		depthQ := encodeDepthQ(f)
 		shadeMul := g.cachedThingShadeMul(i, ref.fullBright, lightMul, f, near)
@@ -11396,6 +11475,8 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        shadeMul,
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
 			tex:             ref.tex,
 			flip:            flip,
 			shadow:          monsterUsesShadow(th.Type),
@@ -11545,12 +11626,17 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near fl
 		}
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
-			lightMul = g.sectorLightMulCached(sec)
+			lightMul = g.spriteSectorLightMul(sec)
 		}
 		depthQ := encodeDepthQ(f)
 		dstW := float64(ref.tex.Width) * scale
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := floorSpriteTop(h, yb)
+		var heightClipOK bool
+		clipTop, clipBottom, heightClipOK = g.boomSpriteClip(txFixed, tyFixed, floorZFixed, float64(floorZFixed)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !heightClipOK {
+			continue
+		}
 		x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, dstW, h, clipTop, clipBottom, viewW, viewH)
 		shadeMul := g.cachedThingShadeMul(i, ref.fullBright, lightMul, f, near)
 		if !boundsOK {
@@ -11573,6 +11659,8 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near fl
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        shadeMul,
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -21000,6 +21088,9 @@ func (g *game) spriteFootprintClipYBounds(x, y, radius int64, viewH int, eyeZ, d
 		return 0, viewH - 1, true
 	}
 	centerSec := g.sectorAt(x, y)
+	if g.boomHeightFrameValid && g.heightControl(centerSec) >= 0 {
+		return 0, viewH - 1, true
+	}
 	if radius < 0 {
 		radius = -radius
 	}

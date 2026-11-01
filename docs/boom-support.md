@@ -11,6 +11,15 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   sky exceptions. The inclusive waterline and one-16.16-unit plane separation
   follow DSDA's `R_FakeFlat`. Moving control heights update every frame;
   collision, actor support heights and saved physical geometry stay real.
+- Height-sector sprites clip at the fake floor/ceiling, including partially
+  submerged actors and actors completely separated from the camera. Normal
+  play uses the average fake floor/ceiling light with classic sprite light
+  rows; Boom 201/202 demos retain their original sector-light behavior.
+- Named `C_START`/`C_END` colormaps on 242 control sidedefs select bottom,
+  middle and top view regions. Selection uses strict height comparisons,
+  distinct from the inclusive fake-floor geometry rule. World surfaces,
+  sprites, skies and weapons use the active table; CPU/GPU and weapon caches
+  update when it changes. Incomplete tables fall back to normal rendering.
 - Per-sector sky transfers (271/272): upper sidedef texture, Doom BAM horizontal
   offsets, vertical offsets, optional flipping, sky floors and several skies
   visible together. Tall skies retain their declared height. CPU/GPU share
@@ -266,16 +275,51 @@ save-version change.
 
 The implementation follows [DSDA's fake-flat rendering](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_bsp.c)
 and [height-sector plane marking](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_segs.c).
-These fixed-camera comparisons suppress actors and HUD. Special height-sector
-sprite clipping/lighting and custom underwater COLORMAP selection remain work
-for a later pass; this verification covers world geometry.
+These original fixed-camera comparisons suppress actors and HUD and cover
+world geometry. The additional actor comparisons below enable map sprites.
+
+### Actors and underwater colormaps
+
+`python3 scripts/make_boom_water_actors_wad.py` builds a second original fixture
+with uniform indexed sprites: a pillar crossing both model planes and a barrel
+entirely below water. It includes three distinct custom light tables and a sky
+variant. Uniform sprite colors isolate clipping and light selection from patch
+UV rounding. No IWAD artwork is stored in this fixture.
+
+```sh
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad testdata/boom/water-actors.wad \
+  --scenes testdata/boom/water-actors-scenes.json --actors --complevel 11 \
+  --reference-source /path/to/clean/dsda-doom-0.27.5 \
+  --out /tmp/boom-water-actors
+```
+
+All **44 checked regions across 19 views** match DSDA pixel for pixel, including
+floor/ceiling sprite cuts, the submerged barrel, exact surface/ceiling equality,
+all three colormap zones, returning to land, and tinted sky. Every full CPU/GPU pair also matches,
+including all 19 views in Source Port mode. Whole-frame DSDA differences remain
+0.13–2.89% from wall sampling and raster boundaries; these are reported separately.
+The original 21 water/sky/light views and 33 regions still pass, as do the five
+demo regressions (5,772 frames and matching exits).
+
+These actor captures explicitly use **MBF compatibility 11**: DSDA deliberately
+uses the real sector light for sprites at Boom compatibility 9, retaining an
+old Boom lighting bug. Compatibility 11 uses the fake plane-light average,
+which GD uses for normal map play. Boom 201/202 demo playback preserves the
+older light selection; focused tests cover that distinction. The renderer and
+clipping code in the reference remain unchanged. `--actors` keeps map actors
+in both engines while continuing to suppress the weapon and HUD.
+
+Focused tests also cover one-fixed-unit transitions, complete sprite rejection,
+live plane-light averages, namespace/malformed-table handling, returning to the
+default colormap, GPU table invalidation and weapon cache identity. This remains
+a presentation change with no new simulation or save format.
 
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, displacement/accelerative and
 wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers,
-height-sector sprite clipping/lighting and custom underwater colormaps,
 translucency, custom `ANIMATED`/`SWITCHES` tables,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.

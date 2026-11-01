@@ -200,6 +200,10 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 		h := float64(ref.tex.Height) * scaleY
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY
+		clipTop, clipBottom, clipOK = g.boomSpriteClip(txFixed, tyFixed, pose.z, float64(pose.z)/fracUnit+float64(ref.tex.OffsetY), eyeZ, f, focalV, viewH, clipTop, clipBottom)
+		if !clipOK {
+			continue
+		}
 		x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !boundsOK || h <= 0 || w <= 0 {
 			continue
@@ -212,7 +216,7 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 		sec := g.sectorAt(txFixed, tyFixed)
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
-			lightMul = g.sectorLightMulCached(sec)
+			lightMul = g.spriteSectorLightMul(sec)
 		}
 		depthQ := encodeDepthQ(f)
 		shadeMul := g.cachedThingShadeMul(-1, false, lightMul, f, near)
@@ -232,6 +236,8 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        shadeMul,
+			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRow(sec, false, f),
 			tex:             ref.tex,
 			flip:            flip,
 			shadow:          false,

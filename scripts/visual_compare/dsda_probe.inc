@@ -45,7 +45,8 @@ static void GD_VisualProbe(void)
         p->viewz = (fixed_t)(pz*FRACUNIT);
         p->extralight = p->fixedcolormap = 0;
         for (i=0; i<NUMPSPRITES; ++i) p->psprites[i].state=NULL;
-        for (i=0; i<numsectors; ++i) sectors[i].thinglist=NULL;
+        if (!getenv("GD_VISUAL_ACTORS") || strcmp(getenv("GD_VISUAL_ACTORS"), "1"))
+            for (i=0; i<numsectors; ++i) sectors[i].thinglist=NULL;
         R_SetViewSize();
         R_ExecuteSetViewSize();
         viewx=p->mo->x; viewy=p->mo->y; viewz=p->viewz;

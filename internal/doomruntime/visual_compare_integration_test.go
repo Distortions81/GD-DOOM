@@ -63,6 +63,19 @@ func TestVisualRendererCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	walls := buildWallTextureBankForTest(t, ts)
+	var sprites map[string]WallTexture
+	if os.Getenv("GD_VISUAL_ACTORS") == "1" {
+		sprites = buildBillboardSpritePatchBankForTest(t, ts)
+		for name, tex := range sprites {
+			index, _, _, _, _, _, err := ts.BuildPatchIndexed(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tex.Indexed = index
+			tex.EnsureOpaqueMask()
+			sprites[name] = tex
+		}
+	}
 	flats, err := doomtex.LoadFlatsRGBA(wf, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +137,7 @@ func TestVisualRendererCapture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			opts := Options{Width: width, Height: height, PlayerSlot: 1, SkillLevel: 3, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: indices}
+			opts := Options{BoomColorMaps: doomtex.LoadBoomColormaps(wf), SpritePatchBank: sprites, Width: width, Height: height, PlayerSlot: 1, SkillLevel: 3, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: indices}
 			opts.DisableDoomLighting = os.Getenv("GD_VISUAL_DISABLE_LIGHTING") == "1"
 			opts.SourcePortMode = os.Getenv("GD_VISUAL_SOURCE_PORT") == "1"
 			opts.SourcePortSectorLighting = opts.SourcePortMode

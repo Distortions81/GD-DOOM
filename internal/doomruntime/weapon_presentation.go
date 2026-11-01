@@ -37,10 +37,10 @@ func (g *game) weaponPresentationPosition() (float64, float64) {
 }
 
 func (g *game) weaponLightRow(fullbright bool) int {
-	if g.playerPowerupInvulnerabilityVisualActive() && len(g.opts.DoomColorMap) >= 33*256 {
+	if g.playerPowerupInvulnerabilityVisualActive() && len(g.renderColorMap()) >= 33*256 {
 		return 32
 	}
-	if g.playerInfraredBright() && len(g.opts.DoomColorMap) >= 2*256 {
+	if g.playerInfraredBright() && len(g.renderColorMap()) >= 2*256 {
 		return 1
 	}
 	if fullbright || g.opts.DisableDoomLighting {
@@ -95,8 +95,11 @@ func (g *game) weaponCompositeToken(body, flash string) string {
 			return ""
 		}
 		row := g.weaponLightRow(weaponPatchFullbright(name))
-		if row == 0 || len(g.opts.DoomPaletteRGBA) < 1024 || len(g.opts.DoomColorMap) < (row+1)*256 {
+		if (row == 0 && g.boomActiveColormap == "") || len(g.opts.DoomPaletteRGBA) < 1024 || len(g.renderColorMap()) < (row+1)*256 {
 			return name
+		}
+		if g.boomActiveColormap != "" {
+			return fmt.Sprintf("L%d:%s@%s", row, g.boomActiveColormap, name)
 		}
 		return fmt.Sprintf("L%d@%s", row, name)
 	}
@@ -108,8 +111,9 @@ func (g *game) litWeaponPatch(key string) (WallTexture, bool) {
 	if !ok || !strings.HasPrefix(prefix, "L") || strings.ContainsAny(name, "@+>#/") {
 		return WallTexture{}, false
 	}
-	row, err := strconv.Atoi(prefix[1:])
-	if err != nil || row < 0 || len(g.opts.DoomColorMap) < (row+1)*256 || len(g.opts.DoomPaletteRGBA) < 1024 {
+	rowToken, _, _ := strings.Cut(prefix[1:], ":")
+	row, err := strconv.Atoi(rowToken)
+	if err != nil || row < 0 || len(g.renderColorMap()) < (row+1)*256 || len(g.opts.DoomPaletteRGBA) < 1024 {
 		return WallTexture{}, false
 	}
 	tex, ok := g.opts.SpritePatchBank[name]
@@ -121,7 +125,7 @@ func (g *game) litWeaponPatch(key string) (WallTexture, bool) {
 	}
 	rgba := make([]byte, len(tex.RGBA))
 	for i, idx := range tex.Indexed {
-		mapped := int(g.opts.DoomColorMap[row*256+int(idx)])
+		mapped := int(g.renderColorMap()[row*256+int(idx)])
 		copy(rgba[i*4:i*4+3], g.opts.DoomPaletteRGBA[mapped*4:mapped*4+3])
 		rgba[i*4+3] = tex.RGBA[i*4+3]
 	}

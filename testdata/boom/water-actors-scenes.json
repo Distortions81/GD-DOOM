@@ -1,0 +1,626 @@
+[
+  {
+    "name": "actors-1-shore",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-above",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      },
+      {
+        "name": "floor-crossing-clip",
+        "box": [
+          150,
+          155,
+          170,
+          180
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-below",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": -16,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      },
+      {
+        "name": "floor-crossing-clip",
+        "box": [
+          150,
+          60,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "submerged-barrel",
+        "box": [
+          255,
+          100,
+          270,
+          115
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-surface",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": 0,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-surface-below",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": -0.125,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-ceiling",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": 128,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-ceiling-above",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": 128.125,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-1-high",
+    "map": "MAP01",
+    "X": 224,
+    "Y": 0,
+    "Z": 144,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      },
+      {
+        "name": "ceiling-crossing-clip",
+        "box": [
+          150,
+          115,
+          170,
+          140
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-shore",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-above",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      },
+      {
+        "name": "floor-crossing-clip",
+        "box": [
+          150,
+          155,
+          170,
+          180
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-below",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": -16,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      },
+      {
+        "name": "floor-crossing-clip",
+        "box": [
+          150,
+          60,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "submerged-barrel",
+        "box": [
+          255,
+          100,
+          270,
+          115
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-surface",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": 0,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-surface-below",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": -0.125,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-ceiling",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": 128,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-ceiling-above",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": 128.125,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-high",
+    "map": "MAP02",
+    "X": 224,
+    "Y": 0,
+    "Z": 144,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      },
+      {
+        "name": "ceiling-crossing-clip",
+        "box": [
+          150,
+          115,
+          170,
+          140
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-2-return-shore",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "water-actors",
+    "checks": [
+      {
+        "name": "sprite-interior",
+        "box": [
+          150,
+          70,
+          170,
+          90
+        ]
+      },
+      {
+        "name": "plane-interior",
+        "box": [
+          110,
+          184,
+          210,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-3-sky",
+    "map": "MAP03",
+    "X": 224,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-colormap-sky",
+    "checks": [
+      {
+        "name": "sky-tint",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      }
+    ]
+  },
+  {
+    "name": "actors-3-sky-underwater",
+    "map": "MAP03",
+    "X": 224,
+    "Y": 0,
+    "Z": -16,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "water-colormap-sky",
+    "checks": [
+      {
+        "name": "sky-ceiling-exception-tint",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      }
+    ]
+  }
+]

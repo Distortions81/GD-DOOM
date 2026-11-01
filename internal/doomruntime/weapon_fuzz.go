@@ -10,7 +10,7 @@ func (g *game) weaponInvisible() bool {
 // Read back the already drawn neighbor: negative offsets feed earlier output
 // back into the next pixel, including across adjacent original patch posts.
 func (g *game) fuzzWeaponPixel(dst []byte, w, x, y int) {
-	if len(g.opts.DoomColorMap) < 7*256 || len(g.opts.DoomPaletteRGBA) < 1024 {
+	if len(g.renderColorMap()) < 7*256 || len(g.opts.DoomPaletteRGBA) < 1024 {
 		return
 	}
 	if g.weaponFuzzPalette == nil || g.weaponFuzzGamma != g.gammaLevel {
@@ -44,7 +44,7 @@ func (g *game) fuzzWeaponPixel(dst []byte, w, x, y int) {
 			}
 		}
 	}
-	mapped := int(g.opts.DoomColorMap[6*256+int(idx)])
+	mapped := int(g.renderColorMap()[6*256+int(idx)])
 	copy(dst[(y*w+x)*4:(y*w+x)*4+4], g.weaponFuzzColors[mapped*4:mapped*4+4])
 }
 

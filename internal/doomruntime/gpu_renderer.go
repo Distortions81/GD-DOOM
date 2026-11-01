@@ -53,6 +53,7 @@ type gpuRenderer struct {
 	metadataPixels                                                           []byte
 	metadataDirty                                                            bool
 	lights                                                                   *ebiten.Image
+	lightColormapGeneration                                                  uint64
 	lightGamma, lightRows                                                    int
 	lightPixels                                                              []byte
 	fuzzPaletteProbes                                                        int
@@ -153,7 +154,7 @@ func (g *game) beginGPUFrame() {
 	r.orderedCutouts = false
 	r.cutoutPassesUsed = 0
 	r.overlayCommands.reset()
-	r.updateLights(g.opts.DoomPaletteRGBA, g.opts.DoomColorMap)
+	r.updateLights(g.opts.DoomPaletteRGBA, g.renderColorMap())
 	g.gpuFrame = r
 }
 
@@ -167,7 +168,7 @@ func (c *gpuCommands) reset() {
 
 func (r *gpuRenderer) updateLights(palette, colormap []byte) {
 	rows := doomColormapRowCount()
-	if r.lights != nil && r.lightGamma == activeGammaLevel && r.lightRows == rows {
+	if r.lights != nil && r.lightGamma == activeGammaLevel && r.lightRows == rows && r.lightColormapGeneration == doomColormapGeneration {
 		return
 	}
 	// Keep the original unshaded row, then append the indexed COLORMAP so
@@ -218,6 +219,7 @@ func (r *gpuRenderer) updateLights(palette, colormap []byte) {
 	r.metadataDirty = true
 	r.lights.WritePixels(r.lightPixels)
 	r.lightGamma, r.lightRows = activeGammaLevel, rows
+	r.lightColormapGeneration = doomColormapGeneration
 }
 
 const gpuFuzzPaletteBuckets = 1024
@@ -493,7 +495,11 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 	}
 	light := min(int(it.shadeMul), 256)
 	if doomColormapEnabled {
-		light = gpuLightRow(light, doomColormapRowForShade(it.shadeMul))
+		row := doomColormapRowForShade(it.shadeMul)
+		if it.boomLightRow {
+			row = it.doomRow
+		}
+		light = gpuLightRow(light, row)
 	}
 	if it.shadow {
 		light = gpuLightRow(doomShadeMulFromRow(6), 6)
@@ -505,6 +511,9 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 		light = 257 + max(r.lightRows, 1)
 		if !g.opts.SourcePortMode {
 			light = 256
+		}
+		if g.boomActiveColormap != "" {
+			light = 257
 		}
 	}
 	mode := 2
@@ -671,7 +680,7 @@ func (r *gpuRenderer) drawCommandsSized(dst *ebiten.Image, commands *gpuCommands
 func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	r := g.gpuFrame
 	var skyBackground *ebiten.Image
-	if !g.opts.SourcePortMode || len(g.frameTransferSkies) > 0 {
+	if !g.opts.SourcePortMode || len(g.frameTransferSkies) > 0 || g.boomActiveColormap != "" {
 		r.updateSkyLookup(g.frameSkyColU, g.frameSkyRowV, g.frameTransferSkies...)
 		skyBackground = r.skyLookup
 	}
@@ -686,7 +695,7 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	}
 	r.frame.Fill(background)
 	r.snapshot.Clear()
-	if r.skyCommands.used > 0 && len(g.frameTransferSkies) == 0 {
+	if r.skyCommands.used > 0 && len(g.frameTransferSkies) == 0 && g.boomActiveColormap == "" {
 		if key, tex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name); ok {
 			g.initSkyLayerShader()
 			if g.enableSkyLayerFrame(camAng, focal, key, tex, effectiveSkyTexHeight(tex)) {
@@ -694,7 +703,7 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 			}
 		}
 	}
-	if g.opts.SourcePortMode && len(g.frameTransferSkies) == 0 {
+	if g.opts.SourcePortMode && len(g.frameTransferSkies) == 0 && g.boomActiveColormap == "" {
 		skyBackground = r.snapshot
 	}
 	r.drawCommands(r.frame, &r.skyCommands, ebiten.BlendSourceOver, skyBackground, g.worldTic)
