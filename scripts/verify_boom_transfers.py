@@ -102,7 +102,7 @@ def main():
     maps = ",".join(dict.fromkeys(c["map"] for c in scenes))
     env = dict(os.environ, SDL_AUDIODRIVER="dummy", GD_VISUAL_WAD=str(merged),
                GD_VISUAL_OUT=str(out), GD_VISUAL_WIDTH=str(args.width), GD_VISUAL_HEIGHT=str(args.height),
-               GD_VISUAL_TRANMAP="1" if args.check_tranmap else "0", GD_VISUAL_SIMULATE="1" if args.simulate else "0", GD_VISUAL_MAPS=maps, GD_VISUAL_LIGHTING="1", GD_VISUAL_ACTORS="1" if args.actors else "0", GD_VISUAL_SCENES=str(manifest))
+               GD_VISUAL_TABLE_PROBES=",".join(scenes[0].get("table_probes", [])), GD_VISUAL_TRANMAP="1" if args.check_tranmap else "0", GD_VISUAL_SIMULATE="1" if args.simulate else "0", GD_VISUAL_MAPS=maps, GD_VISUAL_LIGHTING="1", GD_VISUAL_ACTORS="1" if args.actors else "0", GD_VISUAL_SCENES=str(manifest))
     # Fixed scenes must never inherit a demo/death/lighting override from a shell.
     for key in ("GD_VISUAL_DEMO", "GD_VISUAL_DISABLE_LIGHTING", "GD_VISUAL_SOURCE_PORT"):
         env.pop(key, None)

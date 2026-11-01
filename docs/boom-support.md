@@ -6,6 +6,12 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Custom `ANIMATED` wall/flat ranges and per-range tic speeds; custom `SWITCHES`
+  pairs, episode filtering and table-order selection. Supplied lumps replace
+  defaults, including terminator-only tables. Repeat buttons restore one slot
+  after 35 tics; pressing an active button does not extend its timer. Resources
+  load in the normal, native, headless demo and dedicated-server paths.
+
 - Boom translucency (260): tag-zero local application, tagged transfers,
   named 65,536-byte filters, supplied `TRANMAP` overrides and the generated
   default 66% source filter. Source lighting is applied before table lookup.
@@ -463,12 +469,53 @@ runs. Set `GD_FRAME_TIMING_OUT`, `GD_FRAME_TIMING_IWAD` and
 samples are limited; combat, large translucent scenes and hardware GPUs need
 their own measurements.
 
+## Custom animation and switch verification
+
+`make_boom_tables_wad.py` builds an original twelve-map fixture with seven
+animation speeds (1, 2, 3, 4, 5, 6, 8), non-first frame aliases, overlapping
+ranges, duplicate switch entries, absent assets, episode filtering and replaced
+Doom defaults. The 91 captures include initial identity tables, frame boundaries,
+wraparound, one-shot activation, repeat presses while a button is active, the
+35-tic restoration boundary and activation after restoration. Both engines
+receive actual use-button commands before advancing their normal world tick.
+
+For every capture, **46 translation aliases**, sidedef names, line specials,
+sector lights, live button timers and existing player/plane/offset state match
+DSDA-Doom 0.27.5 exactly. All **273 screenshot regions** match DSDA exactly;
+the CPU and GPU whole frames are identical. Whole DSDA/GD image differences
+remain diagnostic (up to 1.9344% here), including the existing wall/plane raster
+boundaries. This does not claim full-image DSDA equality.
+
+The comparison corrected the previous absolute-index animation phase: DSDA
+indexes each range from zero. Cache epochs now follow the common divisor of
+active animation speeds, retaining the normal eight-tic cache lifetime for Doom
+resources. It also corrected special 138 to set full brightness, as DSDA does.
+Button state reuses the existing save/keyframe fields; the custom tables rebuild
+from the WAD. The compatibility ID advances because slot selection and repeat
+press behavior affect simulation.
+
+Reproduce with an owned Doom II IWAD and the private reference capture build:
+
+```sh
+python3 scripts/make_boom_tables_wad.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_transfers.py \
+  --iwad wads/DOOM2.WAD --pwad testdata/boom/tables.wad \
+  --scenes testdata/boom/tables-scenes.json --simulate \
+  --reference /path/to/capture-build/dsda-doom --out /tmp/gddoom-boom-tables
+```
+
+The capture probe resets animation translations to fresh-process identity
+between independent scenes; it does not alter the reference's update or render
+logic. `use_tics` is a list of zero-based world tics in the scene manifest.
+`table_probes` on the first scene selects the aliases logged for all scenes.
+The five existing no-monsters demos still match all **5,772 frames** and level
+exit tics. The full Go suite and CPU/GPU integration regression also pass.
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, friction, wind/pushers,
 silent line-to-line teleports/crushers,
-custom `ANIMATED`/`SWITCHES` tables,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
 
@@ -477,7 +524,7 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-8`. Deploy matching clients and servers. Mutable scroller
+`gd-doom-authority-dev-9`. Deploy matching clients and servers. Mutable scroller
 state extends the authoritative snapshot schema. Save version 30 reads versions
 27–29; keyframe version 17 reads versions 14–16. Older snapshots cannot reconstruct
 the earlier acceleration history of previously unsupported scrollers.

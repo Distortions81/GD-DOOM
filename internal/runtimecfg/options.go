@@ -334,6 +334,9 @@ type Options struct {
 	WallTexBank                  map[string]media.WallTexture
 	WallTextureHeights           map[string]int
 	Shareware                    bool
+	WallTextureAnimSpeeds        map[string]int
+	FlatTextureAnimSpeeds        map[string]int
+	BoomSwitchPairs              [][2]string
 	WallTextureAnimSequences     map[string][]string
 	FlatTextureAnimSequences     map[string][]string
 	BootSplash                   media.WallTexture

@@ -1275,10 +1275,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if ferr == nil {
 		flatBankIndexed = fbi
 	}
-	if texSet != nil {
-		wallTextureAnimSequences = doomtex.LoadWallTextureAnimSequences(texSet, doomtex.DoomWallAnimDefs)
+	boomTables, boomErr := doomtex.LoadBoomTables(wf, texSet)
+	if boomErr != nil {
+		fmt.Fprintf(stderr, "Boom resource import: %v\n", boomErr)
+		return 1
 	}
-	flatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
+	wallTextureAnimSequences, flatTextureAnimSequences = boomTables.Walls, boomTables.Flats
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
 	if watchSession != nil {
@@ -1368,6 +1370,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			WallTextureHeights:         wallTextureHeights(wf, texSet),
 			Shareware:                  wadIsShareware(wf),
 			WallTextureAnimSequences:   wallTextureAnimSequences,
+			WallTextureAnimSpeeds:      boomTables.WallSpeeds,
+			FlatTextureAnimSpeeds:      boomTables.FlatSpeeds,
+			BoomSwitchPairs:            boomTables.Switches,
 			FlatTextureAnimSequences:   flatTextureAnimSequences,
 			BootSplash:                 bootSplash,
 			DoomPaletteRGBA:            doomPaletteRGBA,
@@ -2245,10 +2250,11 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	if fbi, ferr := doomtex.LoadFlatsIndexed(wf); ferr == nil {
 		flatBankIndexed = fbi
 	}
-	if texSet != nil {
-		wallTextureAnimSequences = doomtex.LoadWallTextureAnimSequences(texSet, doomtex.DoomWallAnimDefs)
+	boomTables, boomErr := doomtex.LoadBoomTables(wf, texSet)
+	if boomErr != nil {
+		return nil, boomErr
 	}
-	flatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
+	wallTextureAnimSequences, flatTextureAnimSequences = boomTables.Walls, boomTables.Flats
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.selectedMap)))
 	opts := doomsession.Options{
 		Width:                      cfg.width,
@@ -2321,6 +2327,9 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		WallTextureHeights:         wallTextureHeights(wf, texSet),
 		Shareware:                  wadIsShareware(wf),
 		WallTextureAnimSequences:   wallTextureAnimSequences,
+		WallTextureAnimSpeeds:      boomTables.WallSpeeds,
+		FlatTextureAnimSpeeds:      boomTables.FlatSpeeds,
+		BoomSwitchPairs:            boomTables.Switches,
 		FlatTextureAnimSequences:   flatTextureAnimSequences,
 		BootSplash:                 bootSplash,
 		DoomPaletteRGBA:            doomPaletteRGBA,

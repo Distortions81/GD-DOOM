@@ -435,6 +435,7 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	textureAnimCachePeriod             int
 	boomCarries                        []boomCarryThinker
 	boomFloorScroll, boomCeilingScroll []boomScrollVector
 	boomScrollers                      []boomScrollerState
@@ -1432,13 +1433,28 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.spritePatchStore, g.spritePatchPtrs = buildTexturePointerCache(opts.SpritePatchBank)
 	g.spritePatchResolvedCache = make(map[string]WallTexture, 256)
 	g.wallTexStore, g.wallTexPtrs = buildTexturePointerCache(opts.WallTexBank)
-	g.wallTextureAnimRefs = buildTextureAnimRefsFromSequences(opts.WallTextureAnimSequences)
-	if len(g.wallTextureAnimRefs) == 0 {
+	g.wallTextureAnimRefs = buildTextureAnimRefsFromSequences(opts.WallTextureAnimSequences, opts.WallTextureAnimSpeeds)
+	if opts.WallTextureAnimSequences == nil {
 		g.wallTextureAnimRefs = defaultWallTextureAnimRefs
 	}
-	g.flatTextureAnimRefs = buildTextureAnimRefsFromSequences(opts.FlatTextureAnimSequences)
-	if len(g.flatTextureAnimRefs) == 0 {
+	g.flatTextureAnimRefs = buildTextureAnimRefsFromSequences(opts.FlatTextureAnimSequences, opts.FlatTextureAnimSpeeds)
+	if opts.FlatTextureAnimSequences == nil {
 		g.flatTextureAnimRefs = defaultFlatTextureAnimRefs
+	}
+	// Invalidate cached plane materials at every animation boundary. The GCD
+	// keeps the eight-tic default lifetime and supports arbitrary custom speeds.
+	for _, refs := range []map[string]textureAnimRef{g.wallTextureAnimRefs, g.flatTextureAnimRefs} {
+		for _, ref := range refs {
+			speed := ref.speed
+			if speed <= 0 {
+				speed = textureAnimTics
+			}
+			a, b := g.textureAnimCachePeriod, speed
+			for b != 0 {
+				a, b = b, a%b
+			}
+			g.textureAnimCachePeriod = a
+		}
 	}
 	g.detailLevel = defaultDetailLevelForMode(g.viewW, g.viewH, opts.SourcePortMode)
 	if opts.InitialDetailLevel >= 0 {
@@ -4751,15 +4767,15 @@ func (g *game) tickDelayedSwitchReverts() {
 		if s.tics <= 0 {
 			if s.sidedef >= 0 && s.sidedef < len(g.m.Sidedefs) {
 				sd := &g.m.Sidedefs[s.sidedef]
-				if sd.Top != s.top {
+				if s.top != "" && sd.Top != s.top {
 					g.beginSwitchTextureBlend(s.sidedef, switchTextureSlotTop, sd.Top, s.top)
 					sd.Top = s.top
 				}
-				if sd.Bottom != s.bottom {
+				if s.bottom != "" && sd.Bottom != s.bottom {
 					g.beginSwitchTextureBlend(s.sidedef, switchTextureSlotBottom, sd.Bottom, s.bottom)
 					sd.Bottom = s.bottom
 				}
-				if sd.Mid != s.mid {
+				if s.mid != "" && sd.Mid != s.mid {
 					g.beginSwitchTextureBlend(s.sidedef, switchTextureSlotMid, sd.Mid, s.mid)
 					sd.Mid = s.mid
 				}
@@ -19715,6 +19731,7 @@ func (g *game) flatIndexedResolvedKey(key string) ([]byte, bool) {
 const textureAnimTics = 8
 
 type textureAnimRef struct {
+	speed  int
 	frames []string
 	index  int
 }
@@ -19771,7 +19788,7 @@ func buildTextureAnimRefs(seqs [][]string) map[string]textureAnimRef {
 	return refs
 }
 
-func buildTextureAnimRefsFromSequences(seqs map[string][]string) map[string]textureAnimRef {
+func buildTextureAnimRefsFromSequences(seqs map[string][]string, speeds ...map[string]int) map[string]textureAnimRef {
 	if len(seqs) == 0 {
 		return nil
 	}
@@ -19792,7 +19809,11 @@ func buildTextureAnimRefsFromSequences(seqs map[string][]string) map[string]text
 		if len(normFrames) < 2 {
 			continue
 		}
-		refs[normKey] = textureAnimRef{frames: normFrames}
+		speed := textureAnimTics
+		if len(speeds) > 0 && speeds[0][normKey] > 0 {
+			speed = speeds[0][normKey]
+		}
+		refs[normKey] = textureAnimRef{frames: normFrames, speed: speed}
 	}
 	if len(refs) == 0 {
 		return nil
@@ -19844,7 +19865,11 @@ func (g *game) textureBlendSample(name string, refs map[string]textureAnimRef) t
 	if pos < 0 {
 		pos = 0
 	}
-	frameSpan := float64(textureAnimTics)
+	speed := ref.speed
+	if speed <= 0 {
+		speed = textureAnimTics
+	}
+	frameSpan := float64(speed)
 	if frameSpan < 1 {
 		frameSpan = 1
 	}
@@ -19886,7 +19911,11 @@ func (g *game) textureAnimTick() int {
 		} // identity translations are a separate cache state
 		tic--
 	}
-	return tic / textureAnimTics
+	period := g.textureAnimCachePeriod
+	if period <= 0 {
+		period = textureAnimTics
+	}
+	return tic / period
 }
 
 func normalizeFlatName(name string) string {

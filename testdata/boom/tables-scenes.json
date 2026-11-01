@@ -1,0 +1,3855 @@
+[
+  {
+    "name": "tables-01-00",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "table_probes": [
+      "W:BW1A",
+      "F:BF1A",
+      "W:BW1B",
+      "F:BF1B",
+      "W:BW1C",
+      "F:BF1C",
+      "W:BW2A",
+      "F:BF2A",
+      "W:BW2B",
+      "F:BF2B",
+      "W:BW2C",
+      "F:BF2C",
+      "W:BW3A",
+      "F:BF3A",
+      "W:BW3B",
+      "F:BF3B",
+      "W:BW3C",
+      "F:BF3C",
+      "W:BW4A",
+      "F:BF4A",
+      "W:BW4B",
+      "F:BF4B",
+      "W:BW4C",
+      "F:BF4C",
+      "W:BW5A",
+      "F:BF5A",
+      "W:BW5B",
+      "F:BF5B",
+      "W:BW5C",
+      "F:BF5C",
+      "W:BW6A",
+      "F:BF6A",
+      "W:BW6B",
+      "F:BF6B",
+      "W:BW6C",
+      "F:BF6C",
+      "W:BW7A",
+      "F:BF7A",
+      "W:BW7B",
+      "F:BF7B",
+      "W:BW7C",
+      "F:BF7C",
+      "W:BOV1",
+      "W:BOV2",
+      "W:BOV3",
+      "W:BOV4"
+    ],
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-01-01",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-01-02",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 2,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-01-03",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 3,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-01-04",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 4,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-02-00",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-02-01",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-02-02",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 2,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-02-03",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 3,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-02-05",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 5,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-02-07",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 7,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-03-00",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-03-01",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-03-03",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 3,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-03-04",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 4,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-03-07",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 7,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-03-10",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 10,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-04-00",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-04-01",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-04-04",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 4,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-04-05",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 5,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-04-09",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 9,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-04-13",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 13,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-05-00",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-05-01",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-05-05",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 5,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-05-06",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 6,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-05-11",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 11,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-05-16",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 16,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-06-00",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-06-01",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-06-06",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 6,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-06-07",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 7,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-06-13",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 13,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-06-19",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 19,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-07-00",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-07-01",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-07-08",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 8,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-07-09",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 9,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-07-17",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 17,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-07-25",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 25,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-08-00",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-08-01",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-08-05",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 5,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-08-06",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 6,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-08-11",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 11,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-08-16",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 16,
+    "use_tics": [],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-00",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-01",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-02",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 2,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-11",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 11,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-34",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 34,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-35",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 35,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-36",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 36,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-37",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 37,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-38",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 38,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-42",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 42,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-09-46",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 46,
+    "use_tics": [
+      1,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-00",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-01",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-02",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 2,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-11",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 11,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-34",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 34,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-35",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 35,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-36",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 36,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-37",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 37,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-38",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 38,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-42",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 42,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-10-46",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 46,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-00",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-01",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-02",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 2,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-11",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 11,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-34",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 34,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-35",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 35,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-36",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 36,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-37",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 37,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-38",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 38,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-42",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 42,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-11-46",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 46,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-00",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-01",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-02",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 2,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-11",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 11,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-34",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 34,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-35",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 35,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-36",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 36,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-37",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 37,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-38",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 38,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-42",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 42,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tables-12-46",
+    "map": "MAP12",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 46,
+    "use_tics": [
+      1,
+      10,
+      37
+    ],
+    "category": "boom-tables",
+    "checks": [
+      {
+        "name": "wall-phase-or-button",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      },
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ]
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ]
+      }
+    ]
+  }
+]

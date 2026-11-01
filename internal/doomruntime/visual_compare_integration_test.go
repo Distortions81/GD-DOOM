@@ -28,6 +28,7 @@ type visualProbeScene struct {
 	Map                                 string `json:"map"`
 	X, Y, Z                             float64
 	Angle                               uint32 `json:"angle"`
+	UseTics                             []int  `json:"use_tics,omitempty"`
 	Tic                                 int    `json:"tic"`
 	Category                            string `json:"category"`
 	DeathTics                           int    `json:"death_tics,omitempty"`
@@ -151,8 +152,13 @@ func TestVisualRendererCapture(t *testing.T) {
 			opts.DisableDoomLighting = os.Getenv("GD_VISUAL_DISABLE_LIGHTING") == "1"
 			opts.SourcePortMode = os.Getenv("GD_VISUAL_SOURCE_PORT") == "1"
 			opts.SourcePortSectorLighting = opts.SourcePortMode
-			opts.WallTextureAnimSequences = doomtex.LoadWallTextureAnimSequences(ts, doomtex.DoomWallAnimDefs)
-			opts.FlatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
+			tables, err := doomtex.LoadBoomTables(wf, ts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts.WallTextureAnimSequences, opts.FlatTextureAnimSequences = tables.Walls, tables.Flats
+			opts.WallTextureAnimSpeeds, opts.FlatTextureAnimSpeeds = tables.WallSpeeds, tables.FlatSpeeds
+			opts.BoomSwitchPairs = tables.Switches
 			g := newGame(m, opts)
 			g.setGammaLevel(0)
 			g.syncRenderState()
@@ -194,9 +200,18 @@ func TestVisualRendererCapture(t *testing.T) {
 					g.viewW, g.viewH = width, height
 					g.geometryAspectY = 1
 					for i := 0; i < c.Tic; i++ {
-						g.runGameplayTic(moveCmd{}, false, false)
+						use := false
+						for _, tic := range c.UseTics {
+							if tic == i {
+								use = true
+							}
+						}
+						g.runGameplayTic(moveCmd{}, use, false)
+						g.tickDelayedSwitchReverts()
 					}
 					writeVisualSimulationState(t, g, filepath.Join(out, c.Name+"-gd-state.csv"))
+					g.syncRenderState()
+					g.prepareRenderState()
 				}
 				if demo != nil {
 					fresh, e := mapdata.LoadMap(wf, mapdata.MapName(name))
@@ -307,7 +322,14 @@ func TestVisualRendererCapture(t *testing.T) {
 				if fullbright {
 					bright = 1
 				}
-				fmt.Fprintf(manifest, "%s %s %d %d %.17g %.17g %.17g %d %d %d %d\n", c.Name, name, episode, mapnum, c.X, c.Y, c.Z, c.Angle, c.Tic, bright, c.DeathTics)
+				useMask := uint64(0)
+				for _, tic := range c.UseTics {
+					if tic < 0 || tic >= 64 {
+						t.Fatal("probe use tic out of range")
+					}
+					useMask |= uint64(1) << tic
+				}
+				fmt.Fprintf(manifest, "%s %s %d %d %.17g %.17g %.17g %d %d %d %d %d\n", c.Name, name, episode, mapnum, c.X, c.Y, c.Z, c.Angle, c.Tic, bright, c.DeathTics, useMask)
 			}
 			cpu.Deallocate()
 			gpu.Deallocate()
@@ -456,4 +478,27 @@ func writeVisualSimulationState(t *testing.T, g *game, path string) {
 		}
 		fmt.Fprintf(f, "side,%d,%d,%d\n", i, boomFixed(int64(side.TextureOffset)*fracUnit+off.x), boomFixed(int64(side.RowOffset)*fracUnit+off.y))
 	}
+	if probes := os.Getenv("GD_VISUAL_TABLE_PROBES"); probes != "" {
+		for i, sec := range g.m.Sectors {
+			fmt.Fprintf(f, "light,%d,%d\n", i, sec.Light)
+		}
+		for i, special := range g.lineSpecial {
+			fmt.Fprintf(f, "line,%d,%d\n", i, special)
+		}
+		for i, side := range g.m.Sidedefs {
+			fmt.Fprintf(f, "textures,%d,%s,%s,%s\n", i, side.Top, side.Mid, side.Bottom)
+		}
+		for _, pending := range g.delayedSwitchReverts {
+			fmt.Fprintf(f, "button,%d,%d\n", pending.line, pending.tics)
+		}
+		for _, probe := range strings.Split(probes, ",") {
+			kind, name, _ := strings.Cut(probe, ":")
+			resolved := g.resolveAnimatedWallName(name)
+			if kind == "F" {
+				resolved = g.resolveAnimatedFlatName(name)
+			}
+			fmt.Fprintf(f, "translation,%s,%s,%s\n", kind, name, resolved)
+		}
+	}
+
 }

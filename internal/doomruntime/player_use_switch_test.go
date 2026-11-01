@@ -74,7 +74,7 @@ func TestAnimateSwitchTexture_UsesFrontSidedefOnly(t *testing.T) {
 	}
 }
 
-func TestAnimateSwitchTextureRepeatRefreshesSameLineEntry(t *testing.T) {
+func TestAnimateSwitchTextureRepeatKeepsSameLineTimer(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Linedefs: []mapdata.Linedef{
@@ -95,8 +95,8 @@ func TestAnimateSwitchTextureRepeatRefreshesSameLineEntry(t *testing.T) {
 	if len(g.delayedSwitchReverts) != 1 {
 		t.Fatalf("delayed switch reverts=%d want=1", len(g.delayedSwitchReverts))
 	}
-	if got := g.delayedSwitchReverts[0].tics; got != switchResetTics {
-		t.Fatalf("revert timer=%d want=%d", got, switchResetTics)
+	if got := g.delayedSwitchReverts[0].tics; got != 3 {
+		t.Fatalf("revert timer=%d want=3", got)
 	}
 }
 
@@ -146,5 +146,35 @@ func TestTickDelayedSwitchReverts_StartsReturnBlend(t *testing.T) {
 	got := g.switchTextureBlendFor(0, switchTextureSlotMid, "SW1BRCOM")
 	if got.fromKey != "SW2BRCOM" || got.toKey != "SW1BRCOM" {
 		t.Fatalf("revert blend=%+v want SW2BRCOM->SW1BRCOM", got)
+	}
+}
+
+func TestCustomSwitchOrderSlotsAndRestoration(t *testing.T) {
+	g := &game{opts: Options{BoomSwitchPairs: [][2]string{{"A", "B"}, {"C", "D"}, {"A", "E"}}}, m: &mapdata.Map{Linedefs: []mapdata.Linedef{{SideNum: [2]int32{0, -1}}}, Sidedefs: []mapdata.Sidedef{{Top: "C", Mid: "A", Bottom: "A"}}}}
+	g.animateSwitchTexture(0, 0, true)
+	sd := &g.m.Sidedefs[0]
+	if sd.Top != "C" || sd.Mid != "B" || sd.Bottom != "A" {
+		t.Fatalf("must choose first pair then first slot: %+v", sd)
+	}
+	sd.Bottom = "OTHER"
+	for i := 0; i < 10; i++ {
+		g.tickDelayedSwitchReverts()
+	}
+	g.animateSwitchTexture(0, 0, true)
+	if len(g.delayedSwitchReverts) != 1 || g.delayedSwitchReverts[0].tics != 25 || sd.Mid != "A" {
+		t.Fatal("repeat must toggle without extending button timer")
+	}
+	sd.Top = "UNRELATED"
+	for i := 0; i < 25; i++ {
+		g.tickDelayedSwitchReverts()
+	}
+	if sd.Top != "UNRELATED" || sd.Mid != "A" || sd.Bottom != "OTHER" {
+		t.Fatalf("restore changed unrelated slots: %+v", sd)
+	}
+	g.opts.BoomSwitchPairs = make([][2]string, 0)
+	sd.Mid = "SW1BRCOM"
+	g.animateSwitchTexture(0, 0, false)
+	if sd.Mid != "SW1BRCOM" {
+		t.Fatal("empty custom table fell back to Doom defaults")
 	}
 }

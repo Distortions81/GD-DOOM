@@ -1450,7 +1450,11 @@ func loadAssets(wf *wad.File) (doomruntime.Options, error) {
 			sprites[lump.Name] = tex
 		}
 	}
-	return doomruntime.Options{SourcePortThingRenderMode: "sprites", SourcePortSectorLighting: true, MouseLookSpeed: 1, KeyboardTurnSpeed: 1, AutoWeaponSwitch: true, FlatBank: flats, FlatBankIndexed: flatIndices, WallTexBank: walls, StatusPatchBank: status, SpritePatchBank: sprites, MenuPatchBank: menus, IntermissionPatchBank: intermission, MessageFontBank: font, DoomPaletteRGBA: palette, DoomColorMap: colorMap, DoomColorMapRows: len(colorMap) / 256, WallTextureAnimSequences: doomtex.LoadWallTextureAnimSequences(set, doomtex.DoomWallAnimDefs), FlatTextureAnimSequences: doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)}, nil
+	tables, err := doomtex.LoadBoomTables(wf, set)
+	if err != nil {
+		return doomruntime.Options{}, err
+	}
+	return doomruntime.Options{SourcePortThingRenderMode: "sprites", SourcePortSectorLighting: true, MouseLookSpeed: 1, KeyboardTurnSpeed: 1, AutoWeaponSwitch: true, FlatBank: flats, FlatBankIndexed: flatIndices, WallTexBank: walls, StatusPatchBank: status, SpritePatchBank: sprites, MenuPatchBank: menus, IntermissionPatchBank: intermission, MessageFontBank: font, DoomPaletteRGBA: palette, DoomColorMap: colorMap, DoomColorMapRows: len(colorMap) / 256, WallTextureAnimSequences: tables.Walls, FlatTextureAnimSequences: tables.Flats, WallTextureAnimSpeeds: tables.WallSpeeds, FlatTextureAnimSpeeds: tables.FlatSpeeds, BoomSwitchPairs: tables.Switches}, nil
 }
 
 func captureScreen(path string) error {

@@ -344,7 +344,7 @@ var lightSpecials = map[uint16]LineSpecialInfo{
 	80:  {Special: 80, Name: "walk lights brightest nearby", Trigger: TriggerWalk, Repeat: true, Light: &LightInfo{Action: LightBrightestNeighbor, UsesTag: true}},
 	81:  {Special: 81, Name: "walk light full bright", Trigger: TriggerWalk, Repeat: true, Light: &LightInfo{Action: LightFullBright, UsesTag: true}},
 	104: {Special: 104, Name: "walk turn tag lights off", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightTurnTagOff, UsesTag: true}},
-	138: {Special: 138, Name: "button light turn on brightest nearby", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightBrightestNeighbor, UsesTag: true}},
+	138: {Special: 138, Name: "button light full bright", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightFullBright, UsesTag: true}},
 	139: {Special: 139, Name: "button light turn off", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightTurnTagOff, UsesTag: true}},
 }
 

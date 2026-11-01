@@ -23,6 +23,7 @@ import (
 	"gddoom/internal/doomruntime"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/netgame"
+	"gddoom/internal/render/doomtex"
 	"gddoom/internal/roomhost"
 	"gddoom/internal/wad"
 )
@@ -136,7 +137,11 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	authority, err := doomruntime.NewAuthority(m, doomruntime.Options{GameMode: *mode, SkillLevel: *skill, NoMonsters: *noMonsters, FastMonsters: *fastMonsters, RespawnMonsters: *respawnMonsters, WADHash: contentKey, SFXVolume: 1})
+	tables, err := doomtex.LoadBoomTables(file, nil)
+	if err != nil {
+		return err
+	}
+	authority, err := doomruntime.NewAuthority(m, doomruntime.Options{BoomSwitchPairs: tables.Switches, GameMode: *mode, SkillLevel: *skill, NoMonsters: *noMonsters, FastMonsters: *fastMonsters, RespawnMonsters: *respawnMonsters, WADHash: contentKey, SFXVolume: 1})
 	if err != nil {
 		return err
 	}

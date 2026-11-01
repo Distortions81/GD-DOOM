@@ -3,6 +3,7 @@ package doomtex
 import "gddoom/internal/wad"
 
 type AnimDef struct {
+	Speed     int // Zero selects the built-in eight-tic speed.
 	EndName   string
 	StartName string
 }
@@ -35,8 +36,8 @@ var DoomFlatAnimDefs = []AnimDef{
 	{EndName: "SLIME12", StartName: "SLIME09"},
 }
 
-// LoadWallTextureAnimSequences returns per-name cycles phased by absolute WAD
-// texture index, starting at the translation used by leveltime zero. Before the
+// LoadWallTextureAnimSequences returns per-name cycles phased by relative animation
+// frame index, starting at the translation used by leveltime zero. Before the
 // first special update the renderer must use identity translation instead.
 func LoadWallTextureAnimSequences(set *Set, defs []AnimDef) map[string][]string {
 	if set == nil {
@@ -83,11 +84,10 @@ func buildAnimSequences(order []string, defs []AnimDef) map[string][]string {
 		if len(frames) < 2 {
 			continue
 		}
-		// P_UpdateSpecials uses the absolute texture/flat index, not an
-		// index relative to this animation. Store each alias's cycle beginning
-		// at its translated frame for leveltime zero.
+		// DSDA P_UpdateSpecials indexes each range from zero. Each alias
+		// starts at its own frame at leveltime zero.
 		for i, frame := range frames {
-			phase := (startIdx + i) % len(frames)
+			phase := i
 			cycle := append([]string(nil), frames[phase:]...)
 			cycle = append(cycle, frames[:phase]...)
 			out[normalizeName(frame)] = cycle

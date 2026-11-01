@@ -1,6 +1,9 @@
 package doomruntime
 
-import "testing"
+import (
+	"gddoom/internal/mapdata"
+	"testing"
+)
 
 func TestTextureBlendSample_WrapsRepeatingAnimations(t *testing.T) {
 	g := &game{
@@ -91,5 +94,24 @@ func TestFaithfulTextureAnimationUsesCompletedSpecialUpdates(t *testing.T) {
 		if got := g.textureAnimTick(); got != wantTick {
 			t.Fatalf("tic %d cache frame=%d", tc.tic, got)
 		}
+	}
+}
+
+func TestCustomAnimationSpeedAndEmptyOverride(t *testing.T) {
+	for _, speed := range []int{1, 2, 3, 4, 5, 6, 8} {
+		refs := buildTextureAnimRefsFromSequences(map[string][]string{"A": {"A", "B", "C"}}, map[string]int{"A": speed})
+		g := &game{}
+		for tic := 0; tic <= speed*6+1; tic++ {
+			g.worldTic = tic
+			want := []string{"A", "B", "C"}[max(0, tic-1)/speed%3]
+			if got := g.textureBlendSample("A", refs); got.fromKey != want {
+				t.Fatalf("speed %d tic %d: %v want %s", speed, tic, got, want)
+			}
+		}
+	}
+	g := newGame(&mapdata.Map{}, Options{WallTextureAnimSequences: map[string][]string{}, FlatTextureAnimSequences: map[string][]string{}})
+	g.worldTic = 99
+	if g.resolveAnimatedWallName("FIREWALA") != "FIREWALA" || g.resolveAnimatedFlatName("NUKAGE1") != "NUKAGE1" {
+		t.Fatal("empty override animated builtins")
 	}
 }

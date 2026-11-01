@@ -909,88 +909,13 @@ func (g *game) lowestSurroundingCeiling(sector int) int64 {
 	return lowest
 }
 
-var doomSwitchTexturePairs = map[string]string{
-	"SW1BRCOM": "SW2BRCOM",
-	"SW2BRCOM": "SW1BRCOM",
-	"SW1BRN1":  "SW2BRN1",
-	"SW2BRN1":  "SW1BRN1",
-	"SW1BRN2":  "SW2BRN2",
-	"SW2BRN2":  "SW1BRN2",
-	"SW1BRNGN": "SW2BRNGN",
-	"SW2BRNGN": "SW1BRNGN",
-	"SW1BROWN": "SW2BROWN",
-	"SW2BROWN": "SW1BROWN",
-	"SW1COMM":  "SW2COMM",
-	"SW2COMM":  "SW1COMM",
-	"SW1COMP":  "SW2COMP",
-	"SW2COMP":  "SW1COMP",
-	"SW1DIRT":  "SW2DIRT",
-	"SW2DIRT":  "SW1DIRT",
-	"SW1EXIT":  "SW2EXIT",
-	"SW2EXIT":  "SW1EXIT",
-	"SW1GRAY":  "SW2GRAY",
-	"SW2GRAY":  "SW1GRAY",
-	"SW1GRAY1": "SW2GRAY1",
-	"SW2GRAY1": "SW1GRAY1",
-	"SW1METAL": "SW2METAL",
-	"SW2METAL": "SW1METAL",
-	"SW1PIPE":  "SW2PIPE",
-	"SW2PIPE":  "SW1PIPE",
-	"SW1SLAD":  "SW2SLAD",
-	"SW2SLAD":  "SW1SLAD",
-	"SW1STARG": "SW2STARG",
-	"SW2STARG": "SW1STARG",
-	"SW1STON1": "SW2STON1",
-	"SW2STON1": "SW1STON1",
-	"SW1STON2": "SW2STON2",
-	"SW2STON2": "SW1STON2",
-	"SW1STONE": "SW2STONE",
-	"SW2STONE": "SW1STONE",
-	"SW1STRTN": "SW2STRTN",
-	"SW2STRTN": "SW1STRTN",
-	"SW1BLUE":  "SW2BLUE",
-	"SW2BLUE":  "SW1BLUE",
-	"SW1CMT":   "SW2CMT",
-	"SW2CMT":   "SW1CMT",
-	"SW1GARG":  "SW2GARG",
-	"SW2GARG":  "SW1GARG",
-	"SW1GSTON": "SW2GSTON",
-	"SW2GSTON": "SW1GSTON",
-	"SW1HOT":   "SW2HOT",
-	"SW2HOT":   "SW1HOT",
-	"SW1LION":  "SW2LION",
-	"SW2LION":  "SW1LION",
-	"SW1SATYR": "SW2SATYR",
-	"SW2SATYR": "SW1SATYR",
-	"SW1SKIN":  "SW2SKIN",
-	"SW2SKIN":  "SW1SKIN",
-	"SW1VINE":  "SW2VINE",
-	"SW2VINE":  "SW1VINE",
-	"SW1WOOD":  "SW2WOOD",
-	"SW2WOOD":  "SW1WOOD",
-	"SW1PANEL": "SW2PANEL",
-	"SW2PANEL": "SW1PANEL",
-	"SW1ROCK":  "SW2ROCK",
-	"SW2ROCK":  "SW1ROCK",
-	"SW1MET2":  "SW2MET2",
-	"SW2MET2":  "SW1MET2",
-	"SW1WDMET": "SW2WDMET",
-	"SW2WDMET": "SW1WDMET",
-	"SW1BRIK":  "SW2BRIK",
-	"SW2BRIK":  "SW1BRIK",
-	"SW1MOD1":  "SW2MOD1",
-	"SW2MOD1":  "SW1MOD1",
-	"SW1ZIM":   "SW2ZIM",
-	"SW2ZIM":   "SW1ZIM",
-	"SW1STON6": "SW2STON6",
-	"SW2STON6": "SW1STON6",
-	"SW1TEK":   "SW2TEK",
-	"SW2TEK":   "SW1TEK",
-	"SW1MARB":  "SW2MARB",
-	"SW2MARB":  "SW1MARB",
-	"SW1SKULL": "SW2SKULL",
-	"SW2SKULL": "SW1SKULL",
-}
+var doomSwitchTexturePairs = func() map[string]string {
+	pairs := make(map[string]string, len(defaultSwitchPairs)*2)
+	for _, pair := range defaultSwitchPairs {
+		pairs[pair[0]], pairs[pair[1]] = pair[1], pair[0]
+	}
+	return pairs
+}()
 
 func toggleSwitchTexture(name string) (string, bool) {
 	base := strings.TrimSpace(name)
@@ -1013,43 +938,92 @@ func (g *game) animateSwitchTexture(lineIdx, side int, repeat bool) {
 		return
 	}
 	sd := &g.m.Sidedefs[sideDefIdx]
-	origTop, origBottom, origMid := sd.Top, sd.Bottom, sd.Mid
+	// DSDA searches table order first, then top/middle/bottom, changing
+	// exactly one slot. Keep original table order even for duplicate pairs.
+	pairs := g.opts.BoomSwitchPairs
+	if pairs == nil {
+		pairs = defaultSwitchPairs
+	}
+	revert := delayedSwitchTexture{line: lineIdx, sidedef: sideDefIdx, tics: switchResetTics}
 	changed := false
-	if next, ok := toggleSwitchTexture(sd.Top); ok {
-		g.beginSwitchTextureBlend(sideDefIdx, switchTextureSlotTop, sd.Top, next)
-		sd.Top = next
-		changed = true
-	}
-	if next, ok := toggleSwitchTexture(sd.Bottom); ok {
-		g.beginSwitchTextureBlend(sideDefIdx, switchTextureSlotBottom, sd.Bottom, next)
-		sd.Bottom = next
-		changed = true
-	}
-	if next, ok := toggleSwitchTexture(sd.Mid); ok {
-		g.beginSwitchTextureBlend(sideDefIdx, switchTextureSlotMid, sd.Mid, next)
-		sd.Mid = next
-		changed = true
+	for _, pair := range pairs {
+		for direction := 0; direction < 2; direction++ {
+			for _, slot := range []struct {
+				value    *string
+				original *string
+				kind     switchTextureSlot
+			}{
+				{&sd.Top, &revert.top, switchTextureSlotTop},
+				{&sd.Mid, &revert.mid, switchTextureSlotMid},
+				{&sd.Bottom, &revert.bottom, switchTextureSlotBottom},
+			} {
+				if normalizeFlatName(*slot.value) != pair[direction] {
+					continue
+				}
+				*slot.original = *slot.value
+				g.beginSwitchTextureBlend(sideDefIdx, slot.kind, *slot.value, pair[direction^1])
+				*slot.value = pair[direction^1]
+				changed = true
+				break
+			}
+			if changed {
+				break
+			}
+		}
+		if changed {
+			break
+		}
 	}
 	if !changed || !repeat {
 		return
 	}
-	for i := range g.delayedSwitchReverts {
-		if g.delayedSwitchReverts[i].line != lineIdx {
-			continue
-		}
-		g.delayedSwitchReverts[i].sidedef = sideDefIdx
-		g.delayedSwitchReverts[i].top = origTop
-		g.delayedSwitchReverts[i].bottom = origBottom
-		g.delayedSwitchReverts[i].mid = origMid
-		g.delayedSwitchReverts[i].tics = switchResetTics
-		return
+	for _, pending := range g.delayedSwitchReverts {
+		if pending.line == lineIdx {
+			return
+		} // an active button keeps its original timer
 	}
-	g.delayedSwitchReverts = append(g.delayedSwitchReverts, delayedSwitchTexture{
-		line:    lineIdx,
-		sidedef: sideDefIdx,
-		top:     origTop,
-		bottom:  origBottom,
-		mid:     origMid,
-		tics:    switchResetTics,
-	})
+	g.delayedSwitchReverts = append(g.delayedSwitchReverts, revert)
+}
+
+var defaultSwitchPairs = [][2]string{
+	{"SW1BRCOM", "SW2BRCOM"},
+	{"SW1BRN1", "SW2BRN1"},
+	{"SW1BRN2", "SW2BRN2"},
+	{"SW1BRNGN", "SW2BRNGN"},
+	{"SW1BROWN", "SW2BROWN"},
+	{"SW1COMM", "SW2COMM"},
+	{"SW1COMP", "SW2COMP"},
+	{"SW1DIRT", "SW2DIRT"},
+	{"SW1EXIT", "SW2EXIT"},
+	{"SW1GRAY", "SW2GRAY"},
+	{"SW1GRAY1", "SW2GRAY1"},
+	{"SW1METAL", "SW2METAL"},
+	{"SW1PIPE", "SW2PIPE"},
+	{"SW1SLAD", "SW2SLAD"},
+	{"SW1STARG", "SW2STARG"},
+	{"SW1STON1", "SW2STON1"},
+	{"SW1STON2", "SW2STON2"},
+	{"SW1STONE", "SW2STONE"},
+	{"SW1STRTN", "SW2STRTN"},
+	{"SW1BLUE", "SW2BLUE"},
+	{"SW1CMT", "SW2CMT"},
+	{"SW1GARG", "SW2GARG"},
+	{"SW1GSTON", "SW2GSTON"},
+	{"SW1HOT", "SW2HOT"},
+	{"SW1LION", "SW2LION"},
+	{"SW1SATYR", "SW2SATYR"},
+	{"SW1SKIN", "SW2SKIN"},
+	{"SW1VINE", "SW2VINE"},
+	{"SW1WOOD", "SW2WOOD"},
+	{"SW1PANEL", "SW2PANEL"},
+	{"SW1ROCK", "SW2ROCK"},
+	{"SW1MET2", "SW2MET2"},
+	{"SW1WDMET", "SW2WDMET"},
+	{"SW1BRIK", "SW2BRIK"},
+	{"SW1MOD1", "SW2MOD1"},
+	{"SW1ZIM", "SW2ZIM"},
+	{"SW1STON6", "SW2STON6"},
+	{"SW1TEK", "SW2TEK"},
+	{"SW1MARB", "SW2MARB"},
+	{"SW1SKULL", "SW2SKULL"},
 }
