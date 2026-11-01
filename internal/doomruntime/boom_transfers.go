@@ -159,7 +159,8 @@ func (g *game) transferredSkyFrame(lineID int, camAngle, focal float64) *boomSky
 	}
 	_, _, sampleW, sampleH := g.skyProjectionSize()
 	// The horizontal offset is a signed 16.16 BAM offset, not map-unit degrees.
-	angle := radiansToDoomAngle(camAngle) + uint32(int32(s.TextureOffset)*65536)
+	scroll := g.boomWallOffsets(int(side))
+	angle := radiansToDoomAngle(camAngle) + uint32(boomFixed(int64(s.TextureOffset)*fracUnit+scroll.x))
 	for x := range frame.columns {
 		sx := scene.ProjectedSampleIndex(x, g.viewW, sampleW)
 		off := classicProjectionForWidth(sampleW).angles[sx]
@@ -173,7 +174,7 @@ func (g *game) transferredSkyFrame(lineID int, camAngle, focal float64) *boomSky
 		frame.columns[x] = wrapIndex(int(col>>22), tex.Width)
 	}
 	iscale := int64(320*fracUnit) / int64(sampleW)
-	mid := int64(s.RowOffset)*fracUnit - 28*fracUnit
+	mid := boomFixed(int64(s.RowOffset)*fracUnit+scroll.y) - 28*fracUnit
 	for y := range frame.rows {
 		sy := scene.ProjectedSampleIndex(y, g.viewH, sampleH)
 		frame.rows[y] = wrapIndex(int((mid+int64(sy-sampleH/2)*iscale)>>fracBits), tex.Height)

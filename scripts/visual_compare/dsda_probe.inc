@@ -6,6 +6,7 @@
 #include "r_fps.h"
 #include "p_maputl.h"
 #include "p_map.h"
+#include "p_tick.h"
 #include "dsda/configuration.h"
 
 static void GD_VisualProbe(void)
@@ -34,7 +35,19 @@ static void GD_VisualProbe(void)
         /* Fresh linedefs have r_validcount == 0. Real play renders after a
          * game tic; invalidate that cache without advancing simulation. */
         gametic = 1;
-        for (i=0; i<tic; ++i) { leveltime=i; P_UpdateSpecials(); }
+        if (getenv("GD_VISUAL_SIMULATE") && !strcmp(getenv("GD_VISUAL_SIMULATE"),"1")) {
+            menuactive=false;
+            for (i=0;i<tic;++i) { gametic=i+1; P_Ticker(); }
+            snprintf(path,sizeof(path),"%s/%s-dsda-state.csv",out,name);
+            image=fopen(path,"w"); if(!image) I_Error("GD probe cannot write state");
+            p=&players[displayplayer];
+            fprintf(image,"player,%d,%d,%d,%d,%d\n",p->mo->x,p->mo->y,p->mo->z,p->mo->momx,p->mo->momy);
+            for(i=0;i<numsectors;++i) fprintf(image,"sector,%d,%d,%d,%d,%d,%d,%d\n",i,sectors[i].floorheight,sectors[i].ceilingheight,sectors[i].floor_xoffs,sectors[i].floor_yoffs,sectors[i].ceiling_xoffs,sectors[i].ceiling_yoffs);
+            for(i=0;i<numsides;++i) fprintf(image,"side,%d,%d,%d\n",i,sides[i].textureoffset,sides[i].rowoffset);
+            fclose(image);
+        } else {
+            for (i=0; i<tic; ++i) { leveltime=i; P_UpdateSpecials(); }
+        }
         leveltime=tic;
         p = &players[displayplayer];
         P_UnsetThingPosition(p->mo);

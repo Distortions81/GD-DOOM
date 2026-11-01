@@ -140,6 +140,9 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 		return fmt.Errorf("authority baseline static map mismatch")
 	}
 	s := r.Game
+	if !g.validBoomScrollerStates(s.BoomScrollers) {
+		return fmt.Errorf("authority baseline scroller state mismatch")
+	}
 	if s.WorldTic < 0 || uint64(s.WorldTic) != uint64(r.Tic) || s.Session.PlayerSlot != int(r.Viewer) {
 		return fmt.Errorf("authority baseline tic/viewer mismatch")
 	}

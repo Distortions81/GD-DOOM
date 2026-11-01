@@ -1,0 +1,44 @@
+[
+  {
+    "name": "aaliens01-scroll-35",
+    "map": "MAP01",
+    "X": 1160,
+    "Y": -2024,
+    "Z": -39,
+    "angle": 3758096384,
+    "tic": 35,
+    "category": "real-map",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          64,
+          0,
+          256,
+          16
+        ]
+      }
+    ]
+  },
+  {
+    "name": "aaliens01-scroll-70",
+    "map": "MAP01",
+    "X": 1160,
+    "Y": -2024,
+    "Z": -39,
+    "angle": 3758096384,
+    "tic": 70,
+    "category": "real-map",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          64,
+          0,
+          256,
+          16
+        ]
+      }
+    ]
+  }
+]

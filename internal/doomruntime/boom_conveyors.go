@@ -7,37 +7,6 @@ type boomCarryThinker struct {
 	vector boomScrollVector
 }
 
-// Static scrollers have no mutable controller state. Texture phase derives
-// from the saved world tic, while carry impulses run in thinker-list order.
-func (g *game) initBoomScrollers() {
-	g.boomCarries = nil
-	g.boomFloorScroll = make([]boomScrollVector, len(g.m.Sectors))
-	g.boomCeilingScroll = make([]boomScrollVector, len(g.m.Sectors))
-	for _, line := range g.m.Linedefs {
-		if line.Special < 250 || line.Special > 253 {
-			continue
-		}
-		a, b := g.m.Vertexes[line.V1], g.m.Vertexes[line.V2]
-		dx, dy := (int64(b.X)-int64(a.X))*fracUnit>>5, (int64(b.Y)-int64(a.Y))*fracUnit>>5
-		targets := g.taggedSectorsForTag(line.Tag)
-		for _, sec := range targets {
-			if line.Special == 250 {
-				g.boomCeilingScroll[sec].x -= dx
-				g.boomCeilingScroll[sec].y += dy
-			}
-			if line.Special == 251 || line.Special == 253 {
-				g.boomFloorScroll[sec].x -= dx
-				g.boomFloorScroll[sec].y += dy
-			}
-		}
-		if line.Special == 252 || line.Special == 253 {
-			for _, sec := range targets {
-				g.boomCarries = append(g.boomCarries, boomCarryThinker{g.allocThinkerOrder(), sec, boomScrollVector{fixedMul(dx, 6144), fixedMul(dy, 6144)}})
-			}
-		}
-	}
-}
-
 func (g *game) boomActorTouchesSector(x, y, radius int64, sec int) bool {
 	if g.sectorAt(x, y) == sec {
 		return true
@@ -67,10 +36,14 @@ func (g *game) boomActorTouchesSector(x, y, radius int64, sec int) bool {
 
 func (g *game) tickBoomCarry(c boomCarryThinker) {
 	floor := g.sectorFloor[c.sector]
+	water := int64(-1 << 31)
+	if control := g.heightControl(c.sector); control >= 0 && g.sectorFloor[control] > floor {
+		water = g.sectorFloor[control]
+	}
 	carryPlayer := func() {
-		if !g.noClip && g.p.z <= floor && g.boomActorTouchesSector(g.p.x, g.p.y, playerRadius, c.sector) {
-			g.p.momx += c.vector.x
-			g.p.momy += c.vector.y
+		if !g.noClip && (g.p.z <= floor || g.p.z < water) && g.boomActorTouchesSector(g.p.x, g.p.y, playerRadius, c.sector) {
+			g.p.momx = boomFixed(g.p.momx + c.vector.x)
+			g.p.momy = boomFixed(g.p.momy + c.vector.y)
 		}
 	}
 	if len(g.authorityPlayers) > 0 {
@@ -81,16 +54,27 @@ func (g *game) tickBoomCarry(c boomCarryThinker) {
 		carryPlayer()
 	}
 	for i, th := range g.m.Things {
-		if !thingTypeUsesBlockmap(th.Type) || g.thingCollected[i] || monsterCanFloat(th.Type) || thingSpawnsOnCeiling(th.Type) {
+		if !thingTypeUsesBlockmap(th.Type) || g.thingCollected[i] {
 			continue
 		}
 		x, y := g.thingPosFixed(i, th)
 		z, _, _ := g.thingSupportState(i, th)
-		if z <= floor && g.boomActorTouchesSector(x, y, g.thingCurrentRadius(i, th), c.sector) {
-			g.thingMomX[i] += c.vector.x
-			g.thingMomY[i] += c.vector.y
+		if ((!monsterCanFloat(th.Type) && !thingSpawnsOnCeiling(th.Type) && z <= floor) || z < water) && g.boomActorTouchesSector(x, y, g.thingCurrentRadius(i, th), c.sector) {
+			g.thingMomX[i] = boomFixed(g.thingMomX[i] + c.vector.x)
+			g.thingMomY[i] = boomFixed(g.thingMomY[i] + c.vector.y)
 		}
 	}
+	// Missiles have no gravity, but Boom carries them when submerged too.
+	if water > int64(-1<<31) {
+		for i := range g.projectiles {
+			p := &g.projectiles[i]
+			if p.z < water && g.boomActorTouchesSector(p.x, p.y, p.radius, c.sector) {
+				p.vx = boomFixed(p.vx + c.vector.x)
+				p.vy = boomFixed(p.vy + c.vector.y)
+			}
+		}
+	}
+
 }
 
 // Earlier starts become physical actors; the last start retains the camera.

@@ -88,7 +88,7 @@ func SectorSpecialSupported(special int16) bool {
 }
 
 func IsScrollingWallSpecial(special uint16) bool {
-	return special == 48 || special == 85 || special >= 250 && special <= 253
+	return special == 48 || special == 85 || special >= 250 && special <= 255 || special >= 214 && special <= 218 || special >= 245 && special <= 249
 }
 
 // IsTransferSpecial identifies static map setup rather than a triggered action.

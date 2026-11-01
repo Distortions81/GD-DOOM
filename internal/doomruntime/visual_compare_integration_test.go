@@ -36,7 +36,8 @@ type visualProbeScene struct {
 }
 
 // TestVisualRendererCapture is driven by scripts/visual_compare.py. It uses
-// real world draws, with no UI, sprites, interpolation or simulation drift.
+// real world draws, optional map actors and optional world-tic simulation.
+// Fixed cameras have no HUD or interpolation.
 func TestVisualRendererCapture(t *testing.T) {
 	out := os.Getenv("GD_VISUAL_OUT")
 	if out == "" {
@@ -173,6 +174,20 @@ func TestVisualRendererCapture(t *testing.T) {
 				c := scenes[sceneIndex]
 				if c.Map != name {
 					continue
+				}
+				if os.Getenv("GD_VISUAL_SIMULATE") == "1" {
+					fresh, e := mapdata.LoadMap(wf, mapdata.MapName(name))
+					if e != nil {
+						t.Fatal(e)
+					}
+					g = newGame(fresh, opts)
+					g.setGammaLevel(0)
+					g.viewW, g.viewH = width, height
+					g.geometryAspectY = 1
+					for i := 0; i < c.Tic; i++ {
+						g.runGameplayTic(moveCmd{}, false, false)
+					}
+					writeVisualSimulationState(t, g, filepath.Join(out, c.Name+"-gd-state.csv"))
 				}
 				if demo != nil {
 					fresh, e := mapdata.LoadMap(wf, mapdata.MapName(name))
@@ -407,5 +422,29 @@ func writeVisualSpanTrace(t *testing.T, g *game, c visualProbeScene, path string
 	}
 	if err := f.Sync(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func writeVisualSimulationState(t *testing.T, g *game, path string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "player,%d,%d,%d,%d,%d\n", g.p.x, g.p.y, g.p.z, g.p.momx, g.p.momy)
+	for i := range g.m.Sectors {
+		floor, ceil, _ := g.sectorHeightSnapshot(i)
+		a, b := g.boomPlaneOffset(i, true), g.boomPlaneOffset(i, false)
+		fmt.Fprintf(f, "sector,%d,%d,%d,%d,%d,%d,%d\n", i, floor, ceil, a.x, a.y, b.x, b.y)
+	}
+	for i, side := range g.m.Sidedefs {
+		off := g.boomWallOffsets(i)
+		for _, line := range g.m.Linedefs {
+			if int(line.SideNum[0]) == i {
+				off.x += floorFixed(wallSpecialScrollXOffset(line.Special, g.worldTic))
+			}
+		}
+		fmt.Fprintf(f, "side,%d,%d,%d\n", i, boomFixed(int64(side.TextureOffset)*fracUnit+off.x), boomFixed(int64(side.RowOffset)*fracUnit+off.y))
 	}
 }

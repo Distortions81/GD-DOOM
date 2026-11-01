@@ -61,7 +61,15 @@ func (g *game) boomPlaneOffset(sec int, floor bool) boomScrollVector {
 		return boomScrollVector{}
 	}
 	v := vectors[sec]
-	return boomScrollVector{x: int64(int32(v.x * int64(g.worldTic))), y: int64(int32(v.y * int64(g.worldTic)))}
+	offsets := g.boomCeilingOffset
+	if floor {
+		offsets = g.boomFloorOffset
+	}
+	off := boomScrollVector{}
+	if sec < len(offsets) {
+		off = offsets[sec]
+	}
+	return boomScrollVector{x: boomFixed(v.x*int64(g.worldTic) + off.x), y: boomFixed(v.y*int64(g.worldTic) + off.y)}
 }
 func (g *game) prepareHeightTransfers(x, y, eyeZ float64) {
 	g.boomHeightFrameValid = false

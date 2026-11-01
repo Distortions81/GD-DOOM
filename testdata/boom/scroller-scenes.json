@@ -1,0 +1,2298 @@
+[
+  {
+    "name": "scroll-245-0",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-245-1050",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-245-1055",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-245-1067",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-245-1075",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-246-0",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-246-1050",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-246-1055",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-246-1067",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-246-1075",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-247-0",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-247-1050",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-247-1055",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-247-1067",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-247-1075",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-248-0",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-248-1050",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-248-1055",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-248-1067",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-248-1075",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-249-0",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-249-1050",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-249-1055",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-249-1067",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-249-1075",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-214-0",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-214-1050",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-214-1055",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-214-1067",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-214-1075",
+    "map": "MAP06",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-215-0",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-215-1050",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-215-1055",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-215-1067",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-215-1075",
+    "map": "MAP07",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-216-0",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-216-1050",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-216-1055",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-216-1067",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-216-1075",
+    "map": "MAP08",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-217-0",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-217-1050",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-217-1055",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-217-1067",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-217-1075",
+    "map": "MAP09",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-218-0",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-218-1050",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1050,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-218-1055",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1055,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-218-1067",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1067,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-218-1075",
+    "map": "MAP10",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 1075,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-254-0",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-254-7",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 7,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-254-17",
+    "map": "MAP11",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 17,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-255-0",
+    "map": "MAP12",
+    "X": 128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-255-7",
+    "map": "MAP12",
+    "X": 128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 7,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  },
+  {
+    "name": "scroll-255-17",
+    "map": "MAP12",
+    "X": 128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 17,
+    "category": "boom-scroller",
+    "checks": [
+      {
+        "name": "floor-phase",
+        "box": [
+          144,
+          180,
+          176,
+          196
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "ceiling-phase",
+        "box": [
+          144,
+          4,
+          176,
+          20
+        ],
+        "max_different_percent": 2
+      },
+      {
+        "name": "wall-phase",
+        "box": [
+          150,
+          80,
+          170,
+          96
+        ]
+      }
+    ]
+  }
+]

@@ -516,7 +516,8 @@ Extended BSP geometry, silent thing teleports and corrected teleport freeze
 timing advance this to `gd-doom-authority-dev-6`.
 Generalized ceilings/lifts and equivalent-key locked doors advance this to
 `gd-doom-authority-dev-7`. Pending ceiling changes and lift trigger tags extend
-the binary snapshot schema; save/keyframe versions are now 29/16.
+the binary snapshot schema. Mutable scroller state subsequently advances this
+to `gd-doom-authority-dev-8`; save/keyframe versions are now 30/17.
 Deploy matching client and server
 binaries together; the lobby must use the same worker binary and approved
 catalog described in [free games](free-games.md).

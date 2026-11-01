@@ -56,6 +56,16 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 - Static ceiling/floor scrollers (250–251), carry-only conveyors (252), and
   combined floor scrolling/carrying (253). Carry impulses participate in the
   ordered thinker loop; CPU/GPU plane sampling includes the texture offsets.
+- Displacement scrollers (245–249) and accelerative scrollers (214–218):
+  controller floor-plus-ceiling displacement, persistent acceleration, and
+  additive floor/ceiling/wall/carry effects. Wall scrollers (254/255) include
+  rotation into the target wall's coordinates, sidedef-derived rates and both
+  texture axes. Only the target's first side scrolls. Scrolling sky-control
+  sidedefs feed the transferred sky's offsets too.
+  Mutable controllers run in thinker order and preserve velocity, previous
+  control height and phase across saves and authority snapshots. Arithmetic
+  uses Boom's signed 16.16 wrapping. Underwater carry also reaches floating
+  actors and missiles, with strict water-height and noclip checks.
 - Single-player voodoo dolls: earlier matching starts become physical bodies
   with collision, momentum, player-only walk triggers, pickups and shared
   damage. Their position, health and momentum use existing save fields.
@@ -315,11 +325,57 @@ live plane-light averages, namespace/malformed-table handling, returning to the
 default colormap, GPU table invalidation and weapon cache identity. This remains
 a presentation change with no new simulation or save format.
 
+## Scroller verification
+
+`python3 scripts/make_boom_scroller_wad.py` regenerates twelve original test
+maps, one per remaining scroller special, and their fixed-camera manifest.
+An autonomous 30-second door changes a disconnected control sector's ceiling.
+Views before, during and after that motion distinguish displacement from
+acceleration that continues after the control stops. The wall cases include
+a slanted target, horizontal/vertical scrolling and a camera facing the 255
+scroller. Patterned flats and an original wall patch expose texture phase.
+
+```sh
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad testdata/boom/scrollers.wad \
+  --scenes testdata/boom/scroller-scenes.json --simulate \
+  --reference-source /path/to/clean/dsda-doom-0.27.5 \
+  --out /tmp/boom-scrollers
+```
+
+`--simulate` advances actual stationary-player world tics in both engines,
+then selects the fixed rendering camera. Before drawing, it compares exact
+16.16 player position/momentum, all sector heights and plane offsets, and all
+sidedef offsets. The reference runs its unchanged `P_Ticker`; neither the
+controller nor scroller renderer is patched. Without this flag the original
+fixed-camera capture behavior remains available.
+
+All **56 fixture views** match this numeric state exactly. All 56 wall check
+regions are pixel-exact. Of 112 patterned-plane regions, 106 are pixel-exact
+and six differ by at most 1.96% of pixels at UV boundaries, within their
+explicit 2% limit. Whole fixture frames differ from DSDA by 1.02–2.25%; their
+diagnostic differences remain in the gallery. Every complete CPU/GPU pair
+matches, including all 56 views in Source Port mode.
+
+Two additional simulated Ancient Aliens MAP01 views at tics 35/70 use
+`testdata/boom/ancient-aliens-scroller-scenes.json` with the hash-pinned WAD.
+They also match all recorded numeric state and their sky check regions.
+Whole frames retain roughly 22.98% DSDA differences, so these are not claims
+of full real-map raster parity. The existing five no-monsters demo regressions
+still match all **5,772 frames** and exit tics.
+
+Focused tests cover controller motion/stopping, cancellation between floor
+and ceiling changes, additive scrollers, wall rotation/target sides, fixed
+wrapping, underwater floating/missile carry, sky-control offsets, and binary
+save/keyframe continuation while accelerating. The behavior follows
+[DSDA's compatible scroller setup](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_spec.c)
+and [control-scroller updates](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/dsda/scroll.c).
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
-floor/ceiling slot handling for legacy actions, displacement/accelerative and
-wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers,
+floor/ceiling slot handling for legacy actions, friction, wind/pushers,
+silent line-to-line teleports/crushers,
 translucency, custom `ANIMATED`/`SWITCHES` tables,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
@@ -329,7 +385,8 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-7`. Deploy matching clients and servers. Pending ceiling
-changes and lift trigger tags extend the authoritative snapshot schema. Save
-version 29 reads versions 26–28; keyframe version 16 reads versions 13–15.
+`gd-doom-authority-dev-8`. Deploy matching clients and servers. Mutable scroller
+state extends the authoritative snapshot schema. Save version 30 reads versions
+27–29; keyframe version 17 reads versions 14–16. Older snapshots cannot reconstruct
+the earlier acceleration history of previously unsupported scrollers.
 Voodoo-doll conversion remains limited to single-player sessions.

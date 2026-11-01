@@ -773,7 +773,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 29 && v.Version <= saveGameVersion) || (v.Version >= 16 && v.Version <= keyframeVersion) {
 		for _, key := range sortedSaveIntKeys(v.Game.Plats) {
 			it := v.Game.Plats[key]
 			if err := w.u16(it.TriggerTag); err != nil {
@@ -795,6 +795,11 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			if err := w.i16(it.FinishSpecial); err != nil {
 				return err
 			}
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if err := w.boomScrollerSlice(v.Game.BoomScrollers); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1684,7 +1689,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 		}
 	}
 
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 29 && v.Version <= saveGameVersion) || (v.Version >= 16 && v.Version <= keyframeVersion) {
 		for _, key := range sortedSaveIntKeys(v.Game.Plats) {
 			it := v.Game.Plats[key]
 			if it.TriggerTag, err = r.u16(); err != nil {
@@ -1710,6 +1715,11 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 				return v, err
 			}
 			v.Game.Ceilings[key] = it
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if v.Game.BoomScrollers, err = r.boomScrollerSlice(); err != nil {
+			return v, err
 		}
 	}
 	return v, nil

@@ -134,6 +134,7 @@ const (
 	worldThinkerBossFire
 	worldThinkerPlayer
 	worldThinkerBoomCarry
+	worldThinkerBoomScroll
 )
 
 func (g *game) playerThinkerOrder() int64 {
@@ -271,6 +272,9 @@ func (g *game) nextWorldThinkerAfterForPlayers(lastOrder int64, players []*autho
 	for i, c := range g.boomCarries {
 		consider(worldThinkerBoomCarry, i, c.order)
 	}
+	for i, s := range g.boomScrollers {
+		consider(worldThinkerBoomScroll, i, s.Order)
+	}
 	return best, found
 }
 
@@ -286,6 +290,8 @@ func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
 
 func (g *game) tickWorldThinker(ref worldThinkerRef) {
 	switch ref.kind {
+	case worldThinkerBoomScroll:
+		g.tickBoomScroller(ref.key)
 	case worldThinkerBoomCarry:
 		g.tickBoomCarry(g.boomCarries[ref.key])
 	case worldThinkerPlayer:

@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 29
+	saveGameVersion     = 30
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 16
+	keyframeVersion     = 17
 	saveGameDirName     = "saves"
 )
 
@@ -93,6 +93,7 @@ type saveSlotInfo struct {
 }
 
 type gameSaveState struct {
+	BoomScrollers        []boomScrollerState
 	Session              sessionSaveState
 	Player               playerSaveState
 	View                 mapview.ViewState
@@ -1127,8 +1128,8 @@ func (sg *sessionGame) loadSnapshot(data []byte, magic []byte, version int) (sav
 	if err != nil {
 		return saveFile{}, err
 	}
-	// Versions 26-28 (13-15 for keyframes) predate pending ceiling changes;
-	// the oldest versions also lack weapon pose and/or skull-key artwork.
+	// Accept the previous three formats. Older snapshots predate mutable
+	// scroller state and can also lack pending mover changes or skull-key art.
 	if file.Version < version-3 || file.Version > version {
 		return saveFile{}, fmt.Errorf("incompatible save version: %d", file.Version)
 	}
@@ -1161,6 +1162,9 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 		return fmt.Errorf("load saved map %s: nil map", file.Current)
 	}
 	g := sg.buildGame(loadedMap, sg.opts)
+	if (file.Version == saveGameVersion || file.Version == keyframeVersion) && !g.validBoomScrollerStates(file.Game.BoomScrollers) {
+		return fmt.Errorf("save scrollers do not match loaded map")
+	}
 	restoreGameSaveState(g, file.Game)
 	if file.Version == 26 || file.Version == 27 || file.Version == 13 || file.Version == 14 {
 		g.inventory.SkullKeys = g.collectedSkullKeys()
@@ -1326,6 +1330,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		WeaponPose:           g.weaponPose,
 		Stats:                g.stats,
 		WorldTic:             g.worldTic,
+		BoomScrollers:        append([]boomScrollerState(nil), g.boomScrollers...),
 		LevelKillsTotal:      g.levelKillsTotal,
 		LevelItemsTotal:      g.levelItemsTotal,
 		PlayerKillCount:      g.playerKillCount,
@@ -1463,6 +1468,10 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.weaponPose = s.WeaponPose
 	g.stats = s.Stats
 	g.worldTic = s.WorldTic
+	if s.BoomScrollers != nil && g.validBoomScrollerStates(s.BoomScrollers) {
+		g.boomScrollers = append(g.boomScrollers[:0], s.BoomScrollers...)
+		g.rebuildBoomScrollOffsets()
+	}
 	g.levelKillsTotal = s.LevelKillsTotal
 	g.levelItemsTotal = s.LevelItemsTotal
 	g.playerKillCount = s.PlayerKillCount

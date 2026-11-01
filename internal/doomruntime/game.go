@@ -436,6 +436,9 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 type game struct {
 	boomCarries                        []boomCarryThinker
 	boomFloorScroll, boomCeilingScroll []boomScrollVector
+	boomScrollers                      []boomScrollerState
+	boomFloorOffset, boomCeilingOffset []boomScrollVector
+	boomWallScroll, boomWallOffset     []boomScrollVector
 
 	possession         *monsterPossession
 	possessionFireDown bool
@@ -5241,8 +5244,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			texUOffset = wallSpecialScrollXOffset(ld.Special, g.worldTic)
 		}
 		if frontSideDef != nil {
-			texUOffset += float64(frontSideDef.TextureOffset)
-			rowOffset := float64(frontSideDef.RowOffset)
+			scroll := g.boomWallOffsets(pp.frontSideDefIdx)
+			texUOffset += float64(frontSideDef.TextureOffset) + float64(scroll.x)/fracUnit
+			rowOffset := float64(frontSideDef.RowOffset) + float64(scroll.y)/fracUnit
 			midTex, hasMidTex = g.wallTextureBlend(frontSideDef.Mid, pp.frontSideDefIdx, switchTextureSlotMid)
 			if hasMidTex && midTex.from != nil {
 				if back != nil {
@@ -5717,11 +5721,8 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 		return key
 	}
 	if secIdx >= 0 && secIdx < len(g.boomFloorScroll) {
-		vector := g.boomCeilingScroll[secIdx]
-		if floor {
-			vector = g.boomFloorScroll[secIdx]
-		}
-		key.offsetX, key.offsetY = int64(int32(vector.x*int64(g.worldTic))), int64(int32(vector.y*int64(g.worldTic)))
+		off := g.boomPlaneOffset(secIdx, floor)
+		key.offsetX, key.offsetY = off.x, off.y
 	}
 	if v := g.heightView(secIdx, false); v != nil {
 		key.heightHack = true

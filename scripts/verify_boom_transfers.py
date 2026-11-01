@@ -82,6 +82,7 @@ def main():
     parser.add_argument("--cmake-arg", action="append", default=[])
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--complevel", type=int, choices=(9,11), default=9, help="DSDA compatibility: Boom 2.02 or MBF")
+    parser.add_argument("--simulate", action="store_true", help="advance real world tics and verify exact offsets/body state")
     parser.add_argument("--actors", action="store_true", help="render map actors in both engines")
     parser.add_argument("--width", type=int, default=320)
     parser.add_argument("--height", type=int, default=200)
@@ -100,7 +101,7 @@ def main():
     maps = ",".join(dict.fromkeys(c["map"] for c in scenes))
     env = dict(os.environ, SDL_AUDIODRIVER="dummy", GD_VISUAL_WAD=str(merged),
                GD_VISUAL_OUT=str(out), GD_VISUAL_WIDTH=str(args.width), GD_VISUAL_HEIGHT=str(args.height),
-               GD_VISUAL_MAPS=maps, GD_VISUAL_LIGHTING="1", GD_VISUAL_ACTORS="1" if args.actors else "0", GD_VISUAL_SCENES=str(manifest))
+               GD_VISUAL_SIMULATE="1" if args.simulate else "0", GD_VISUAL_MAPS=maps, GD_VISUAL_LIGHTING="1", GD_VISUAL_ACTORS="1" if args.actors else "0", GD_VISUAL_SCENES=str(manifest))
     # Fixed scenes must never inherit a demo/death/lighting override from a shell.
     for key in ("GD_VISUAL_DEMO", "GD_VISUAL_DISABLE_LIGHTING", "GD_VISUAL_SOURCE_PORT"):
         env.pop(key, None)
@@ -121,6 +122,14 @@ def main():
                         angle=c["angle"], leveltime=c["tic"], width=args.width, height=args.height)
         if any(int(camera[k]) != v for k, v in expected.items()):
             raise ValueError(f"camera mismatch for {name}: {camera} expected {expected}")
+        simulation_verified = False
+        if args.simulate:
+            gd_state = (out/(name+"-gd-state.csv")).read_text().splitlines()
+            dsda_state = (out/(name+"-dsda-state.csv")).read_text().splitlines()
+            if gd_state != dsda_state:
+                differences = [(a,b) for a,b in zip(gd_state,dsda_state) if a!=b]
+                raise ValueError(f"simulation mismatch for {name}: {differences[:8]}; row counts {len(gd_state)}/{len(dsda_state)}")
+            simulation_verified = True
         images = {backend: Image.open(out/(name+suffix)).convert("RGB")
                   for backend, suffix in [("dsda", "-dsda.ppm"), ("cpu", "-cpu.png"), ("gpu", "-gpu.png")]}
         if any(im.size != (args.width, args.height) for im in images.values()):
@@ -146,7 +155,7 @@ def main():
             draw.text((i*args.width+8, 5), backend.upper(), fill="white")
             sheet.paste(images[backend], (i*args.width, 24))
         sheet.save(out/(name+"-comparison.png"))
-        results.append(dict(scene=c, camera_verified=True, metrics=metrics, checks=checks))
+        results.append(dict(scene=c, camera_verified=True, simulation_verified=simulation_verified, metrics=metrics, checks=checks))
         print(name, "DSDA/CPU differing pixels:", round(metrics["dsda-cpu"]["different_percent"], 4),
               "checks:", all(v["passed"] for v in checks), flush=True)
         cards.append(f'<h2>{html.escape(name)}</h2><img src="{name}-comparison.png"><p><a href="{name}-dsda-cpu-diff.png">DSDA/CPU difference ×4</a></p>')
@@ -154,7 +163,7 @@ def main():
     for path in sorted((ROOT/"internal").rglob("*")):
         if path.suffix in (".go", ".kage"):
             source_hash.update(str(path.relative_to(ROOT)).encode()+b"\0"+path.read_bytes())
-    metadata = dict(complevel=args.complevel, actors=args.actors, verifier_sha256=digest(Path(__file__)), scenes_sha256=digest(manifest),
+    metadata = dict(simulate=args.simulate, complevel=args.complevel, actors=args.actors, verifier_sha256=digest(Path(__file__)), scenes_sha256=digest(manifest),
                     gd_source_sha256=source_hash.hexdigest(), reference="DSDA-Doom 0.27.5 software renderer, camera/export probe only",
                     reference_sha256=digest(executable), probe_sha256=digest(ROOT/"scripts/visual_compare/dsda_probe.inc"),
                     iwad_sha256=digest(iwad), pwad_sha256=digest(pwad), dimensions=[args.width,args.height],
