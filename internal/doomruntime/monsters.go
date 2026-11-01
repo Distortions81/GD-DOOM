@@ -2342,6 +2342,7 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 
 	z, _, _ := g.thingSupportState(i, th)
 	tx, ty := g.thingPosFixed(i, th)
+	initialX, initialY := tx, ty
 	xmove := momx
 	ymove := momy
 	for xmove != 0 || ymove != 0 {
@@ -2387,6 +2388,13 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 		break
 	}
 
+	f := int64(friction)
+	if isVoodooDollType(th.Type) && len(g.thingFriction) > i {
+		f = storedBoomFriction(g.thingFriction[i])
+		if tx0, ty0 := g.thingPosFixed(i, th); tx0 == initialX && ty0 == initialY && (g.opts.DemoScript == nil || g.opts.DemoScript.Header.Version != 201) {
+			f = friction
+		}
+	}
 	z, floorZ, ceilZ := g.thingSupportState(i, th)
 	if z > floorZ || momz != 0 {
 		// P_XYMovement applies ground friction before P_MobjThinker enters
@@ -2397,8 +2405,11 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 				momx = 0
 				momy = 0
 			} else {
-				momx = fixedMul(momx, friction)
-				momy = fixedMul(momy, friction)
+				if isVoodooDollType(th.Type) && len(g.thingFriction) > i {
+					g.thingFriction[i] = friction
+				}
+				momx = fixedMul(momx, f)
+				momy = fixedMul(momy, f)
 			}
 		}
 		g.thingMomX[i] = momx
@@ -2427,8 +2438,11 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 		}
 		return
 	}
-	g.thingMomX[i] = fixedMul(momx, friction)
-	g.thingMomY[i] = fixedMul(momy, friction)
+	if isVoodooDollType(th.Type) && len(g.thingFriction) > i {
+		g.thingFriction[i] = friction
+	}
+	g.thingMomX[i] = fixedMul(momx, f)
+	g.thingMomY[i] = fixedMul(momy, f)
 	if z < floorZ {
 		g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
 		return

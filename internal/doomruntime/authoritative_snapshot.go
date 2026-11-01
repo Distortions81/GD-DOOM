@@ -171,6 +171,9 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 	}
 	// Thing state is stored in parallel arrays. Some lazy AI arrays can be empty
 	// before their first tick; nonempty arrays must always cover the whole world.
+	if !validBoomFrictionState(&s, n) {
+		return fmt.Errorf("authority baseline friction shape mismatch")
+	}
 	if err := validateAuthorityThingShapes(&s, n); err != nil {
 		return err
 	}

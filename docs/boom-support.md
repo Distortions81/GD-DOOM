@@ -6,6 +6,18 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Boom variable friction (223, sector bit 256): controller-derived mud/ice
+  friction, inertia, speed-dependent mud acceleration, overlapping-floor
+  selection, one-tic friction thinker state and icy wall bounces. Normal maps
+  keep their original movement path; vanilla demos do not enable Boom friction.
+- Wind (224), currents (225) and point push/pull sources (226, things 5001/5002),
+  gated by sector bit 512. Forces add in thinker order, follow real ground and
+  height-transfer water boundaries, and honor noclip. Point forces use Boom's
+  approximate distance/range, cached source position, last-spawned source and
+  visibility checks, including height-sector separation. Under Boom rules
+  these affect player bodies and voodoo dolls; ordinary monsters are immune.
+  MBF's broader actor eligibility and inverse-square point forces are separate.
+
 - Custom `ANIMATED` wall/flat ranges and per-range tic speeds; custom `SWITCHES`
   pairs, episode filtering and table-order selection. Supplied lumps replace
   defaults, including terminator-only tables. Repeat buttons restore one slot
@@ -566,11 +578,53 @@ build instead. The driver saves both CSVs, the input cases, hashes and
 `results.json`. The five existing no-monsters demos still match all **5,772
 frames** and exit tics; the full Go suite also passes.
 
+## Friction and environmental force verification
+
+`make_boom_environment_wad.py` creates 20 original maps and **1,081 cases**:
+441 player, 320 imp and 320 cacodemon cases. The DSDA-Doom 0.27.5 reference
+runs at compatibility 9 with monsters enabled. **All 8,474 exported state rows
+match exactly**, including X/Y/Z, all momentum components and the raw stored
+friction/movement factor at every captured tic.
+
+There are 529 isolated force/friction cases and 552 full-simulation cases.
+The isolated cases call the reference's actual friction/pusher thinkers;
+full simulation uses `P_Ticker`, player commands and real monster thinkers.
+Monster state transitions are delayed to keep AI randomness out of the physics
+comparison. This verifies force immunity and physical movement for monsters,
+not full combat/AI RNG parity. The reference `p_spec.c`, `p_map.c`, `p_mobj.c`,
+`p_user.c` and `p_sight.c` remain byte-identical to the pristine source.
+
+Coverage includes ground, air, submersion, wading and exact body waterlines;
+positive/negative controller vectors; mud/ice inertia and acceleration;
+additive wind/current/friction; overlapping floors; icy wall collisions;
+noclip; enable/disable timing; point-force range, center, diagonals and LOS;
+cross-sector forces; and last-source selection. Unit tests additionally check
+voodoo versus controlled-body noclip behavior, marker collision properties,
+binary snapshot compatibility and identical movement after a checkpoint.
+
+The implementation retains Boom's original, unclamped friction formula and
+linear point-force approximation. It does not substitute MBF formulas or make
+ordinary monsters respond to Boom wind/current/pushers. Controller references
+and thinker orders rebuild from the map. A cached voodoo list avoids walking
+all monsters for every friction/force controller. No render path changes are
+required.
+
+```sh
+python3 scripts/make_boom_environment_wad.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_environment.py \
+  --iwad wads/DOOM2.WAD --reference /path/to/capture-build/dsda-doom \
+  --out /tmp/gddoom-boom-environment
+```
+
+`--reference-source` can build a private capture copy of pristine DSDA-Doom
+0.27.5. Both CSVs, input cases, hashes and `results.json` are saved. The five
+existing demos still match **5,772 frames** and their level exit tics. The full
+Go suite and targeted save/authority checks pass.
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
-floor/ceiling slot handling for legacy actions, friction, wind/pushers,
-remaining legacy mover variants,
+floor/ceiling slot handling for legacy actions, remaining legacy mover variants,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
 
@@ -579,8 +633,9 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-10`. Deploy matching clients and servers. Mutable scroller
-state extends the authoritative snapshot schema. Save version 30 reads versions
-27–29; keyframe version 17 reads versions 14–16. Older snapshots cannot reconstruct
-the earlier acceleration history of previously unsupported scrollers.
+`gd-doom-authority-dev-11`. Deploy matching clients and servers. Stored actor friction and movement factors extend the authoritative schema.
+Save version 31 reads versions 28–30; keyframe version 18 reads versions 15–17.
+Older snapshots initialize previously unsupported friction state to defaults.
+Scroller data from version 30/keyframe 17 remains readable; earlier snapshots
+cannot reconstruct the preceding acceleration history of unsupported scrollers.
 Voodoo-doll conversion remains limited to single-player sessions.

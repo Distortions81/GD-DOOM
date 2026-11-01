@@ -797,8 +797,21 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 30 && v.Version <= saveGameVersion) || (v.Version >= 17 && v.Version <= keyframeVersion) {
 		if err := w.boomScrollerSlice(v.Game.BoomScrollers); err != nil {
+			return err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, value := range []int64{v.Game.Player.Friction, v.Game.Player.MoveFactor} {
+			if err := w.i64(value); err != nil {
+				return err
+			}
+		}
+		if err := w.i64Slice(v.Game.ThingFriction); err != nil {
+			return err
+		}
+		if err := w.i64Slice(v.Game.ThingMoveFactor); err != nil {
 			return err
 		}
 	}
@@ -1717,8 +1730,22 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			v.Game.Ceilings[key] = it
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 30 && v.Version <= saveGameVersion) || (v.Version >= 17 && v.Version <= keyframeVersion) {
 		if v.Game.BoomScrollers, err = r.boomScrollerSlice(); err != nil {
+			return v, err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if v.Game.Player.Friction, err = r.i64(); err != nil {
+			return v, err
+		}
+		if v.Game.Player.MoveFactor, err = r.i64(); err != nil {
+			return v, err
+		}
+		if v.Game.ThingFriction, err = readSlice(r, r.i64); err != nil {
+			return v, err
+		}
+		if v.Game.ThingMoveFactor, err = readSlice(r, r.i64); err != nil {
 			return v, err
 		}
 	}

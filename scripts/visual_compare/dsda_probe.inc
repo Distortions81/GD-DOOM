@@ -11,6 +11,7 @@
 #include "dsda/configuration.h"
 
 #include "dsda_teleport_probe.inc"
+#include "dsda_environment_probe.inc"
 
 static void GD_VisualProbe(void)
 {
@@ -23,6 +24,7 @@ static void GD_VisualProbe(void)
     unsigned angle;
  unsigned long long usemask;
     const byte *palette;
+    GD_EnvironmentProbe();
     GD_TeleportProbe();
     if (!manifest) return;
     if (!out || !V_IsSoftwareMode()) I_Error("GD probe requires output directory and software mode");

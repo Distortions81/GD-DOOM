@@ -77,7 +77,7 @@ func ClearSectorSecret(special int16) int16 {
 // SectorSpecialSupported describes this initial subset, not all valid Boom
 // sectors. Friction, pushers and later extensions remain audit findings.
 func SectorSpecialSupported(special int16) bool {
-	if special < 0 || special&^int16(0xff) != 0 {
+	if special < 0 || special&^int16(0x3ff) != 0 {
 		return false
 	}
 	switch special & SectorTypeMask {
@@ -95,3 +95,6 @@ func IsScrollingWallSpecial(special uint16) bool {
 func IsTransferSpecial(s uint16) bool {
 	return s == 260 || s == 242 || s == 213 || s == 261 || s == 271 || s == 272
 }
+
+// IsEnvironmentSpecial identifies Boom friction and force setup controllers.
+func IsEnvironmentSpecial(s uint16) bool { return s >= 223 && s <= 226 }

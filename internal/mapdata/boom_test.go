@@ -43,8 +43,8 @@ func TestBoomSectorSupportAndSecretClearing(t *testing.T) {
 		{9, true, true, 0},
 		{128 | 8, true, true, 0},
 		{128 | 32 | 8, true, true, 32 | 8},
-		{128 | 256, false, true, 256},
-		{512, false, false, 512},
+		{128 | 256, true, true, 256},
+		{512, true, false, 512},
 		{6, false, false, 0},
 	} {
 		if SectorSpecialSupported(tc.special) != tc.supported || SectorIsSecret(tc.special) != tc.secret || ClearSectorSecret(tc.special) != tc.cleared {

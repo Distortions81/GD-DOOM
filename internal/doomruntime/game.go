@@ -435,6 +435,10 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	boomVoodooBodies                   []int
+	boomFrictions                      []boomFrictionThinker
+	boomPushers                        []boomPusherThinker
+	thingFriction, thingMoveFactor     []int64
 	boomTeleportExits                  map[uint16][]int
 	boomMomentumDropoff                bool
 	textureAnimCachePeriod             int
@@ -1651,6 +1655,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 			g.thingSupportValid[i] = true
 		}
 	}
+	g.initBoomEnvironment()
 	if g.bmapWidth > 0 && g.bmapHeight > 0 {
 		g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
 		g.rebuildThingBlockmap()
@@ -21007,7 +21012,7 @@ func thingTypeUsesBlockmap(typ int16) bool {
 		// P_SpawnMapThing handles player/deathmatch starts without creating
 		// a map mobj. The live player has its own blockmap link and order.
 		return false
-	case teleportThingType, 87, 89, 79, 80, 81:
+	case teleportThingType, 87, 89, 79, 80, 81, 5001, 5002:
 		// Markers and blood/brain pools have MF_NOBLOCKMAP, so moving-sector
 		// height clipping must not visit them through blocklinks.
 		return false

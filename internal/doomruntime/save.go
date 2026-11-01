@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 30
+	saveGameVersion     = 31
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 17
+	keyframeVersion     = 18
 	saveGameDirName     = "saves"
 )
 
@@ -93,6 +93,8 @@ type saveSlotInfo struct {
 }
 
 type gameSaveState struct {
+	ThingFriction        []int64
+	ThingMoveFactor      []int64
 	BoomScrollers        []boomScrollerState
 	Session              sessionSaveState
 	Player               playerSaveState
@@ -224,6 +226,8 @@ type sessionSaveState struct {
 }
 
 type playerSaveState struct {
+	Friction        int64
+	MoveFactor      int64
 	X               int64
 	Y               int64
 	Z               int64
@@ -1162,8 +1166,11 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 		return fmt.Errorf("load saved map %s: nil map", file.Current)
 	}
 	g := sg.buildGame(loadedMap, sg.opts)
-	if (file.Version == saveGameVersion || file.Version == keyframeVersion) && !g.validBoomScrollerStates(file.Game.BoomScrollers) {
+	if ((file.Version >= 30 && file.Version <= saveGameVersion) || (file.Version >= 17 && file.Version <= keyframeVersion)) && !g.validBoomScrollerStates(file.Game.BoomScrollers) {
 		return fmt.Errorf("save scrollers do not match loaded map")
+	}
+	if !validBoomFrictionState(&file.Game, len(g.m.Things)) {
+		return fmt.Errorf("save friction state does not match loaded map")
 	}
 	restoreGameSaveState(g, file.Game)
 	if file.Version == 26 || file.Version == 27 || file.Version == 13 || file.Version == 14 {
@@ -1267,6 +1274,8 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingX:               append([]int64(nil), g.thingX...),
 		ThingY:               append([]int64(nil), g.thingY...),
 		ThingMomX:            append([]int64(nil), g.thingMomX...),
+		ThingFriction:        append([]int64(nil), g.thingFriction...),
+		ThingMoveFactor:      append([]int64(nil), g.thingMoveFactor...),
 		ThingMomY:            append([]int64(nil), g.thingMomY...),
 		ThingMomZ:            append([]int64(nil), g.thingMomZ...),
 		ThingAngleState:      append([]uint32(nil), g.thingAngleState...),
@@ -1404,6 +1413,12 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingSpawnPoint = restoreSaveSlice(g.thingSpawnPoint, s.ThingSpawnPoint)
 	g.thingX = restoreSaveSlice(g.thingX, s.ThingX)
 	g.thingY = restoreSaveSlice(g.thingY, s.ThingY)
+	if len(s.ThingFriction) > 0 {
+		g.thingFriction = restoreSaveSlice(g.thingFriction, s.ThingFriction)
+	}
+	if len(s.ThingMoveFactor) > 0 {
+		g.thingMoveFactor = restoreSaveSlice(g.thingMoveFactor, s.ThingMoveFactor)
+	}
 	g.thingMomX = restoreSaveSlice(g.thingMomX, s.ThingMomX)
 	g.thingMomY = restoreSaveSlice(g.thingMomY, s.ThingMomY)
 	g.thingMomZ = restoreSaveSlice(g.thingMomZ, s.ThingMomZ)
@@ -1532,6 +1547,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 
 func capturePlayerSaveState(p player) playerSaveState {
 	return playerSaveState{
+		Friction: p.friction, MoveFactor: p.movefactor,
 		X:               p.x,
 		Y:               p.y,
 		Z:               p.z,
@@ -1552,6 +1568,7 @@ func capturePlayerSaveState(p player) playerSaveState {
 
 func restorePlayerSaveState(s playerSaveState) player {
 	return player{
+		friction: s.Friction, movefactor: s.MoveFactor,
 		x:               s.X,
 		y:               s.Y,
 		z:               s.Z,

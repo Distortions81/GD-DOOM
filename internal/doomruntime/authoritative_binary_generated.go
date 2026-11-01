@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-var authorityBinarySchemaFingerprint = [16]byte{0x78, 0x03, 0x90, 0xaf, 0xbf, 0xdb, 0xcc, 0xf9, 0xd1, 0xfa, 0x42, 0xee, 0xae, 0x5a, 0xae, 0x8d}
+var authorityBinarySchemaFingerprint = [16]byte{0x68, 0xa4, 0x9d, 0xa2, 0x3e, 0xa2, 0xc2, 0xf1, 0x15, 0xf5, 0xf4, 0x51, 0x8b, 0x54, 0x7d, 0x86}
 
 func (w *authorityBinaryWriter) writedoomruntime_AuthorityRules(v *AuthorityRules) {
 	if w.err != nil {
@@ -165,7 +165,7 @@ func (r *authorityBinaryReader) readdoomruntime_authorityReplica(v *authorityRep
 	v.Viewer = uint8(r.byte())
 	v.Tic = uint32(r.unsigned(32))
 	r.readdoomruntime_gameSaveState(&v.Game)
-	tmp12, tmp13 := r.collection(115, authorityBinarySizeOf[authorityReplicaPlayer]())
+	tmp12, tmp13 := r.collection(117, authorityBinarySizeOf[authorityReplicaPlayer]())
 	if r.err != nil {
 		return
 	}
@@ -749,14 +749,32 @@ func (w *authorityBinaryWriter) writedoomruntime_gameSaveState(v *gameSaveState)
 	if w.err != nil {
 		return
 	}
-	if !w.collection(len(v.BoomScrollers), v.BoomScrollers == nil, authorityBinarySizeOf[boomScrollerState]()) {
+	if !w.collection(len(v.ThingFriction), v.ThingFriction == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp48 := range v.BoomScrollers {
+	for tmp48 := range v.ThingFriction {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_boomScrollerState(&v.BoomScrollers[tmp48])
+		w.signed(int64(v.ThingFriction[tmp48]))
+	}
+	if !w.collection(len(v.ThingMoveFactor), v.ThingMoveFactor == nil, authorityBinarySizeOf[int64]()) {
+		return
+	}
+	for tmp49 := range v.ThingMoveFactor {
+		if w.err != nil {
+			return
+		}
+		w.signed(int64(v.ThingMoveFactor[tmp49]))
+	}
+	if !w.collection(len(v.BoomScrollers), v.BoomScrollers == nil, authorityBinarySizeOf[boomScrollerState]()) {
+		return
+	}
+	for tmp50 := range v.BoomScrollers {
+		if w.err != nil {
+			return
+		}
+		w.writedoomruntime_boomScrollerState(&v.BoomScrollers[tmp50])
 	}
 	w.writedoomruntime_sessionSaveState(&v.Session)
 	w.writedoomruntime_playerSaveState(&v.Player)
@@ -780,191 +798,191 @@ func (w *authorityBinaryWriter) writedoomruntime_gameSaveState(v *gameSaveState)
 	if !w.collection(len(v.ThingCollected), v.ThingCollected == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp49 := range v.ThingCollected {
+	for tmp51 := range v.ThingCollected {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingCollected[tmp49]))
+		w.boolean(bool(v.ThingCollected[tmp51]))
 	}
 	if !w.collection(len(v.ThingDropped), v.ThingDropped == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp50 := range v.ThingDropped {
+	for tmp52 := range v.ThingDropped {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingDropped[tmp50]))
+		w.boolean(bool(v.ThingDropped[tmp52]))
 	}
 	if !w.collection(len(v.ThingThinkerOrder), v.ThingThinkerOrder == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp51 := range v.ThingThinkerOrder {
+	for tmp53 := range v.ThingThinkerOrder {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingThinkerOrder[tmp51]))
+		w.signed(int64(v.ThingThinkerOrder[tmp53]))
 	}
 	if !w.collection(len(v.ThingSpawnPoint), v.ThingSpawnPoint == nil, authorityBinarySizeOf[mapdata.Thing]()) {
 		return
 	}
-	for tmp52 := range v.ThingSpawnPoint {
+	for tmp54 := range v.ThingSpawnPoint {
 		if w.err != nil {
 			return
 		}
-		w.writemapdata_Thing(&v.ThingSpawnPoint[tmp52])
+		w.writemapdata_Thing(&v.ThingSpawnPoint[tmp54])
 	}
 	if !w.collection(len(v.ThingX), v.ThingX == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp53 := range v.ThingX {
+	for tmp55 := range v.ThingX {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingX[tmp53]))
+		w.signed(int64(v.ThingX[tmp55]))
 	}
 	if !w.collection(len(v.ThingY), v.ThingY == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp54 := range v.ThingY {
+	for tmp56 := range v.ThingY {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingY[tmp54]))
+		w.signed(int64(v.ThingY[tmp56]))
 	}
 	if !w.collection(len(v.ThingMomX), v.ThingMomX == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp55 := range v.ThingMomX {
+	for tmp57 := range v.ThingMomX {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingMomX[tmp55]))
+		w.signed(int64(v.ThingMomX[tmp57]))
 	}
 	if !w.collection(len(v.ThingMomY), v.ThingMomY == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp56 := range v.ThingMomY {
+	for tmp58 := range v.ThingMomY {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingMomY[tmp56]))
+		w.signed(int64(v.ThingMomY[tmp58]))
 	}
 	if !w.collection(len(v.ThingMomZ), v.ThingMomZ == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp57 := range v.ThingMomZ {
+	for tmp59 := range v.ThingMomZ {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingMomZ[tmp57]))
+		w.signed(int64(v.ThingMomZ[tmp59]))
 	}
 	if !w.collection(len(v.ThingAngleState), v.ThingAngleState == nil, authorityBinarySizeOf[uint32]()) {
 		return
 	}
-	for tmp58 := range v.ThingAngleState {
+	for tmp60 := range v.ThingAngleState {
 		if w.err != nil {
 			return
 		}
-		w.unsigned(uint64(v.ThingAngleState[tmp58]))
+		w.unsigned(uint64(v.ThingAngleState[tmp60]))
 	}
 	if !w.collection(len(v.ThingZState), v.ThingZState == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp59 := range v.ThingZState {
+	for tmp61 := range v.ThingZState {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingZState[tmp59]))
+		w.signed(int64(v.ThingZState[tmp61]))
 	}
 	if !w.collection(len(v.ThingFloorState), v.ThingFloorState == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp60 := range v.ThingFloorState {
+	for tmp62 := range v.ThingFloorState {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingFloorState[tmp60]))
+		w.signed(int64(v.ThingFloorState[tmp62]))
 	}
 	if !w.collection(len(v.ThingCeilState), v.ThingCeilState == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp61 := range v.ThingCeilState {
+	for tmp63 := range v.ThingCeilState {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingCeilState[tmp61]))
+		w.signed(int64(v.ThingCeilState[tmp63]))
 	}
 	if !w.collection(len(v.ThingSupportValid), v.ThingSupportValid == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp62 := range v.ThingSupportValid {
+	for tmp64 := range v.ThingSupportValid {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingSupportValid[tmp62]))
+		w.boolean(bool(v.ThingSupportValid[tmp64]))
 	}
 	if !w.collection(len(v.ThingHP), v.ThingHP == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp63 := range v.ThingHP {
+	for tmp65 := range v.ThingHP {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingHP[tmp63]))
+		w.signed(int64(v.ThingHP[tmp65]))
 	}
 	if !w.collection(len(v.ThingAggro), v.ThingAggro == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp64 := range v.ThingAggro {
+	for tmp66 := range v.ThingAggro {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingAggro[tmp64]))
+		w.boolean(bool(v.ThingAggro[tmp66]))
 	}
 	if !w.collection(len(v.ThingTargetPlayer), v.ThingTargetPlayer == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp65 := range v.ThingTargetPlayer {
+	for tmp67 := range v.ThingTargetPlayer {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingTargetPlayer[tmp65]))
+		w.boolean(bool(v.ThingTargetPlayer[tmp67]))
 	}
 	if !w.collection(len(v.ThingTargetIdx), v.ThingTargetIdx == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp66 := range v.ThingTargetIdx {
+	for tmp68 := range v.ThingTargetIdx {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingTargetIdx[tmp66]))
+		w.signed(int64(v.ThingTargetIdx[tmp68]))
 	}
 	if !w.collection(len(v.ThingTracerFireOrder), v.ThingTracerFireOrder == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp67 := range v.ThingTracerFireOrder {
+	for tmp69 := range v.ThingTracerFireOrder {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingTracerFireOrder[tmp67]))
+		w.signed(int64(v.ThingTracerFireOrder[tmp69]))
 	}
 	if !w.collection(len(v.ThingThreshold), v.ThingThreshold == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp68 := range v.ThingThreshold {
+	for tmp70 := range v.ThingThreshold {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingThreshold[tmp68]))
+		w.signed(int64(v.ThingThreshold[tmp70]))
 	}
 	if !w.collection(len(v.ThingCooldown), v.ThingCooldown == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp69 := range v.ThingCooldown {
+	for tmp71 := range v.ThingCooldown {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingCooldown[tmp69]))
+		w.signed(int64(v.ThingCooldown[tmp71]))
 	}
 	if !w.collection(len(v.ThingMoveDir), v.ThingMoveDir == nil, authorityBinarySizeOf[uint8]()) {
 		return
@@ -973,191 +991,191 @@ func (w *authorityBinaryWriter) writedoomruntime_gameSaveState(v *gameSaveState)
 	if !w.collection(len(v.ThingMoveCount), v.ThingMoveCount == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp70 := range v.ThingMoveCount {
+	for tmp72 := range v.ThingMoveCount {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingMoveCount[tmp70]))
+		w.signed(int64(v.ThingMoveCount[tmp72]))
 	}
 	if !w.collection(len(v.ThingJustAtk), v.ThingJustAtk == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp71 := range v.ThingJustAtk {
+	for tmp73 := range v.ThingJustAtk {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingJustAtk[tmp71]))
+		w.boolean(bool(v.ThingJustAtk[tmp73]))
 	}
 	if !w.collection(len(v.ThingJustHit), v.ThingJustHit == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp72 := range v.ThingJustHit {
+	for tmp74 := range v.ThingJustHit {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingJustHit[tmp72]))
+		w.boolean(bool(v.ThingJustHit[tmp74]))
 	}
 	if !w.collection(len(v.ThingSkullFly), v.ThingSkullFly == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp73 := range v.ThingSkullFly {
+	for tmp75 := range v.ThingSkullFly {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingSkullFly[tmp73]))
+		w.boolean(bool(v.ThingSkullFly[tmp75]))
 	}
 	if !w.collection(len(v.ThingResumeChaseNow), v.ThingResumeChaseNow == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp74 := range v.ThingResumeChaseNow {
+	for tmp76 := range v.ThingResumeChaseNow {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingResumeChaseNow[tmp74]))
+		w.boolean(bool(v.ThingResumeChaseNow[tmp76]))
 	}
 	if !w.collection(len(v.ThingReactionTics), v.ThingReactionTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp75 := range v.ThingReactionTics {
+	for tmp77 := range v.ThingReactionTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingReactionTics[tmp75]))
+		w.signed(int64(v.ThingReactionTics[tmp77]))
 	}
 	if !w.collection(len(v.ThingWakeTics), v.ThingWakeTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp76 := range v.ThingWakeTics {
+	for tmp78 := range v.ThingWakeTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingWakeTics[tmp76]))
+		w.signed(int64(v.ThingWakeTics[tmp78]))
 	}
 	if !w.collection(len(v.ThingLastLook), v.ThingLastLook == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp77 := range v.ThingLastLook {
+	for tmp79 := range v.ThingLastLook {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingLastLook[tmp77]))
+		w.signed(int64(v.ThingLastLook[tmp79]))
 	}
 	if !w.collection(len(v.ThingDead), v.ThingDead == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp78 := range v.ThingDead {
+	for tmp80 := range v.ThingDead {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingDead[tmp78]))
+		w.boolean(bool(v.ThingDead[tmp80]))
 	}
 	if !w.collection(len(v.ThingAmbush), v.ThingAmbush == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp79 := range v.ThingAmbush {
+	for tmp81 := range v.ThingAmbush {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingAmbush[tmp79]))
+		w.boolean(bool(v.ThingAmbush[tmp81]))
 	}
 	if !w.collection(len(v.ThingInFloat), v.ThingInFloat == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp80 := range v.ThingInFloat {
+	for tmp82 := range v.ThingInFloat {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingInFloat[tmp80]))
+		w.boolean(bool(v.ThingInFloat[tmp82]))
 	}
 	if !w.collection(len(v.ThingGibbed), v.ThingGibbed == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp81 := range v.ThingGibbed {
+	for tmp83 := range v.ThingGibbed {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingGibbed[tmp81]))
+		w.boolean(bool(v.ThingGibbed[tmp83]))
 	}
 	if !w.collection(len(v.ThingGibTick), v.ThingGibTick == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp82 := range v.ThingGibTick {
+	for tmp84 := range v.ThingGibTick {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingGibTick[tmp82]))
+		w.signed(int64(v.ThingGibTick[tmp84]))
 	}
 	if !w.collection(len(v.ThingXDeath), v.ThingXDeath == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp83 := range v.ThingXDeath {
+	for tmp85 := range v.ThingXDeath {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.ThingXDeath[tmp83]))
+		w.boolean(bool(v.ThingXDeath[tmp85]))
 	}
 	if !w.collection(len(v.ThingDeathTics), v.ThingDeathTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp84 := range v.ThingDeathTics {
+	for tmp86 := range v.ThingDeathTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingDeathTics[tmp84]))
+		w.signed(int64(v.ThingDeathTics[tmp86]))
 	}
 	if !w.collection(len(v.ThingAttackTics), v.ThingAttackTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp85 := range v.ThingAttackTics {
+	for tmp87 := range v.ThingAttackTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingAttackTics[tmp85]))
+		w.signed(int64(v.ThingAttackTics[tmp87]))
 	}
 	if !w.collection(len(v.ThingAttackPhase), v.ThingAttackPhase == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp86 := range v.ThingAttackPhase {
+	for tmp88 := range v.ThingAttackPhase {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingAttackPhase[tmp86]))
+		w.signed(int64(v.ThingAttackPhase[tmp88]))
 	}
 	if !w.collection(len(v.ThingAttackFireTics), v.ThingAttackFireTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp87 := range v.ThingAttackFireTics {
+	for tmp89 := range v.ThingAttackFireTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingAttackFireTics[tmp87]))
+		w.signed(int64(v.ThingAttackFireTics[tmp89]))
 	}
 	if !w.collection(len(v.ThingPainTics), v.ThingPainTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp88 := range v.ThingPainTics {
+	for tmp90 := range v.ThingPainTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingPainTics[tmp88]))
+		w.signed(int64(v.ThingPainTics[tmp90]))
 	}
 	if !w.collection(len(v.ThingThinkWait), v.ThingThinkWait == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp89 := range v.ThingThinkWait {
+	for tmp91 := range v.ThingThinkWait {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingThinkWait[tmp89]))
+		w.signed(int64(v.ThingThinkWait[tmp91]))
 	}
 	if !w.collection(len(v.ThingDoomState), v.ThingDoomState == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp90 := range v.ThingDoomState {
+	for tmp92 := range v.ThingDoomState {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingDoomState[tmp90]))
+		w.signed(int64(v.ThingDoomState[tmp92]))
 	}
 	if !w.collection(len(v.ThingState), v.ThingState == nil, authorityBinarySizeOf[uint8]()) {
 		return
@@ -1166,67 +1184,67 @@ func (w *authorityBinaryWriter) writedoomruntime_gameSaveState(v *gameSaveState)
 	if !w.collection(len(v.ThingStateTics), v.ThingStateTics == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp91 := range v.ThingStateTics {
+	for tmp93 := range v.ThingStateTics {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingStateTics[tmp91]))
+		w.signed(int64(v.ThingStateTics[tmp93]))
 	}
 	if !w.collection(len(v.ThingStatePhase), v.ThingStatePhase == nil, authorityBinarySizeOf[int]()) {
 		return
 	}
-	for tmp92 := range v.ThingStatePhase {
+	for tmp94 := range v.ThingStatePhase {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.ThingStatePhase[tmp92]))
+		w.signed(int64(v.ThingStatePhase[tmp94]))
 	}
 	if !w.collection(len(v.BossSpawnCubes), v.BossSpawnCubes == nil, authorityBinarySizeOf[bossSpawnCubeSaveState]()) {
 		return
 	}
-	for tmp93 := range v.BossSpawnCubes {
+	for tmp95 := range v.BossSpawnCubes {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_bossSpawnCubeSaveState(&v.BossSpawnCubes[tmp93])
+		w.writedoomruntime_bossSpawnCubeSaveState(&v.BossSpawnCubes[tmp95])
 	}
 	if !w.collection(len(v.BossSpawnFires), v.BossSpawnFires == nil, authorityBinarySizeOf[bossSpawnFireSaveState]()) {
 		return
 	}
-	for tmp94 := range v.BossSpawnFires {
+	for tmp96 := range v.BossSpawnFires {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_bossSpawnFireSaveState(&v.BossSpawnFires[tmp94])
+		w.writedoomruntime_bossSpawnFireSaveState(&v.BossSpawnFires[tmp96])
 	}
 	w.signed(int64(v.BossBrainTargetOrder))
 	w.boolean(bool(v.BossBrainEasyToggle))
 	if !w.collection(len(v.Projectiles), v.Projectiles == nil, authorityBinarySizeOf[projectileSaveState]()) {
 		return
 	}
-	for tmp95 := range v.Projectiles {
+	for tmp97 := range v.Projectiles {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_projectileSaveState(&v.Projectiles[tmp95])
+		w.writedoomruntime_projectileSaveState(&v.Projectiles[tmp97])
 	}
 	if !w.collection(len(v.ProjectileImpacts), v.ProjectileImpacts == nil, authorityBinarySizeOf[projectileImpactSaveState]()) {
 		return
 	}
-	for tmp96 := range v.ProjectileImpacts {
+	for tmp98 := range v.ProjectileImpacts {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_projectileImpactSaveState(&v.ProjectileImpacts[tmp96])
+		w.writedoomruntime_projectileImpactSaveState(&v.ProjectileImpacts[tmp98])
 	}
 	if !w.collection(len(v.HitscanPuffs), v.HitscanPuffs == nil, authorityBinarySizeOf[hitscanPuffSaveState]()) {
 		return
 	}
-	for tmp97 := range v.HitscanPuffs {
+	for tmp99 := range v.HitscanPuffs {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_hitscanPuffSaveState(&v.HitscanPuffs[tmp97])
+		w.writedoomruntime_hitscanPuffSaveState(&v.HitscanPuffs[tmp99])
 	}
 	w.signed(int64(v.CheatLevel))
 	w.boolean(bool(v.Invulnerable))
@@ -1255,22 +1273,22 @@ func (w *authorityBinaryWriter) writedoomruntime_gameSaveState(v *gameSaveState)
 	if !w.collection(len(v.SecretFound), v.SecretFound == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp98 := range v.SecretFound {
+	for tmp100 := range v.SecretFound {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.SecretFound[tmp98]))
+		w.boolean(bool(v.SecretFound[tmp100]))
 	}
 	w.signed(int64(v.SecretsFound))
 	w.signed(int64(v.SecretsTotal))
 	if !w.collection(len(v.SectorSoundTarget), v.SectorSoundTarget == nil, authorityBinarySizeOf[bool]()) {
 		return
 	}
-	for tmp99 := range v.SectorSoundTarget {
+	for tmp101 := range v.SectorSoundTarget {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.SectorSoundTarget[tmp99]))
+		w.boolean(bool(v.SectorSoundTarget[tmp101]))
 	}
 	w.boolean(bool(v.IsDead))
 	w.signed(int64(v.PlayerMobjHealth))
@@ -1279,155 +1297,181 @@ func (w *authorityBinaryWriter) writedoomruntime_gameSaveState(v *gameSaveState)
 	if !w.collection(len(v.SectorLightFx), v.SectorLightFx == nil, authorityBinarySizeOf[sectorLightEffectSaveState]()) {
 		return
 	}
-	for tmp100 := range v.SectorLightFx {
+	for tmp102 := range v.SectorLightFx {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_sectorLightEffectSaveState(&v.SectorLightFx[tmp100])
+		w.writedoomruntime_sectorLightEffectSaveState(&v.SectorLightFx[tmp102])
 	}
 	if !w.collection(len(v.Things), v.Things == nil, authorityBinarySizeOf[mapdata.Thing]()) {
 		return
 	}
-	for tmp101 := range v.Things {
+	for tmp103 := range v.Things {
 		if w.err != nil {
 			return
 		}
-		w.writemapdata_Thing(&v.Things[tmp101])
+		w.writemapdata_Thing(&v.Things[tmp103])
 	}
 	if !w.collection(len(v.Sidedefs), v.Sidedefs == nil, authorityBinarySizeOf[mapdata.Sidedef]()) {
 		return
 	}
-	for tmp102 := range v.Sidedefs {
+	for tmp104 := range v.Sidedefs {
 		if w.err != nil {
 			return
 		}
-		w.writemapdata_Sidedef(&v.Sidedefs[tmp102])
+		w.writemapdata_Sidedef(&v.Sidedefs[tmp104])
 	}
 	if !w.collection(len(v.Sectors), v.Sectors == nil, authorityBinarySizeOf[mapdata.Sector]()) {
 		return
 	}
-	for tmp103 := range v.Sectors {
+	for tmp105 := range v.Sectors {
 		if w.err != nil {
 			return
 		}
-		w.writemapdata_Sector(&v.Sectors[tmp103])
+		w.writemapdata_Sector(&v.Sectors[tmp105])
 	}
 	if !w.collection(len(v.SectorFloor), v.SectorFloor == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp104 := range v.SectorFloor {
+	for tmp106 := range v.SectorFloor {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.SectorFloor[tmp104]))
+		w.signed(int64(v.SectorFloor[tmp106]))
 	}
 	if !w.collection(len(v.SectorCeil), v.SectorCeil == nil, authorityBinarySizeOf[int64]()) {
 		return
 	}
-	for tmp105 := range v.SectorCeil {
+	for tmp107 := range v.SectorCeil {
 		if w.err != nil {
 			return
 		}
-		w.signed(int64(v.SectorCeil[tmp105]))
+		w.signed(int64(v.SectorCeil[tmp107]))
 	}
 	if !w.collection(len(v.LineSpecial), v.LineSpecial == nil, authorityBinarySizeOf[uint16]()) {
 		return
 	}
-	for tmp106 := range v.LineSpecial {
+	for tmp108 := range v.LineSpecial {
 		if w.err != nil {
 			return
 		}
-		w.unsigned(uint64(v.LineSpecial[tmp106]))
+		w.unsigned(uint64(v.LineSpecial[tmp108]))
 	}
 	if !w.collection(len(v.Doors), v.Doors == nil, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[doorThinkerSaveState]()+16)) {
 		return
 	}
-	tmp107 := make([]int, 0, len(v.Doors))
-	for tmp108 := range v.Doors {
-		tmp107 = append(tmp107, tmp108)
+	tmp109 := make([]int, 0, len(v.Doors))
+	for tmp110 := range v.Doors {
+		tmp109 = append(tmp109, tmp110)
 	}
-	slices.Sort(tmp107)
-	for _, tmp108 := range tmp107 {
+	slices.Sort(tmp109)
+	for _, tmp110 := range tmp109 {
 		if w.err != nil {
 			return
 		}
-		tmp109 := v.Doors[tmp108]
-		w.signed(int64(tmp108))
-		w.writedoomruntime_doorThinkerSaveState(&tmp109)
+		tmp111 := v.Doors[tmp110]
+		w.signed(int64(tmp110))
+		w.writedoomruntime_doorThinkerSaveState(&tmp111)
 	}
 	if !w.collection(len(v.Floors), v.Floors == nil, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[floorThinkerSaveState]()+16)) {
 		return
 	}
-	tmp110 := make([]int, 0, len(v.Floors))
-	for tmp111 := range v.Floors {
-		tmp110 = append(tmp110, tmp111)
+	tmp112 := make([]int, 0, len(v.Floors))
+	for tmp113 := range v.Floors {
+		tmp112 = append(tmp112, tmp113)
 	}
-	slices.Sort(tmp110)
-	for _, tmp111 := range tmp110 {
+	slices.Sort(tmp112)
+	for _, tmp113 := range tmp112 {
 		if w.err != nil {
 			return
 		}
-		tmp112 := v.Floors[tmp111]
-		w.signed(int64(tmp111))
-		w.writedoomruntime_floorThinkerSaveState(&tmp112)
+		tmp114 := v.Floors[tmp113]
+		w.signed(int64(tmp113))
+		w.writedoomruntime_floorThinkerSaveState(&tmp114)
 	}
 	if !w.collection(len(v.Plats), v.Plats == nil, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[platThinkerSaveState]()+16)) {
 		return
 	}
-	tmp113 := make([]int, 0, len(v.Plats))
-	for tmp114 := range v.Plats {
-		tmp113 = append(tmp113, tmp114)
+	tmp115 := make([]int, 0, len(v.Plats))
+	for tmp116 := range v.Plats {
+		tmp115 = append(tmp115, tmp116)
 	}
-	slices.Sort(tmp113)
-	for _, tmp114 := range tmp113 {
+	slices.Sort(tmp115)
+	for _, tmp116 := range tmp115 {
 		if w.err != nil {
 			return
 		}
-		tmp115 := v.Plats[tmp114]
-		w.signed(int64(tmp114))
-		w.writedoomruntime_platThinkerSaveState(&tmp115)
+		tmp117 := v.Plats[tmp116]
+		w.signed(int64(tmp116))
+		w.writedoomruntime_platThinkerSaveState(&tmp117)
 	}
 	if !w.collection(len(v.Ceilings), v.Ceilings == nil, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[ceilingThinkerSaveState]()+16)) {
 		return
 	}
-	tmp116 := make([]int, 0, len(v.Ceilings))
-	for tmp117 := range v.Ceilings {
-		tmp116 = append(tmp116, tmp117)
+	tmp118 := make([]int, 0, len(v.Ceilings))
+	for tmp119 := range v.Ceilings {
+		tmp118 = append(tmp118, tmp119)
 	}
-	slices.Sort(tmp116)
-	for _, tmp117 := range tmp116 {
+	slices.Sort(tmp118)
+	for _, tmp119 := range tmp118 {
 		if w.err != nil {
 			return
 		}
-		tmp118 := v.Ceilings[tmp117]
-		w.signed(int64(tmp117))
-		w.writedoomruntime_ceilingThinkerSaveState(&tmp118)
+		tmp120 := v.Ceilings[tmp119]
+		w.signed(int64(tmp119))
+		w.writedoomruntime_ceilingThinkerSaveState(&tmp120)
 	}
 	if !w.collection(len(v.DelayedSwitchReverts), v.DelayedSwitchReverts == nil, authorityBinarySizeOf[delayedSwitchTextureSaveState]()) {
 		return
 	}
-	for tmp119 := range v.DelayedSwitchReverts {
+	for tmp121 := range v.DelayedSwitchReverts {
 		if w.err != nil {
 			return
 		}
-		w.writedoomruntime_delayedSwitchTextureSaveState(&v.DelayedSwitchReverts[tmp119])
+		w.writedoomruntime_delayedSwitchTextureSaveState(&v.DelayedSwitchReverts[tmp121])
 	}
 }
 func (r *authorityBinaryReader) readdoomruntime_gameSaveState(v *gameSaveState) {
 	if r.err != nil {
 		return
 	}
-	tmp120, tmp121 := r.collection(12, authorityBinarySizeOf[boomScrollerState]())
+	tmp122, tmp123 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp121 {
-		v.BoomScrollers = make([]boomScrollerState, tmp120)
-		for tmp122 := range v.BoomScrollers {
+	if tmp123 {
+		v.ThingFriction = make([]int64, tmp122)
+		for tmp124 := range v.ThingFriction {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_boomScrollerState(&v.BoomScrollers[tmp122])
+			v.ThingFriction[tmp124] = int64(r.signed(64))
+		}
+	}
+	tmp125, tmp126 := r.collection(1, authorityBinarySizeOf[int64]())
+	if r.err != nil {
+		return
+	}
+	if tmp126 {
+		v.ThingMoveFactor = make([]int64, tmp125)
+		for tmp127 := range v.ThingMoveFactor {
+			if r.err != nil {
+				return
+			}
+			v.ThingMoveFactor[tmp127] = int64(r.signed(64))
+		}
+	}
+	tmp128, tmp129 := r.collection(12, authorityBinarySizeOf[boomScrollerState]())
+	if r.err != nil {
+		return
+	}
+	if tmp129 {
+		v.BoomScrollers = make([]boomScrollerState, tmp128)
+		for tmp130 := range v.BoomScrollers {
+			if r.err != nil {
+				return
+			}
+			r.readdoomruntime_boomScrollerState(&v.BoomScrollers[tmp130])
 		}
 	}
 	r.readdoomruntime_sessionSaveState(&v.Session)
@@ -1449,659 +1493,659 @@ func (r *authorityBinaryReader) readdoomruntime_gameSaveState(v *gameSaveState) 
 	v.PrevPY = int64(r.signed(64))
 	v.PrevAngle = uint32(r.unsigned(32))
 	v.PlayerViewZ = int64(r.signed(64))
-	tmp123, tmp124 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp131, tmp132 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp124 {
-		v.ThingCollected = make([]bool, tmp123)
-		for tmp125 := range v.ThingCollected {
+	if tmp132 {
+		v.ThingCollected = make([]bool, tmp131)
+		for tmp133 := range v.ThingCollected {
 			if r.err != nil {
 				return
 			}
-			v.ThingCollected[tmp125] = bool(r.boolean())
+			v.ThingCollected[tmp133] = bool(r.boolean())
 		}
 	}
-	tmp126, tmp127 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp134, tmp135 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp127 {
-		v.ThingDropped = make([]bool, tmp126)
-		for tmp128 := range v.ThingDropped {
+	if tmp135 {
+		v.ThingDropped = make([]bool, tmp134)
+		for tmp136 := range v.ThingDropped {
 			if r.err != nil {
 				return
 			}
-			v.ThingDropped[tmp128] = bool(r.boolean())
+			v.ThingDropped[tmp136] = bool(r.boolean())
 		}
 	}
-	tmp129, tmp130 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp137, tmp138 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp130 {
-		v.ThingThinkerOrder = make([]int64, tmp129)
-		for tmp131 := range v.ThingThinkerOrder {
+	if tmp138 {
+		v.ThingThinkerOrder = make([]int64, tmp137)
+		for tmp139 := range v.ThingThinkerOrder {
 			if r.err != nil {
 				return
 			}
-			v.ThingThinkerOrder[tmp131] = int64(r.signed(64))
+			v.ThingThinkerOrder[tmp139] = int64(r.signed(64))
 		}
 	}
-	tmp132, tmp133 := r.collection(5, authorityBinarySizeOf[mapdata.Thing]())
+	tmp140, tmp141 := r.collection(5, authorityBinarySizeOf[mapdata.Thing]())
 	if r.err != nil {
 		return
 	}
-	if tmp133 {
-		v.ThingSpawnPoint = make([]mapdata.Thing, tmp132)
-		for tmp134 := range v.ThingSpawnPoint {
+	if tmp141 {
+		v.ThingSpawnPoint = make([]mapdata.Thing, tmp140)
+		for tmp142 := range v.ThingSpawnPoint {
 			if r.err != nil {
 				return
 			}
-			r.readmapdata_Thing(&v.ThingSpawnPoint[tmp134])
+			r.readmapdata_Thing(&v.ThingSpawnPoint[tmp142])
 		}
 	}
-	tmp135, tmp136 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp143, tmp144 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp136 {
-		v.ThingX = make([]int64, tmp135)
-		for tmp137 := range v.ThingX {
+	if tmp144 {
+		v.ThingX = make([]int64, tmp143)
+		for tmp145 := range v.ThingX {
 			if r.err != nil {
 				return
 			}
-			v.ThingX[tmp137] = int64(r.signed(64))
+			v.ThingX[tmp145] = int64(r.signed(64))
 		}
 	}
-	tmp138, tmp139 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp146, tmp147 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp139 {
-		v.ThingY = make([]int64, tmp138)
-		for tmp140 := range v.ThingY {
+	if tmp147 {
+		v.ThingY = make([]int64, tmp146)
+		for tmp148 := range v.ThingY {
 			if r.err != nil {
 				return
 			}
-			v.ThingY[tmp140] = int64(r.signed(64))
+			v.ThingY[tmp148] = int64(r.signed(64))
 		}
 	}
-	tmp141, tmp142 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp149, tmp150 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp142 {
-		v.ThingMomX = make([]int64, tmp141)
-		for tmp143 := range v.ThingMomX {
+	if tmp150 {
+		v.ThingMomX = make([]int64, tmp149)
+		for tmp151 := range v.ThingMomX {
 			if r.err != nil {
 				return
 			}
-			v.ThingMomX[tmp143] = int64(r.signed(64))
+			v.ThingMomX[tmp151] = int64(r.signed(64))
 		}
 	}
-	tmp144, tmp145 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp152, tmp153 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp145 {
-		v.ThingMomY = make([]int64, tmp144)
-		for tmp146 := range v.ThingMomY {
+	if tmp153 {
+		v.ThingMomY = make([]int64, tmp152)
+		for tmp154 := range v.ThingMomY {
 			if r.err != nil {
 				return
 			}
-			v.ThingMomY[tmp146] = int64(r.signed(64))
+			v.ThingMomY[tmp154] = int64(r.signed(64))
 		}
 	}
-	tmp147, tmp148 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp155, tmp156 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp148 {
-		v.ThingMomZ = make([]int64, tmp147)
-		for tmp149 := range v.ThingMomZ {
+	if tmp156 {
+		v.ThingMomZ = make([]int64, tmp155)
+		for tmp157 := range v.ThingMomZ {
 			if r.err != nil {
 				return
 			}
-			v.ThingMomZ[tmp149] = int64(r.signed(64))
+			v.ThingMomZ[tmp157] = int64(r.signed(64))
 		}
 	}
-	tmp150, tmp151 := r.collection(1, authorityBinarySizeOf[uint32]())
+	tmp158, tmp159 := r.collection(1, authorityBinarySizeOf[uint32]())
 	if r.err != nil {
 		return
 	}
-	if tmp151 {
-		v.ThingAngleState = make([]uint32, tmp150)
-		for tmp152 := range v.ThingAngleState {
+	if tmp159 {
+		v.ThingAngleState = make([]uint32, tmp158)
+		for tmp160 := range v.ThingAngleState {
 			if r.err != nil {
 				return
 			}
-			v.ThingAngleState[tmp152] = uint32(r.unsigned(32))
+			v.ThingAngleState[tmp160] = uint32(r.unsigned(32))
 		}
 	}
-	tmp153, tmp154 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp161, tmp162 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp154 {
-		v.ThingZState = make([]int64, tmp153)
-		for tmp155 := range v.ThingZState {
+	if tmp162 {
+		v.ThingZState = make([]int64, tmp161)
+		for tmp163 := range v.ThingZState {
 			if r.err != nil {
 				return
 			}
-			v.ThingZState[tmp155] = int64(r.signed(64))
+			v.ThingZState[tmp163] = int64(r.signed(64))
 		}
 	}
-	tmp156, tmp157 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp164, tmp165 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp157 {
-		v.ThingFloorState = make([]int64, tmp156)
-		for tmp158 := range v.ThingFloorState {
+	if tmp165 {
+		v.ThingFloorState = make([]int64, tmp164)
+		for tmp166 := range v.ThingFloorState {
 			if r.err != nil {
 				return
 			}
-			v.ThingFloorState[tmp158] = int64(r.signed(64))
+			v.ThingFloorState[tmp166] = int64(r.signed(64))
 		}
 	}
-	tmp159, tmp160 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp167, tmp168 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp160 {
-		v.ThingCeilState = make([]int64, tmp159)
-		for tmp161 := range v.ThingCeilState {
+	if tmp168 {
+		v.ThingCeilState = make([]int64, tmp167)
+		for tmp169 := range v.ThingCeilState {
 			if r.err != nil {
 				return
 			}
-			v.ThingCeilState[tmp161] = int64(r.signed(64))
+			v.ThingCeilState[tmp169] = int64(r.signed(64))
 		}
 	}
-	tmp162, tmp163 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp170, tmp171 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp163 {
-		v.ThingSupportValid = make([]bool, tmp162)
-		for tmp164 := range v.ThingSupportValid {
+	if tmp171 {
+		v.ThingSupportValid = make([]bool, tmp170)
+		for tmp172 := range v.ThingSupportValid {
 			if r.err != nil {
 				return
 			}
-			v.ThingSupportValid[tmp164] = bool(r.boolean())
+			v.ThingSupportValid[tmp172] = bool(r.boolean())
 		}
 	}
-	tmp165, tmp166 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp173, tmp174 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp166 {
-		v.ThingHP = make([]int, tmp165)
-		for tmp167 := range v.ThingHP {
+	if tmp174 {
+		v.ThingHP = make([]int, tmp173)
+		for tmp175 := range v.ThingHP {
 			if r.err != nil {
 				return
 			}
-			v.ThingHP[tmp167] = int(r.signed(strconv.IntSize))
+			v.ThingHP[tmp175] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp168, tmp169 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp176, tmp177 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp169 {
-		v.ThingAggro = make([]bool, tmp168)
-		for tmp170 := range v.ThingAggro {
+	if tmp177 {
+		v.ThingAggro = make([]bool, tmp176)
+		for tmp178 := range v.ThingAggro {
 			if r.err != nil {
 				return
 			}
-			v.ThingAggro[tmp170] = bool(r.boolean())
+			v.ThingAggro[tmp178] = bool(r.boolean())
 		}
 	}
-	tmp171, tmp172 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp179, tmp180 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp172 {
-		v.ThingTargetPlayer = make([]bool, tmp171)
-		for tmp173 := range v.ThingTargetPlayer {
+	if tmp180 {
+		v.ThingTargetPlayer = make([]bool, tmp179)
+		for tmp181 := range v.ThingTargetPlayer {
 			if r.err != nil {
 				return
 			}
-			v.ThingTargetPlayer[tmp173] = bool(r.boolean())
+			v.ThingTargetPlayer[tmp181] = bool(r.boolean())
 		}
 	}
-	tmp174, tmp175 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp182, tmp183 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp175 {
-		v.ThingTargetIdx = make([]int, tmp174)
-		for tmp176 := range v.ThingTargetIdx {
+	if tmp183 {
+		v.ThingTargetIdx = make([]int, tmp182)
+		for tmp184 := range v.ThingTargetIdx {
 			if r.err != nil {
 				return
 			}
-			v.ThingTargetIdx[tmp176] = int(r.signed(strconv.IntSize))
+			v.ThingTargetIdx[tmp184] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp177, tmp178 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp185, tmp186 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp178 {
-		v.ThingTracerFireOrder = make([]int64, tmp177)
-		for tmp179 := range v.ThingTracerFireOrder {
+	if tmp186 {
+		v.ThingTracerFireOrder = make([]int64, tmp185)
+		for tmp187 := range v.ThingTracerFireOrder {
 			if r.err != nil {
 				return
 			}
-			v.ThingTracerFireOrder[tmp179] = int64(r.signed(64))
+			v.ThingTracerFireOrder[tmp187] = int64(r.signed(64))
 		}
 	}
-	tmp180, tmp181 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp188, tmp189 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp181 {
-		v.ThingThreshold = make([]int, tmp180)
-		for tmp182 := range v.ThingThreshold {
+	if tmp189 {
+		v.ThingThreshold = make([]int, tmp188)
+		for tmp190 := range v.ThingThreshold {
 			if r.err != nil {
 				return
 			}
-			v.ThingThreshold[tmp182] = int(r.signed(strconv.IntSize))
+			v.ThingThreshold[tmp190] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp183, tmp184 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp191, tmp192 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp184 {
-		v.ThingCooldown = make([]int, tmp183)
-		for tmp185 := range v.ThingCooldown {
+	if tmp192 {
+		v.ThingCooldown = make([]int, tmp191)
+		for tmp193 := range v.ThingCooldown {
 			if r.err != nil {
 				return
 			}
-			v.ThingCooldown[tmp185] = int(r.signed(strconv.IntSize))
+			v.ThingCooldown[tmp193] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp186, tmp187 := r.collection(1, authorityBinarySizeOf[uint8]())
+	tmp194, tmp195 := r.collection(1, authorityBinarySizeOf[uint8]())
 	if r.err != nil {
 		return
 	}
-	if tmp187 {
-		v.ThingMoveDir = make([]uint8, tmp186)
-		copy(v.ThingMoveDir, r.raw(tmp186))
+	if tmp195 {
+		v.ThingMoveDir = make([]uint8, tmp194)
+		copy(v.ThingMoveDir, r.raw(tmp194))
 	}
-	tmp189, tmp190 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp197, tmp198 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp190 {
-		v.ThingMoveCount = make([]int, tmp189)
-		for tmp191 := range v.ThingMoveCount {
+	if tmp198 {
+		v.ThingMoveCount = make([]int, tmp197)
+		for tmp199 := range v.ThingMoveCount {
 			if r.err != nil {
 				return
 			}
-			v.ThingMoveCount[tmp191] = int(r.signed(strconv.IntSize))
+			v.ThingMoveCount[tmp199] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp192, tmp193 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp200, tmp201 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp193 {
-		v.ThingJustAtk = make([]bool, tmp192)
-		for tmp194 := range v.ThingJustAtk {
+	if tmp201 {
+		v.ThingJustAtk = make([]bool, tmp200)
+		for tmp202 := range v.ThingJustAtk {
 			if r.err != nil {
 				return
 			}
-			v.ThingJustAtk[tmp194] = bool(r.boolean())
+			v.ThingJustAtk[tmp202] = bool(r.boolean())
 		}
 	}
-	tmp195, tmp196 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp203, tmp204 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp196 {
-		v.ThingJustHit = make([]bool, tmp195)
-		for tmp197 := range v.ThingJustHit {
+	if tmp204 {
+		v.ThingJustHit = make([]bool, tmp203)
+		for tmp205 := range v.ThingJustHit {
 			if r.err != nil {
 				return
 			}
-			v.ThingJustHit[tmp197] = bool(r.boolean())
+			v.ThingJustHit[tmp205] = bool(r.boolean())
 		}
 	}
-	tmp198, tmp199 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp206, tmp207 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp199 {
-		v.ThingSkullFly = make([]bool, tmp198)
-		for tmp200 := range v.ThingSkullFly {
+	if tmp207 {
+		v.ThingSkullFly = make([]bool, tmp206)
+		for tmp208 := range v.ThingSkullFly {
 			if r.err != nil {
 				return
 			}
-			v.ThingSkullFly[tmp200] = bool(r.boolean())
+			v.ThingSkullFly[tmp208] = bool(r.boolean())
 		}
 	}
-	tmp201, tmp202 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp209, tmp210 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp202 {
-		v.ThingResumeChaseNow = make([]bool, tmp201)
-		for tmp203 := range v.ThingResumeChaseNow {
+	if tmp210 {
+		v.ThingResumeChaseNow = make([]bool, tmp209)
+		for tmp211 := range v.ThingResumeChaseNow {
 			if r.err != nil {
 				return
 			}
-			v.ThingResumeChaseNow[tmp203] = bool(r.boolean())
+			v.ThingResumeChaseNow[tmp211] = bool(r.boolean())
 		}
 	}
-	tmp204, tmp205 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp212, tmp213 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp205 {
-		v.ThingReactionTics = make([]int, tmp204)
-		for tmp206 := range v.ThingReactionTics {
+	if tmp213 {
+		v.ThingReactionTics = make([]int, tmp212)
+		for tmp214 := range v.ThingReactionTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingReactionTics[tmp206] = int(r.signed(strconv.IntSize))
+			v.ThingReactionTics[tmp214] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp207, tmp208 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp215, tmp216 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp208 {
-		v.ThingWakeTics = make([]int, tmp207)
-		for tmp209 := range v.ThingWakeTics {
+	if tmp216 {
+		v.ThingWakeTics = make([]int, tmp215)
+		for tmp217 := range v.ThingWakeTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingWakeTics[tmp209] = int(r.signed(strconv.IntSize))
+			v.ThingWakeTics[tmp217] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp210, tmp211 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp218, tmp219 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp211 {
-		v.ThingLastLook = make([]int, tmp210)
-		for tmp212 := range v.ThingLastLook {
+	if tmp219 {
+		v.ThingLastLook = make([]int, tmp218)
+		for tmp220 := range v.ThingLastLook {
 			if r.err != nil {
 				return
 			}
-			v.ThingLastLook[tmp212] = int(r.signed(strconv.IntSize))
+			v.ThingLastLook[tmp220] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp213, tmp214 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp221, tmp222 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp214 {
-		v.ThingDead = make([]bool, tmp213)
-		for tmp215 := range v.ThingDead {
+	if tmp222 {
+		v.ThingDead = make([]bool, tmp221)
+		for tmp223 := range v.ThingDead {
 			if r.err != nil {
 				return
 			}
-			v.ThingDead[tmp215] = bool(r.boolean())
+			v.ThingDead[tmp223] = bool(r.boolean())
 		}
 	}
-	tmp216, tmp217 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp224, tmp225 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp217 {
-		v.ThingAmbush = make([]bool, tmp216)
-		for tmp218 := range v.ThingAmbush {
+	if tmp225 {
+		v.ThingAmbush = make([]bool, tmp224)
+		for tmp226 := range v.ThingAmbush {
 			if r.err != nil {
 				return
 			}
-			v.ThingAmbush[tmp218] = bool(r.boolean())
+			v.ThingAmbush[tmp226] = bool(r.boolean())
 		}
 	}
-	tmp219, tmp220 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp227, tmp228 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp220 {
-		v.ThingInFloat = make([]bool, tmp219)
-		for tmp221 := range v.ThingInFloat {
+	if tmp228 {
+		v.ThingInFloat = make([]bool, tmp227)
+		for tmp229 := range v.ThingInFloat {
 			if r.err != nil {
 				return
 			}
-			v.ThingInFloat[tmp221] = bool(r.boolean())
+			v.ThingInFloat[tmp229] = bool(r.boolean())
 		}
 	}
-	tmp222, tmp223 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp230, tmp231 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp223 {
-		v.ThingGibbed = make([]bool, tmp222)
-		for tmp224 := range v.ThingGibbed {
+	if tmp231 {
+		v.ThingGibbed = make([]bool, tmp230)
+		for tmp232 := range v.ThingGibbed {
 			if r.err != nil {
 				return
 			}
-			v.ThingGibbed[tmp224] = bool(r.boolean())
+			v.ThingGibbed[tmp232] = bool(r.boolean())
 		}
 	}
-	tmp225, tmp226 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp233, tmp234 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp226 {
-		v.ThingGibTick = make([]int, tmp225)
-		for tmp227 := range v.ThingGibTick {
+	if tmp234 {
+		v.ThingGibTick = make([]int, tmp233)
+		for tmp235 := range v.ThingGibTick {
 			if r.err != nil {
 				return
 			}
-			v.ThingGibTick[tmp227] = int(r.signed(strconv.IntSize))
+			v.ThingGibTick[tmp235] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp228, tmp229 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp236, tmp237 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp229 {
-		v.ThingXDeath = make([]bool, tmp228)
-		for tmp230 := range v.ThingXDeath {
+	if tmp237 {
+		v.ThingXDeath = make([]bool, tmp236)
+		for tmp238 := range v.ThingXDeath {
 			if r.err != nil {
 				return
 			}
-			v.ThingXDeath[tmp230] = bool(r.boolean())
+			v.ThingXDeath[tmp238] = bool(r.boolean())
 		}
 	}
-	tmp231, tmp232 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp239, tmp240 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp232 {
-		v.ThingDeathTics = make([]int, tmp231)
-		for tmp233 := range v.ThingDeathTics {
+	if tmp240 {
+		v.ThingDeathTics = make([]int, tmp239)
+		for tmp241 := range v.ThingDeathTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingDeathTics[tmp233] = int(r.signed(strconv.IntSize))
+			v.ThingDeathTics[tmp241] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp234, tmp235 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp242, tmp243 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp235 {
-		v.ThingAttackTics = make([]int, tmp234)
-		for tmp236 := range v.ThingAttackTics {
+	if tmp243 {
+		v.ThingAttackTics = make([]int, tmp242)
+		for tmp244 := range v.ThingAttackTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingAttackTics[tmp236] = int(r.signed(strconv.IntSize))
+			v.ThingAttackTics[tmp244] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp237, tmp238 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp245, tmp246 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp238 {
-		v.ThingAttackPhase = make([]int, tmp237)
-		for tmp239 := range v.ThingAttackPhase {
+	if tmp246 {
+		v.ThingAttackPhase = make([]int, tmp245)
+		for tmp247 := range v.ThingAttackPhase {
 			if r.err != nil {
 				return
 			}
-			v.ThingAttackPhase[tmp239] = int(r.signed(strconv.IntSize))
+			v.ThingAttackPhase[tmp247] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp240, tmp241 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp248, tmp249 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp241 {
-		v.ThingAttackFireTics = make([]int, tmp240)
-		for tmp242 := range v.ThingAttackFireTics {
+	if tmp249 {
+		v.ThingAttackFireTics = make([]int, tmp248)
+		for tmp250 := range v.ThingAttackFireTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingAttackFireTics[tmp242] = int(r.signed(strconv.IntSize))
+			v.ThingAttackFireTics[tmp250] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp243, tmp244 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp251, tmp252 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp244 {
-		v.ThingPainTics = make([]int, tmp243)
-		for tmp245 := range v.ThingPainTics {
+	if tmp252 {
+		v.ThingPainTics = make([]int, tmp251)
+		for tmp253 := range v.ThingPainTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingPainTics[tmp245] = int(r.signed(strconv.IntSize))
+			v.ThingPainTics[tmp253] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp246, tmp247 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp254, tmp255 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp247 {
-		v.ThingThinkWait = make([]int, tmp246)
-		for tmp248 := range v.ThingThinkWait {
+	if tmp255 {
+		v.ThingThinkWait = make([]int, tmp254)
+		for tmp256 := range v.ThingThinkWait {
 			if r.err != nil {
 				return
 			}
-			v.ThingThinkWait[tmp248] = int(r.signed(strconv.IntSize))
+			v.ThingThinkWait[tmp256] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp249, tmp250 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp257, tmp258 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp250 {
-		v.ThingDoomState = make([]int, tmp249)
-		for tmp251 := range v.ThingDoomState {
+	if tmp258 {
+		v.ThingDoomState = make([]int, tmp257)
+		for tmp259 := range v.ThingDoomState {
 			if r.err != nil {
 				return
 			}
-			v.ThingDoomState[tmp251] = int(r.signed(strconv.IntSize))
+			v.ThingDoomState[tmp259] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp252, tmp253 := r.collection(1, authorityBinarySizeOf[uint8]())
+	tmp260, tmp261 := r.collection(1, authorityBinarySizeOf[uint8]())
 	if r.err != nil {
 		return
 	}
-	if tmp253 {
-		v.ThingState = make([]uint8, tmp252)
-		copy(v.ThingState, r.raw(tmp252))
+	if tmp261 {
+		v.ThingState = make([]uint8, tmp260)
+		copy(v.ThingState, r.raw(tmp260))
 	}
-	tmp255, tmp256 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp263, tmp264 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp256 {
-		v.ThingStateTics = make([]int, tmp255)
-		for tmp257 := range v.ThingStateTics {
+	if tmp264 {
+		v.ThingStateTics = make([]int, tmp263)
+		for tmp265 := range v.ThingStateTics {
 			if r.err != nil {
 				return
 			}
-			v.ThingStateTics[tmp257] = int(r.signed(strconv.IntSize))
+			v.ThingStateTics[tmp265] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp258, tmp259 := r.collection(1, authorityBinarySizeOf[int]())
+	tmp266, tmp267 := r.collection(1, authorityBinarySizeOf[int]())
 	if r.err != nil {
 		return
 	}
-	if tmp259 {
-		v.ThingStatePhase = make([]int, tmp258)
-		for tmp260 := range v.ThingStatePhase {
+	if tmp267 {
+		v.ThingStatePhase = make([]int, tmp266)
+		for tmp268 := range v.ThingStatePhase {
 			if r.err != nil {
 				return
 			}
-			v.ThingStatePhase[tmp260] = int(r.signed(strconv.IntSize))
+			v.ThingStatePhase[tmp268] = int(r.signed(strconv.IntSize))
 		}
 	}
-	tmp261, tmp262 := r.collection(15, authorityBinarySizeOf[bossSpawnCubeSaveState]())
+	tmp269, tmp270 := r.collection(15, authorityBinarySizeOf[bossSpawnCubeSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp262 {
-		v.BossSpawnCubes = make([]bossSpawnCubeSaveState, tmp261)
-		for tmp263 := range v.BossSpawnCubes {
+	if tmp270 {
+		v.BossSpawnCubes = make([]bossSpawnCubeSaveState, tmp269)
+		for tmp271 := range v.BossSpawnCubes {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_bossSpawnCubeSaveState(&v.BossSpawnCubes[tmp263])
+			r.readdoomruntime_bossSpawnCubeSaveState(&v.BossSpawnCubes[tmp271])
 		}
 	}
-	tmp264, tmp265 := r.collection(8, authorityBinarySizeOf[bossSpawnFireSaveState]())
+	tmp272, tmp273 := r.collection(8, authorityBinarySizeOf[bossSpawnFireSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp265 {
-		v.BossSpawnFires = make([]bossSpawnFireSaveState, tmp264)
-		for tmp266 := range v.BossSpawnFires {
+	if tmp273 {
+		v.BossSpawnFires = make([]bossSpawnFireSaveState, tmp272)
+		for tmp274 := range v.BossSpawnFires {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_bossSpawnFireSaveState(&v.BossSpawnFires[tmp266])
+			r.readdoomruntime_bossSpawnFireSaveState(&v.BossSpawnFires[tmp274])
 		}
 	}
 	v.BossBrainTargetOrder = int(r.signed(strconv.IntSize))
 	v.BossBrainEasyToggle = bool(r.boolean())
-	tmp267, tmp268 := r.collection(30, authorityBinarySizeOf[projectileSaveState]())
+	tmp275, tmp276 := r.collection(30, authorityBinarySizeOf[projectileSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp268 {
-		v.Projectiles = make([]projectileSaveState, tmp267)
-		for tmp269 := range v.Projectiles {
+	if tmp276 {
+		v.Projectiles = make([]projectileSaveState, tmp275)
+		for tmp277 := range v.Projectiles {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_projectileSaveState(&v.Projectiles[tmp269])
+			r.readdoomruntime_projectileSaveState(&v.Projectiles[tmp277])
 		}
 	}
-	tmp270, tmp271 := r.collection(20, authorityBinarySizeOf[projectileImpactSaveState]())
+	tmp278, tmp279 := r.collection(20, authorityBinarySizeOf[projectileImpactSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp271 {
-		v.ProjectileImpacts = make([]projectileImpactSaveState, tmp270)
-		for tmp272 := range v.ProjectileImpacts {
+	if tmp279 {
+		v.ProjectileImpacts = make([]projectileImpactSaveState, tmp278)
+		for tmp280 := range v.ProjectileImpacts {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_projectileImpactSaveState(&v.ProjectileImpacts[tmp272])
+			r.readdoomruntime_projectileImpactSaveState(&v.ProjectileImpacts[tmp280])
 		}
 	}
-	tmp273, tmp274 := r.collection(15, authorityBinarySizeOf[hitscanPuffSaveState]())
+	tmp281, tmp282 := r.collection(15, authorityBinarySizeOf[hitscanPuffSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp274 {
-		v.HitscanPuffs = make([]hitscanPuffSaveState, tmp273)
-		for tmp275 := range v.HitscanPuffs {
+	if tmp282 {
+		v.HitscanPuffs = make([]hitscanPuffSaveState, tmp281)
+		for tmp283 := range v.HitscanPuffs {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_hitscanPuffSaveState(&v.HitscanPuffs[tmp275])
+			r.readdoomruntime_hitscanPuffSaveState(&v.HitscanPuffs[tmp283])
 		}
 	}
 	v.CheatLevel = int(r.signed(strconv.IntSize))
@@ -2128,232 +2172,232 @@ func (r *authorityBinaryReader) readdoomruntime_gameSaveState(v *gameSaveState) 
 	v.PlayerBlockOrder = int64(r.signed(64))
 	v.NextThinkerOrder = int64(r.signed(64))
 	v.NextBlockmapOrder = int64(r.signed(64))
-	tmp276, tmp277 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp284, tmp285 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp277 {
-		v.SecretFound = make([]bool, tmp276)
-		for tmp278 := range v.SecretFound {
+	if tmp285 {
+		v.SecretFound = make([]bool, tmp284)
+		for tmp286 := range v.SecretFound {
 			if r.err != nil {
 				return
 			}
-			v.SecretFound[tmp278] = bool(r.boolean())
+			v.SecretFound[tmp286] = bool(r.boolean())
 		}
 	}
 	v.SecretsFound = int(r.signed(strconv.IntSize))
 	v.SecretsTotal = int(r.signed(strconv.IntSize))
-	tmp279, tmp280 := r.collection(1, authorityBinarySizeOf[bool]())
+	tmp287, tmp288 := r.collection(1, authorityBinarySizeOf[bool]())
 	if r.err != nil {
 		return
 	}
-	if tmp280 {
-		v.SectorSoundTarget = make([]bool, tmp279)
-		for tmp281 := range v.SectorSoundTarget {
+	if tmp288 {
+		v.SectorSoundTarget = make([]bool, tmp287)
+		for tmp289 := range v.SectorSoundTarget {
 			if r.err != nil {
 				return
 			}
-			v.SectorSoundTarget[tmp281] = bool(r.boolean())
+			v.SectorSoundTarget[tmp289] = bool(r.boolean())
 		}
 	}
 	v.IsDead = bool(r.boolean())
 	v.PlayerMobjHealth = int(r.signed(strconv.IntSize))
 	v.DamageFlashTic = int(r.signed(strconv.IntSize))
 	v.BonusFlashTic = int(r.signed(strconv.IntSize))
-	tmp282, tmp283 := r.collection(10, authorityBinarySizeOf[sectorLightEffectSaveState]())
+	tmp290, tmp291 := r.collection(10, authorityBinarySizeOf[sectorLightEffectSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp283 {
-		v.SectorLightFx = make([]sectorLightEffectSaveState, tmp282)
-		for tmp284 := range v.SectorLightFx {
+	if tmp291 {
+		v.SectorLightFx = make([]sectorLightEffectSaveState, tmp290)
+		for tmp292 := range v.SectorLightFx {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_sectorLightEffectSaveState(&v.SectorLightFx[tmp284])
+			r.readdoomruntime_sectorLightEffectSaveState(&v.SectorLightFx[tmp292])
 		}
 	}
-	tmp285, tmp286 := r.collection(5, authorityBinarySizeOf[mapdata.Thing]())
+	tmp293, tmp294 := r.collection(5, authorityBinarySizeOf[mapdata.Thing]())
 	if r.err != nil {
 		return
 	}
-	if tmp286 {
-		v.Things = make([]mapdata.Thing, tmp285)
-		for tmp287 := range v.Things {
+	if tmp294 {
+		v.Things = make([]mapdata.Thing, tmp293)
+		for tmp295 := range v.Things {
 			if r.err != nil {
 				return
 			}
-			r.readmapdata_Thing(&v.Things[tmp287])
+			r.readmapdata_Thing(&v.Things[tmp295])
 		}
 	}
-	tmp288, tmp289 := r.collection(6, authorityBinarySizeOf[mapdata.Sidedef]())
+	tmp296, tmp297 := r.collection(6, authorityBinarySizeOf[mapdata.Sidedef]())
 	if r.err != nil {
 		return
 	}
-	if tmp289 {
-		v.Sidedefs = make([]mapdata.Sidedef, tmp288)
-		for tmp290 := range v.Sidedefs {
+	if tmp297 {
+		v.Sidedefs = make([]mapdata.Sidedef, tmp296)
+		for tmp298 := range v.Sidedefs {
 			if r.err != nil {
 				return
 			}
-			r.readmapdata_Sidedef(&v.Sidedefs[tmp290])
+			r.readmapdata_Sidedef(&v.Sidedefs[tmp298])
 		}
 	}
-	tmp291, tmp292 := r.collection(7, authorityBinarySizeOf[mapdata.Sector]())
+	tmp299, tmp300 := r.collection(7, authorityBinarySizeOf[mapdata.Sector]())
 	if r.err != nil {
 		return
 	}
-	if tmp292 {
-		v.Sectors = make([]mapdata.Sector, tmp291)
-		for tmp293 := range v.Sectors {
+	if tmp300 {
+		v.Sectors = make([]mapdata.Sector, tmp299)
+		for tmp301 := range v.Sectors {
 			if r.err != nil {
 				return
 			}
-			r.readmapdata_Sector(&v.Sectors[tmp293])
+			r.readmapdata_Sector(&v.Sectors[tmp301])
 		}
 	}
-	tmp294, tmp295 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp302, tmp303 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp295 {
-		v.SectorFloor = make([]int64, tmp294)
-		for tmp296 := range v.SectorFloor {
+	if tmp303 {
+		v.SectorFloor = make([]int64, tmp302)
+		for tmp304 := range v.SectorFloor {
 			if r.err != nil {
 				return
 			}
-			v.SectorFloor[tmp296] = int64(r.signed(64))
+			v.SectorFloor[tmp304] = int64(r.signed(64))
 		}
 	}
-	tmp297, tmp298 := r.collection(1, authorityBinarySizeOf[int64]())
+	tmp305, tmp306 := r.collection(1, authorityBinarySizeOf[int64]())
 	if r.err != nil {
 		return
 	}
-	if tmp298 {
-		v.SectorCeil = make([]int64, tmp297)
-		for tmp299 := range v.SectorCeil {
+	if tmp306 {
+		v.SectorCeil = make([]int64, tmp305)
+		for tmp307 := range v.SectorCeil {
 			if r.err != nil {
 				return
 			}
-			v.SectorCeil[tmp299] = int64(r.signed(64))
+			v.SectorCeil[tmp307] = int64(r.signed(64))
 		}
 	}
-	tmp300, tmp301 := r.collection(1, authorityBinarySizeOf[uint16]())
+	tmp308, tmp309 := r.collection(1, authorityBinarySizeOf[uint16]())
 	if r.err != nil {
 		return
 	}
-	if tmp301 {
-		v.LineSpecial = make([]uint16, tmp300)
-		for tmp302 := range v.LineSpecial {
+	if tmp309 {
+		v.LineSpecial = make([]uint16, tmp308)
+		for tmp310 := range v.LineSpecial {
 			if r.err != nil {
 				return
 			}
-			v.LineSpecial[tmp302] = uint16(r.unsigned(16))
+			v.LineSpecial[tmp310] = uint16(r.unsigned(16))
 		}
 	}
-	tmp303, tmp304 := r.collection(9, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[doorThinkerSaveState]()+16))
+	tmp311, tmp312 := r.collection(9, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[doorThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}
-	if tmp304 {
-		v.Doors = make(map[int]doorThinkerSaveState, tmp303)
-		var tmp307 int
-		for tmp308 := 0; tmp308 < tmp303; tmp308++ {
+	if tmp312 {
+		v.Doors = make(map[int]doorThinkerSaveState, tmp311)
+		var tmp315 int
+		for tmp316 := 0; tmp316 < tmp311; tmp316++ {
 			if r.err != nil {
 				return
 			}
-			var tmp305 int
-			var tmp306 doorThinkerSaveState
-			tmp305 = int(r.signed(strconv.IntSize))
-			if tmp308 > 0 && tmp305 <= tmp307 {
+			var tmp313 int
+			var tmp314 doorThinkerSaveState
+			tmp313 = int(r.signed(strconv.IntSize))
+			if tmp316 > 0 && tmp313 <= tmp315 {
 				r.fail("unordered or duplicate map key")
 				return
 			}
-			tmp307 = tmp305
-			r.readdoomruntime_doorThinkerSaveState(&tmp306)
-			v.Doors[tmp305] = tmp306
+			tmp315 = tmp313
+			r.readdoomruntime_doorThinkerSaveState(&tmp314)
+			v.Doors[tmp313] = tmp314
 		}
 	}
-	tmp309, tmp310 := r.collection(9, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[floorThinkerSaveState]()+16))
+	tmp317, tmp318 := r.collection(9, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[floorThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}
-	if tmp310 {
-		v.Floors = make(map[int]floorThinkerSaveState, tmp309)
-		var tmp313 int
-		for tmp314 := 0; tmp314 < tmp309; tmp314++ {
+	if tmp318 {
+		v.Floors = make(map[int]floorThinkerSaveState, tmp317)
+		var tmp321 int
+		for tmp322 := 0; tmp322 < tmp317; tmp322++ {
 			if r.err != nil {
 				return
 			}
-			var tmp311 int
-			var tmp312 floorThinkerSaveState
-			tmp311 = int(r.signed(strconv.IntSize))
-			if tmp314 > 0 && tmp311 <= tmp313 {
+			var tmp319 int
+			var tmp320 floorThinkerSaveState
+			tmp319 = int(r.signed(strconv.IntSize))
+			if tmp322 > 0 && tmp319 <= tmp321 {
 				r.fail("unordered or duplicate map key")
 				return
 			}
-			tmp313 = tmp311
-			r.readdoomruntime_floorThinkerSaveState(&tmp312)
-			v.Floors[tmp311] = tmp312
+			tmp321 = tmp319
+			r.readdoomruntime_floorThinkerSaveState(&tmp320)
+			v.Floors[tmp319] = tmp320
 		}
 	}
-	tmp315, tmp316 := r.collection(15, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[platThinkerSaveState]()+16))
+	tmp323, tmp324 := r.collection(15, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[platThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}
-	if tmp316 {
-		v.Plats = make(map[int]platThinkerSaveState, tmp315)
-		var tmp319 int
-		for tmp320 := 0; tmp320 < tmp315; tmp320++ {
+	if tmp324 {
+		v.Plats = make(map[int]platThinkerSaveState, tmp323)
+		var tmp327 int
+		for tmp328 := 0; tmp328 < tmp323; tmp328++ {
 			if r.err != nil {
 				return
 			}
-			var tmp317 int
-			var tmp318 platThinkerSaveState
-			tmp317 = int(r.signed(strconv.IntSize))
-			if tmp320 > 0 && tmp317 <= tmp319 {
+			var tmp325 int
+			var tmp326 platThinkerSaveState
+			tmp325 = int(r.signed(strconv.IntSize))
+			if tmp328 > 0 && tmp325 <= tmp327 {
 				r.fail("unordered or duplicate map key")
 				return
 			}
-			tmp319 = tmp317
-			r.readdoomruntime_platThinkerSaveState(&tmp318)
-			v.Plats[tmp317] = tmp318
+			tmp327 = tmp325
+			r.readdoomruntime_platThinkerSaveState(&tmp326)
+			v.Plats[tmp325] = tmp326
 		}
 	}
-	tmp321, tmp322 := r.collection(13, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[ceilingThinkerSaveState]()+16))
+	tmp329, tmp330 := r.collection(13, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[ceilingThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}
-	if tmp322 {
-		v.Ceilings = make(map[int]ceilingThinkerSaveState, tmp321)
-		var tmp325 int
-		for tmp326 := 0; tmp326 < tmp321; tmp326++ {
+	if tmp330 {
+		v.Ceilings = make(map[int]ceilingThinkerSaveState, tmp329)
+		var tmp333 int
+		for tmp334 := 0; tmp334 < tmp329; tmp334++ {
 			if r.err != nil {
 				return
 			}
-			var tmp323 int
-			var tmp324 ceilingThinkerSaveState
-			tmp323 = int(r.signed(strconv.IntSize))
-			if tmp326 > 0 && tmp323 <= tmp325 {
+			var tmp331 int
+			var tmp332 ceilingThinkerSaveState
+			tmp331 = int(r.signed(strconv.IntSize))
+			if tmp334 > 0 && tmp331 <= tmp333 {
 				r.fail("unordered or duplicate map key")
 				return
 			}
-			tmp325 = tmp323
-			r.readdoomruntime_ceilingThinkerSaveState(&tmp324)
-			v.Ceilings[tmp323] = tmp324
+			tmp333 = tmp331
+			r.readdoomruntime_ceilingThinkerSaveState(&tmp332)
+			v.Ceilings[tmp331] = tmp332
 		}
 	}
-	tmp327, tmp328 := r.collection(6, authorityBinarySizeOf[delayedSwitchTextureSaveState]())
+	tmp335, tmp336 := r.collection(6, authorityBinarySizeOf[delayedSwitchTextureSaveState]())
 	if r.err != nil {
 		return
 	}
-	if tmp328 {
-		v.DelayedSwitchReverts = make([]delayedSwitchTextureSaveState, tmp327)
-		for tmp329 := range v.DelayedSwitchReverts {
+	if tmp336 {
+		v.DelayedSwitchReverts = make([]delayedSwitchTextureSaveState, tmp335)
+		for tmp337 := range v.DelayedSwitchReverts {
 			if r.err != nil {
 				return
 			}
-			r.readdoomruntime_delayedSwitchTextureSaveState(&v.DelayedSwitchReverts[tmp329])
+			r.readdoomruntime_delayedSwitchTextureSaveState(&v.DelayedSwitchReverts[tmp337])
 		}
 	}
 }
@@ -2439,11 +2483,11 @@ func (w *authorityBinaryWriter) writedoomruntime_playerInventorySaveState(v *pla
 	if w.err != nil {
 		return
 	}
-	for tmp330 := range v.SkullKeys {
+	for tmp338 := range v.SkullKeys {
 		if w.err != nil {
 			return
 		}
-		w.boolean(bool(v.SkullKeys[tmp330]))
+		w.boolean(bool(v.SkullKeys[tmp338]))
 	}
 	w.boolean(bool(v.BlueKey))
 	w.boolean(bool(v.RedKey))
@@ -2461,29 +2505,29 @@ func (w *authorityBinaryWriter) writedoomruntime_playerInventorySaveState(v *pla
 	if !w.collection(len(v.Weapons), v.Weapons == nil, 2*(authorityBinarySizeOf[int16]()+authorityBinarySizeOf[bool]()+16)) {
 		return
 	}
-	tmp331 := make([]int16, 0, len(v.Weapons))
-	for tmp332 := range v.Weapons {
-		tmp331 = append(tmp331, tmp332)
+	tmp339 := make([]int16, 0, len(v.Weapons))
+	for tmp340 := range v.Weapons {
+		tmp339 = append(tmp339, tmp340)
 	}
-	slices.Sort(tmp331)
-	for _, tmp332 := range tmp331 {
+	slices.Sort(tmp339)
+	for _, tmp340 := range tmp339 {
 		if w.err != nil {
 			return
 		}
-		tmp333 := v.Weapons[tmp332]
-		w.signed(int64(tmp332))
-		w.boolean(bool(tmp333))
+		tmp341 := v.Weapons[tmp340]
+		w.signed(int64(tmp340))
+		w.boolean(bool(tmp341))
 	}
 }
 func (r *authorityBinaryReader) readdoomruntime_playerInventorySaveState(v *playerInventorySaveState) {
 	if r.err != nil {
 		return
 	}
-	for tmp334 := range v.SkullKeys {
+	for tmp342 := range v.SkullKeys {
 		if r.err != nil {
 			return
 		}
-		v.SkullKeys[tmp334] = bool(r.boolean())
+		v.SkullKeys[tmp342] = bool(r.boolean())
 	}
 	v.BlueKey = bool(r.boolean())
 	v.RedKey = bool(r.boolean())
@@ -2498,27 +2542,27 @@ func (r *authorityBinaryReader) readdoomruntime_playerInventorySaveState(v *play
 	v.LightAmpTics = int(r.signed(strconv.IntSize))
 	v.ReadyWeapon = int(r.signed(strconv.IntSize))
 	v.PendingWeapon = int(r.signed(strconv.IntSize))
-	tmp335, tmp336 := r.collection(2, 2*(authorityBinarySizeOf[int16]()+authorityBinarySizeOf[bool]()+16))
+	tmp343, tmp344 := r.collection(2, 2*(authorityBinarySizeOf[int16]()+authorityBinarySizeOf[bool]()+16))
 	if r.err != nil {
 		return
 	}
-	if tmp336 {
-		v.Weapons = make(map[int16]bool, tmp335)
-		var tmp339 int16
-		for tmp340 := 0; tmp340 < tmp335; tmp340++ {
+	if tmp344 {
+		v.Weapons = make(map[int16]bool, tmp343)
+		var tmp347 int16
+		for tmp348 := 0; tmp348 < tmp343; tmp348++ {
 			if r.err != nil {
 				return
 			}
-			var tmp337 int16
-			var tmp338 bool
-			tmp337 = int16(r.signed(16))
-			if tmp340 > 0 && tmp337 <= tmp339 {
+			var tmp345 int16
+			var tmp346 bool
+			tmp345 = int16(r.signed(16))
+			if tmp348 > 0 && tmp345 <= tmp347 {
 				r.fail("unordered or duplicate map key")
 				return
 			}
-			tmp339 = tmp337
-			tmp338 = bool(r.boolean())
-			v.Weapons[tmp337] = tmp338
+			tmp347 = tmp345
+			tmp346 = bool(r.boolean())
+			v.Weapons[tmp345] = tmp346
 		}
 	}
 }
@@ -2526,6 +2570,8 @@ func (w *authorityBinaryWriter) writedoomruntime_playerSaveState(v *playerSaveSt
 	if w.err != nil {
 		return
 	}
+	w.signed(int64(v.Friction))
+	w.signed(int64(v.MoveFactor))
 	w.signed(int64(v.X))
 	w.signed(int64(v.Y))
 	w.signed(int64(v.Z))
@@ -2546,6 +2592,8 @@ func (r *authorityBinaryReader) readdoomruntime_playerSaveState(v *playerSaveSta
 	if r.err != nil {
 		return
 	}
+	v.Friction = int64(r.signed(64))
+	v.MoveFactor = int64(r.signed(64))
 	v.X = int64(r.signed(64))
 	v.Y = int64(r.signed(64))
 	v.Z = int64(r.signed(64))
@@ -2971,6 +3019,12 @@ func (r *authorityBinaryReader) readmapview_ViewState(v *mapview.ViewState) {
 	v.RenderCamY = float64(r.float64())
 }
 func validateAuthorityThingShapes(s *gameSaveState, n int) error {
+	if l := len(s.ThingFriction); l != 0 && l != n {
+		return fmt.Errorf("authority baseline ThingFriction shape mismatch")
+	}
+	if l := len(s.ThingMoveFactor); l != 0 && l != n {
+		return fmt.Errorf("authority baseline ThingMoveFactor shape mismatch")
+	}
 	if l := len(s.ThingCollected); l != 0 && l != n {
 		return fmt.Errorf("authority baseline ThingCollected shape mismatch")
 	}

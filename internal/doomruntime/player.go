@@ -45,6 +45,8 @@ const (
 )
 
 type player struct {
+	friction          int64
+	movefactor        int64
 	x                 int64
 	y                 int64
 	z                 int64

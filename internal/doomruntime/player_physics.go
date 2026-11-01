@@ -80,11 +80,15 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	}
 
 	onground := g.p.z <= g.p.floorz
+	movefactor := boomMoveFactor
+	if onground {
+		movefactor = g.boomPlayerMoveFactor()
+	}
 	if cmd.forward != 0 && onground {
-		g.thrust(g.p.angle, cmd.forward*2048)
+		g.thrust(g.p.angle, cmd.forward*movefactor)
 	}
 	if cmd.side != 0 && onground {
-		g.thrust(g.p.angle-0x40000000, cmd.side*2048)
+		g.thrust(g.p.angle-0x40000000, cmd.side*movefactor)
 	}
 }
 
@@ -135,6 +139,8 @@ const (
 	worldThinkerPlayer
 	worldThinkerBoomCarry
 	worldThinkerBoomScroll
+	worldThinkerBoomFriction
+	worldThinkerBoomPusher
 )
 
 func (g *game) playerThinkerOrder() int64 {
@@ -275,6 +281,12 @@ func (g *game) nextWorldThinkerAfterForPlayers(lastOrder int64, players []*autho
 	for i, s := range g.boomScrollers {
 		consider(worldThinkerBoomScroll, i, s.Order)
 	}
+	for i, f := range g.boomFrictions {
+		consider(worldThinkerBoomFriction, i, f.order)
+	}
+	for i, p := range g.boomPushers {
+		consider(worldThinkerBoomPusher, i, p.order)
+	}
 	return best, found
 }
 
@@ -290,6 +302,10 @@ func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
 
 func (g *game) tickWorldThinker(ref worldThinkerRef) {
 	switch ref.kind {
+	case worldThinkerBoomFriction:
+		g.tickBoomFriction(g.boomFrictions[ref.key])
+	case worldThinkerBoomPusher:
+		g.tickBoomPusher(g.boomPushers[ref.key])
 	case worldThinkerBoomScroll:
 		g.tickBoomScroller(ref.key)
 	case worldThinkerBoomCarry:
@@ -729,6 +745,7 @@ func (g *game) xyMovement() {
 	if g.p.momx == 0 && g.p.momy == 0 {
 		return
 	}
+	oldX, oldY := g.p.x, g.p.y
 	debugMove := g.debugPlayerMoveEnabled()
 	g.p.momx = clamp(g.p.momx, -maxMove, maxMove)
 	g.p.momy = clamp(g.p.momy, -maxMove, maxMove)
@@ -783,8 +800,16 @@ func (g *game) xyMovement() {
 		g.p.momx = 0
 		g.p.momy = 0
 	} else {
-		g.p.momx = fixedMul(g.p.momx, friction)
-		g.p.momy = fixedMul(g.p.momy, friction)
+		f := int64(friction)
+		if len(g.boomFrictions) > 0 {
+			f = storedBoomFriction(g.p.friction)
+			if g.p.x == oldX && g.p.y == oldY && (g.opts.DemoScript == nil || g.opts.DemoScript.Header.Version != 201) {
+				f = friction
+			}
+			g.p.friction = friction
+		}
+		g.p.momx = fixedMul(g.p.momx, f)
+		g.p.momy = fixedMul(g.p.momy, f)
 	}
 	if debugMove {
 		g.debugPlayerMove(fmt.Sprintf("xy end pos=(%d,%d) mom=(%d,%d)", g.p.x, g.p.y, g.p.momx, g.p.momy), g.p.x, g.p.y)
@@ -1778,10 +1803,20 @@ func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 }
 
 func (g *game) hitSlideLine(ld physLine, tmxmove, tmymove int64) (int64, int64) {
+	icy := len(g.boomFrictions) > 0 && g.p.z <= g.p.floorz && storedBoomFriction(g.p.friction) > friction
+
 	if ld.slope == slopeHorizontal {
+		if icy && abs(tmymove) > abs(tmxmove) {
+			g.emitSoundEvent(soundEventOof)
+			return tmxmove / 2, -tmymove / 2
+		}
 		return tmxmove, 0
 	}
 	if ld.slope == slopeVertical {
+		if icy && abs(tmxmove) > abs(tmymove) {
+			g.emitSoundEvent(soundEventOof)
+			return -tmxmove / 2, tmymove / 2
+		}
 		return 0, tmymove
 	}
 	if ld.dx == 0 && ld.dy == 0 {
@@ -1794,7 +1829,16 @@ func (g *game) hitSlideLine(ld physLine, tmxmove, tmymove int64) (int64, int64) 
 		lineAngle += statusAng180
 	}
 	moveAngle := vectorToAngle(tmxmove, tmymove)
+	if g.boomMomentumDropoff {
+		moveAngle += 10
+	}
 	deltaAngle := moveAngle - lineAngle
+	if icy && deltaAngle > uint32(doomAng90/2) && deltaAngle < doomAng90+uint32(doomAng90/2) {
+		reflected := lineAngle - deltaAngle
+		length := approxDistance(tmxmove, tmymove) / 2
+		g.emitSoundEvent(soundEventOof)
+		return fixedMul(length, doomFineCosine(reflected)), fixedMul(length, doomFineSineAtAngle(reflected))
+	}
 	if deltaAngle > statusAng180 {
 		deltaAngle += statusAng180
 	}
