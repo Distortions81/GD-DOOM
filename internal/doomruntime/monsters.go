@@ -2360,7 +2360,7 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 			xmove = 0
 			ymove = 0
 		}
-		if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+		if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonsterWithDropoff(i, th.Type, nx, ny, g.boomMomentumDropoff); ok {
 			prevX, prevY := tx, ty
 			g.setThingPosFixed(i, nx, ny)
 			g.setThingSupportState(i, z, tmfloor, tmceil)
@@ -3993,7 +3993,7 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 		}
 		good := false
 		for j := len(lines) - 1; j >= 0; j-- {
-			if g.useSpecialLineForActor(lines[j], 0, false) {
+			if g.useSpecialLineForActorIndex(lines[j], 0, false, i) {
 				good = true
 			}
 		}
@@ -5392,7 +5392,11 @@ type skullFlyProbeResult struct {
 	ok         bool
 }
 
-func (g *game) probeMonsterMove(i int, typ int16, x, y int64) (result monsterMoveProbeResult) {
+func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeResult {
+	return g.probeMonsterMoveWithDropoff(i, typ, x, y, false)
+}
+
+func (g *game) probeMonsterMoveWithDropoff(i int, typ int16, x, y int64, allowDropoff bool) (result monsterMoveProbeResult) {
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
 		return monsterMoveProbeResult{}
 	}
@@ -5438,14 +5442,18 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) (result monsterMov
 	if tmfloor-z > stepHeight {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
-	if !isVoodooDollType(typ) && !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
+	if !allowDropoff && !isVoodooDollType(typ) && !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
 	return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK, ok: true}
 }
 
 func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {
-	probe := g.probeMonsterMove(i, typ, x, y)
+	return g.tryMoveProbeMonsterWithDropoff(i, typ, x, y, false)
+}
+
+func (g *game) tryMoveProbeMonsterWithDropoff(i int, typ int16, x, y int64, allowDropoff bool) (int64, int64, []int, bool) {
+	probe := g.probeMonsterMoveWithDropoff(i, typ, x, y, allowDropoff)
 	return probe.tmfloor, probe.tmceil, probe.probeLines, probe.ok
 }
 
@@ -5659,7 +5667,7 @@ func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 
 func (g *game) monsterUseBlockingSpecialLines(i int, x, y int64) bool {
 	for _, lineIdx := range g.touchedSpecialLinesForMonsterMove(i, x, y) {
-		if g.useSpecialLineForActor(lineIdx, 0, false) {
+		if g.useSpecialLineForActorIndex(lineIdx, 0, false, i) {
 			return true
 		}
 	}

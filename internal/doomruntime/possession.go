@@ -173,7 +173,7 @@ func (g *game) movePossessedMonster(i int, th mapdata.Thing, x, y int64) bool {
 	probe := g.probeMonsterMove(i, th.Type, x, y)
 	if !probe.ok {
 		for _, line := range probe.probeLines {
-			g.useSpecialLineForActor(line, 0, false)
+			g.useSpecialLineForActorIndex(line, 0, false, i)
 		}
 		if probe.floatOK && monsterCanFloat(th.Type) {
 			z, floor, ceil := g.thingSupportState(i, th)

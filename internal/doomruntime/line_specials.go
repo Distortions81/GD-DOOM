@@ -1281,6 +1281,12 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	if !isPlayer && (g == nil || g.m == nil || actorIdx < 0 || actorIdx >= len(g.m.Things)) {
 		return false
 	}
+	if info.Silent && (info.LineToLine || info.MonsterOnly) && g.m.Linedefs[lineIdx].Tag == 0 {
+		return false
+	}
+	if info.LineToLine {
+		return g.activateSilentLineTeleport(lineIdx, info, actorIdx, isPlayer)
+	}
 	line := g.m.Linedefs[lineIdx]
 	actorLabel := "player"
 	actorType := int16(0)
@@ -1338,7 +1344,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 				}
 				return false
 			}
-			if tmceil-tmfloor < actorHeight {
+			if !info.Silent && tmceil-tmfloor < actorHeight {
 				return false
 			}
 			if !g.teleportStompDestinationThings(tx, ty, actorRadius, actorIdx, isPlayer, actorX, actorY) {
@@ -1354,31 +1360,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			if info.Silent {
 				a, b := g.m.Vertexes[line.V1], g.m.Vertexes[line.V2]
 				rotation := doomPointToAngle2(0, 0, int64((b.X-a.X)*65536), int64((b.Y-a.Y)*65536)) - destAngle + doomAng90
-				c, s := doomFineCosine(rotation), doomFineSineAtAngle(rotation)
-				rotate := func(x, y int64) (int64, int64) {
-					return fixedMul(x, c) - fixedMul(y, s), fixedMul(y, c) + fixedMul(x, s)
-				}
-				if isPlayer {
-					g.setPlayerPosFixed(tx, ty)
-					g.p.z = tmfloor + actorZ - actorFloorZ
-					g.p.floorz = tmfloor
-					g.p.ceilz = tmceil
-					g.p.angle = actorAngle + rotation
-					g.p.momx, g.p.momy = rotate(g.p.momx, g.p.momy)
-					g.p.teleportedThisTic = true
-					delta := g.p.deltaViewHeight
-					g.p.deltaViewHeight = 0
-					g.tickPlayerViewHeight()
-					g.p.deltaViewHeight = delta
-				} else {
-					x, y, z := g.thingMomX[actorIdx], g.thingMomY[actorIdx], g.thingMomZ[actorIdx]
-					x, y = rotate(x, y)
-					g.setThingPosFixed(actorIdx, tx, ty)
-					g.setThingSupportState(actorIdx, tmfloor+actorZ-actorFloorZ, tmfloor, tmceil)
-					g.setThingWorldAngle(actorIdx, actorAngle+rotation)
-					g.setThingMomentum(actorIdx, x, y, z)
-					g.snapThingRenderState(actorIdx)
-				}
+				g.finishSilentTeleport(actorIdx, isPlayer, tx, ty, tmfloor+actorZ-actorFloorZ, tmfloor, tmceil, rotation)
 				return true
 			}
 			destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))

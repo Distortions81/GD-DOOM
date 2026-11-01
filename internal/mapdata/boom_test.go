@@ -112,3 +112,27 @@ func TestBoomGeneralizedEquivalentKeyLocks(t *testing.T) {
 		}
 	}
 }
+
+func TestBoomSilentTeleportVariants(t *testing.T) {
+	for _, tc := range []struct {
+		special                        uint16
+		repeat, line, reverse, monster bool
+	}{
+		{207, false, false, false, false}, {208, true, false, false, false},
+		{209, false, false, false, false}, {210, true, false, false, false},
+		{243, false, true, false, false}, {244, true, true, false, false},
+		{262, false, true, true, false}, {263, true, true, true, false},
+		{264, false, true, true, true}, {265, true, true, true, true},
+		{266, false, true, false, true}, {267, true, true, false, true},
+		{268, false, false, false, true}, {269, true, false, false, true},
+	} {
+		got := LookupLineSpecial(tc.special)
+		trigger := TriggerWalk
+		if tc.special == 209 || tc.special == 210 {
+			trigger = TriggerUse
+		}
+		if got.Teleport == nil || !got.Boom || got.Trigger != trigger || got.Repeat != tc.repeat || !got.Teleport.Silent || !got.Teleport.UsesTag || got.Teleport.LineToLine != tc.line || got.Teleport.Reverse != tc.reverse || got.Teleport.MonsterOnly != tc.monster {
+			t.Fatalf("special %d: %+v teleport %+v", tc.special, got, got.Teleport)
+		}
+	}
+}

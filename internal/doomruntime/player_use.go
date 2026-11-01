@@ -309,6 +309,10 @@ func doomLockedDoorMessage(info mapdata.LineSpecialInfo) string {
 }
 
 func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool {
+	return g.useSpecialLineForActorIndex(lineIdx, side, isPlayer, -1)
+}
+
+func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool, actorIdx int) bool {
 	if debugLineTriggerEnabled(lineIdx) {
 		fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-enter line=%d side=%d player=%t special=%d\n",
 			g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, g.lineSpecial[lineIdx])
@@ -337,7 +341,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 		info := mapdata.LookupLineSpecial(special)
 		switch special {
-		case 1, 32, 33, 34:
+		case 1, 32, 33, 34, 174, 195, 209, 210:
 		default:
 			floorAllowed := info.Floor != nil && info.Floor.Generalized != nil && info.Floor.Generalized.Monsters
 			doorAllowed := info.Door != nil && info.Door.Generalized != nil && info.Door.Generalized.Monsters
@@ -391,7 +395,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 			}
 		}
 	} else {
-		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
+		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, actorIdx, isPlayer)
 	}
 	// Boom switches for lights, platform stops and SR perpetual platforms
 	// change texture even when no tagged mover accepted the action.
@@ -415,7 +419,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 				g.useText = "USE: special active"
 			}
 		}
-		if isPlayer && shouldPlaySwitchClick(info) {
+		if (isPlayer || info.Teleport != nil) && shouldPlaySwitchClick(info) {
 			g.animateSwitchTexture(lineIdx, side, info.Repeat)
 			g.emitSoundEvent(soundEventSwitchOn)
 			if info.Repeat {
@@ -446,7 +450,7 @@ func walkSpecialAllowedForNonPlayer(special uint16) bool {
 		return info.Floor.Generalized.Monsters
 	}
 	switch special {
-	case 4, 10, 39, 88, 97, 125, 126:
+	case 4, 10, 39, 88, 97, 125, 126, 207, 208, 243, 244, 262, 263, 264, 265, 266, 267, 268, 269:
 		return true
 	default:
 		return false

@@ -151,6 +151,8 @@ type LightInfo struct {
 }
 
 type TeleportInfo struct {
+	LineToLine  bool
+	Reverse     bool
 	Silent      bool
 	UsesTag     bool
 	MonsterOnly bool
@@ -394,8 +396,16 @@ func LookupLineSpecial(special uint16) LineSpecialInfo {
 		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized ceiling", Trigger: trigger, Repeat: v&1 != 0, Ceiling: &CeilingInfo{Action: CeilingGeneralized, UsesTag: trigger != TriggerManual, Generalized: gen}}
 	}
 
-	if special == 207 || special == 208 {
-		return LineSpecialInfo{Special: special, Name: "Boom silent teleport", Boom: true, Trigger: TriggerWalk, Repeat: special == 208, Teleport: &TeleportInfo{UsesTag: true, Silent: true}}
+	switch special {
+	case 207, 208, 209, 210, 243, 244, 262, 263, 264, 265, 266, 267, 268, 269:
+		lineToLine := special == 243 || special == 244 || special >= 262 && special <= 267
+		reverse := special >= 262 && special <= 265
+		repeat := special == 208 || special == 210 || special == 244 || special == 263 || special == 265 || special == 267 || special == 269
+		trigger := TriggerWalk
+		if special == 209 || special == 210 {
+			trigger = TriggerUse
+		}
+		return LineSpecialInfo{Special: special, Name: "Boom silent teleport", Boom: true, Trigger: trigger, Repeat: repeat, Teleport: &TeleportInfo{UsesTag: true, Silent: true, LineToLine: lineToLine, Reverse: reverse, MonsterOnly: special >= 264}}
 	}
 
 	// Without distinct card inventory, advertise only locks accepting either key

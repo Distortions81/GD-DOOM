@@ -46,8 +46,16 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   16.16 split vertices, 32-bit seg/subsector indices and BSP child references.
   Classic nodes use the same widened traversal. Malformed counts, references,
   cyclic trees and oversized decompression are rejected.
-- Silent thing teleports (207–208), preserving relative height and rotating
-  angle/momentum. Normal teleport freeze timing follows `P_PlayerThink`.
+- Silent thing teleports (207–208), switch-activated thing exits (209–210),
+  line-to-line teleports (243–244),
+  reversed line exits (262–263), monster-only reversed/normal line exits
+  (264–267), and monster-only thing exits (268–269). They preserve relative
+  height and vertical momentum, rotate facing/horizontal momentum, and retain
+  reaction time without teleport fog or teleport sounds. Switch variants retain
+  their normal switch animation. Line exits preserve fractional position,
+  select the appropriate side with Boom's fixed-point nudges, and measure Z
+  above the higher exit floor. First eligible exit order and blocked-exit
+  rejection follow DSDA. Normal teleport freeze timing follows `P_PlayerThink`.
 - Generalized ceilings (`0x4000`–`0x5fff`): all eight triggers, four speeds,
   eight targets, crushing and trigger/numeric model texture/type changes.
   Changes apply when the mover finishes and survive saves and replication.
@@ -511,11 +519,58 @@ logic. `use_tics` is a list of zero-based world tics in the scene manifest.
 The five existing no-monsters demos still match all **5,772 frames** and level
 exit tics. The full Go suite and CPU/GPU integration regression also pass.
 
+## Silent teleport actor verification
+
+`make_boom_teleports_wad.py` builds an original 30-map fixture and 1,456 cases.
+The matrix covers all fourteen silent specials, including the existing 207–208,
+with **490 player, 532 imp, 420 cacodemon and 14 missile cases**. Source geometry
+includes vertical, horizontal and diagonal lines. Exit geometry
+includes vertical, horizontal and diagonal lines in both directions, unequal
+source/exit lengths, fractional positions, and front-higher, back-higher and
+equal exit floors. Ground-level, rising and falling actor states check relative
+height and positive/negative/zero vertical momentum.
+
+All **1,456 integer actor-state comparisons match DSDA-Doom 0.27.5, complevel 9**:
+position, floor/ceiling, angle, all three momentum components, reaction time,
+remaining line special, blocker survival and absence of teleport fog. Negative
+cases check monster-only player rejection, back-side crossings, missing exits,
+blocked monsters, player telefrags and missile rejection. W1 specials remain
+available on failure and clear on success; WR specials remain active.
+
+The reference runs with monsters enabled. Most cases capture immediately after
+`P_TryMove` crosses a line or `P_UseSpecialLine` activates a switch, before subsequent friction or gravity changes the
+exit state. Forty-two additional cases use actual imp `P_MobjThinker` movement
+for 1, 2 and 5 updates; state transitions are delayed to isolate movement from
+AI randomness. These verify crossing and continued physical movement, not full
+combat/AI RNG parity. The reference's `p_telept.c`, `p_spec.c`, `p_switch.c`,
+`p_map.c`, `p_mobj.c` and `p_enemy.c` are byte-identical to the pristine source.
+
+This exposed and fixed a movement difference: Boom momentum probes allow
+ledge dropoff while AI walking probes retain their restriction. Normal play
+selects that behavior from Boom map features; 201/202 demos select Boom rules,
+while vanilla demos retain their original rules. Exit references cache by tag
+in map order, so repeated crossings avoid repeated full-map searches. No
+additional mutable save fields are needed. Unit tests cover state restoration,
+first-exit rejection, zero tags, switch/button lifetime, non-player use restrictions
+and the unchanged AI/vanilla ledge gates.
+
+```sh
+python3 scripts/make_boom_teleports_wad.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_teleports.py \
+  --iwad wads/DOOM2.WAD --reference /path/to/capture-build/dsda-doom \
+  --out /tmp/gddoom-boom-teleports
+```
+
+Use `--reference-source` with pristine DSDA-Doom 0.27.5 to create a private capture
+build instead. The driver saves both CSVs, the input cases, hashes and
+`results.json`. The five existing no-monsters demos still match all **5,772
+frames** and exit tics; the full Go suite also passes.
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, friction, wind/pushers,
-silent line-to-line teleports/crushers,
+remaining legacy mover variants,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
 
@@ -524,7 +579,7 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-9`. Deploy matching clients and servers. Mutable scroller
+`gd-doom-authority-dev-10`. Deploy matching clients and servers. Mutable scroller
 state extends the authoritative snapshot schema. Save version 30 reads versions
 27–29; keyframe version 17 reads versions 14–16. Older snapshots cannot reconstruct
 the earlier acceleration history of previously unsupported scrollers.

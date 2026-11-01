@@ -435,6 +435,8 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	boomTeleportExits                  map[uint16][]int
+	boomMomentumDropoff                bool
 	textureAnimCachePeriod             int
 	boomCarries                        []boomCarryThinker
 	boomFloorScroll, boomCeilingScroll []boomScrollVector
@@ -1569,6 +1571,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	}
 	g.initPhysics()
 	g.initTimedDoorSpecials()
+	g.boomMomentumDropoff = boomMomentumDropoffEnabled(m, opts)
 	g.initBoomScrollers()
 	g.initBoomTransfers()
 	g.initBoomColormaps()
