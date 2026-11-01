@@ -193,10 +193,10 @@ func (g *game) segCoarseOpaque(si int) bool {
 	if frontIdx < 0 || frontIdx >= len(g.m.Sectors) {
 		return false
 	}
-	front := &g.m.Sectors[frontIdx]
+	front := g.renderSector(frontIdx, false)
 	var back *mapdata.Sector
 	if backIdx >= 0 && backIdx < len(g.m.Sectors) {
-		back = &g.m.Sectors[backIdx]
+		back = g.renderSector(backIdx, true)
 	}
 	if front == nil {
 		return false
@@ -204,9 +204,9 @@ func (g *game) segCoarseOpaque(si int) bool {
 	if back == nil {
 		return true
 	}
-	if g.authorityRender != nil || g.clientPrediction != nil {
+	if g.authorityRender != nil || g.clientPrediction != nil || g.boomHeightFrameValid {
 		frontFloor, frontCeil, frontOK := g.sectorHeightRenderSnapshot(frontIdx)
-		backFloor, backCeil, backOK := g.sectorHeightRenderSnapshot(backIdx)
+		backFloor, backCeil, backOK := g.sectorBackRenderHeights(backIdx)
 		if frontOK && backOK {
 			// The most recent collision state can already be closed while the
 			// buffered door is still visibly open. Cull on the rendered opening.
@@ -261,12 +261,12 @@ func (g *game) segPortalSplitPseudo3D(segIdx int) bool {
 		frontSectorIdx >= len(g.m.Sectors) || backSectorIdx >= len(g.m.Sectors) {
 		return false
 	}
-	front := &g.m.Sectors[frontSectorIdx]
-	back := &g.m.Sectors[backSectorIdx]
+	front := g.renderSector(frontSectorIdx, false)
+	back := g.renderSector(backSectorIdx, true)
 	heightSplit := front.FloorHeight != back.FloorHeight || front.CeilingHeight != back.CeilingHeight
-	if g.authorityRender != nil || g.clientPrediction != nil {
+	if g.authorityRender != nil || g.clientPrediction != nil || g.boomHeightFrameValid {
 		frontFloor, frontCeil, frontOK := g.sectorHeightRenderSnapshot(frontSectorIdx)
-		backFloor, backCeil, backOK := g.sectorHeightRenderSnapshot(backSectorIdx)
+		backFloor, backCeil, backOK := g.sectorBackRenderHeights(backSectorIdx)
 		if frontOK && backOK {
 			heightSplit = frontFloor != backFloor || frontCeil != backCeil
 		}

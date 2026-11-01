@@ -92,4 +92,6 @@ func IsScrollingWallSpecial(special uint16) bool {
 }
 
 // IsTransferSpecial identifies static map setup rather than a triggered action.
-func IsTransferSpecial(s uint16) bool { return s == 213 || s == 261 || s == 271 || s == 272 }
+func IsTransferSpecial(s uint16) bool {
+	return s == 242 || s == 213 || s == 261 || s == 271 || s == 272
+}

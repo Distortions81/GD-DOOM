@@ -6,6 +6,11 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Height transfers (242): camera-dependent fake floors/ceilings, deep-water
+  plane textures, independent model plane lights, model scrolling offsets and
+  sky exceptions. The inclusive waterline and one-16.16-unit plane separation
+  follow DSDA's `R_FakeFlat`. Moving control heights update every frame;
+  collision, actor support heights and saved physical geometry stay real.
 - Per-sector sky transfers (271/272): upper sidedef texture, Doom BAM horizontal
   offsets, vertical offsets, optional flipping, sky floors and several skies
   visible together. Tall skies retain their declared height. CPU/GPU share
@@ -220,12 +225,58 @@ the pass criterion. Whole-frame differences are reported separately.
 Implementation references are [DSDA sky planes](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_plane.c)
 and [transfer setup](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_spec.c).
 
+## Height-transfer screenshot verification
+
+Regenerate the original two-room fixture with
+`python3 scripts/make_boom_water_wad.py`. MAP01 has a physical floor at -64,
+a rendered water surface at 0, and a model ceiling at 128. MAP02/03 exercise
+the model floor/ceiling sky exceptions. Distinct uniform flats isolate plane
+visibility and lighting from texture UV sampling.
+
+```sh
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad testdata/boom/water.wad \
+  --scenes testdata/boom/water-scenes.json \
+  --reference-source /path/to/clean/dsda-doom-0.27.5 \
+  --out /tmp/boom-water-verification
+```
+
+Nine fixed 320×200 views cover the shore across the surface, above/below water,
+exactly at the waterline, 1/8 unit to either side, above the fake ceiling, and
+both sky exceptions. All **18 explicit plane-interior regions** match DSDA
+pixel for pixel on CPU and GPU. Every full CPU/GPU pair matches. These regions
+avoid wall boundaries: the lowest land-facing wall edge can differ by one row.
+Whole-frame DSDA differences range from 0.50–25.75%, including existing wall
+sampling differences that become prominent when facing the shore underwater.
+The gallery and difference images retain those differences; the checks establish
+fake-plane geometry/material/light selection, not complete raster parity.
+
+The reference probe invalidates the fresh map's wall-flag cache by setting
+`gametic=1` without advancing simulation. Otherwise its zero-initialized cache
+can skip DSDA's first wall classification. Logged leveltime and camera still
+match exactly. The existing 12 sky/light views and 15 transfer regions also
+pass with this corrected reference setup.
+
+Focused tests cover exact 16.16 waterline transitions, front/back substitutions,
+moving control heights, independent live plane lighting, scrolling offsets,
+sky visibility, physical movement and binary save restoration. All five
+existing no-monsters demo regressions still match DSDA for **5,772 frames**,
+including their exit tics. This render-only addition needs no simulation or
+save-version change.
+
+The implementation follows [DSDA's fake-flat rendering](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_bsp.c)
+and [height-sector plane marking](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_segs.c).
+These fixed-camera comparisons suppress actors and HUD. Special height-sector
+sprite clipping/lighting and custom underwater COLORMAP selection remain work
+for a later pass; this verification covers world geometry.
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, displacement/accelerative and
-wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers, height
-transfers, deep water, translucency, custom `ANIMATED`/`SWITCHES` tables,
+wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers,
+height-sector sprite clipping/lighting and custom underwater colormaps,
+translucency, custom `ANIMATED`/`SWITCHES` tables,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
 

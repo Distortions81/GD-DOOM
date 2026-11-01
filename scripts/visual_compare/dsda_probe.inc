@@ -31,6 +31,9 @@ static void GD_VisualProbe(void)
         player_t *p;
         if (death || bright) I_Error("GD fixed-camera probe expects normal lighting and no forced death");
         G_InitNew(2, episode, map, true);
+        /* Fresh linedefs have r_validcount == 0. Real play renders after a
+         * game tic; invalidate that cache without advancing simulation. */
+        gametic = 1;
         for (i=0; i<tic; ++i) { leveltime=i; P_UpdateSpecials(); }
         leveltime=tic;
         p = &players[displayplayer];

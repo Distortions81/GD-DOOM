@@ -15,7 +15,11 @@ func (g *game) initBoomTransfers() {
 	g.boomFloorLight = make([]int, n)
 	g.boomCeilingLight = make([]int, n)
 	g.boomSkyLine = make([]int, n)
+	g.boomHeightControl = make([]int, n)
+	g.boomHasHeightTransfers = false
+	g.boomHeightFrameValid = false
 	for i := 0; i < n; i++ {
+		g.boomHeightControl[i] = -1
 		g.boomFloorLight[i] = -1
 		g.boomCeilingLight[i] = -1
 	}
@@ -32,6 +36,9 @@ func (g *game) initBoomTransfers() {
 				continue
 			}
 			switch line.Special {
+			case 242:
+				g.boomHeightControl[sec] = control
+				g.boomHasHeightTransfers = true
 			case 213:
 				g.boomFloorLight[sec] = control
 			case 261:
@@ -56,6 +63,12 @@ func (g *game) planeLightSource(sec int, floor bool) int {
 	return sec
 }
 func (g *game) planeLightForRender(sec int, s *mapdata.Sector, floor bool) int16 {
+	if v := g.renderViewForPointer(sec, s); v != nil {
+		if floor {
+			return v.floorLight
+		}
+		return v.ceilingLight
+	}
 	source := g.planeLightSource(sec, floor)
 	if g != nil && g.m != nil && source >= 0 && source < len(g.m.Sectors) {
 		return g.sectorLightForRender(source, &g.m.Sectors[source])
@@ -82,7 +95,7 @@ func (g *game) planeTransfersDiffer(a, b int, floor bool) bool {
 		}
 		return -1
 	}
-	return ref(a) != ref(b) || g.skyLineForSector(a) != g.skyLineForSector(b)
+	return g.heightControl(a) != g.heightControl(b) || ref(a) != ref(b) || g.skyLineForSector(a) != g.skyLineForSector(b)
 }
 
 type boomSkyFrame struct {

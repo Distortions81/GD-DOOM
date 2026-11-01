@@ -1,0 +1,272 @@
+[
+  {
+    "name": "shore-above",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "water-above",
+    "map": "MAP01",
+    "X": 128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "water-below",
+    "map": "MAP01",
+    "X": 128,
+    "Y": 0,
+    "Z": -32,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "surface-at",
+    "map": "MAP01",
+    "X": 128,
+    "Y": 0,
+    "Z": 0,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "surface-below",
+    "map": "MAP01",
+    "X": 128,
+    "Y": 0,
+    "Z": -0.125,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "surface-above",
+    "map": "MAP01",
+    "X": 128,
+    "Y": 0,
+    "Z": 0.125,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "above-fake-ceiling",
+    "map": "MAP01",
+    "X": 128,
+    "Y": 0,
+    "Z": 144,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "sky-floor-above-ceiling",
+    "map": "MAP02",
+    "X": 128,
+    "Y": 0,
+    "Z": 144,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water-sky",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "sky-ceiling-underwater",
+    "map": "MAP03",
+    "X": 128,
+    "Y": 0,
+    "Z": -32,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "deep-water-sky",
+    "checks": [
+      {
+        "name": "upper-plane",
+        "box": [
+          100,
+          0,
+          220,
+          25
+        ]
+      },
+      {
+        "name": "lower-plane-interior",
+        "box": [
+          100,
+          184,
+          220,
+          200
+        ]
+      }
+    ]
+  }
+]

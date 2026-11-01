@@ -757,6 +757,9 @@ type game struct {
 	bonusFlashTic                                 int
 	boomFloorLight, boomCeilingLight, boomSkyLine []int
 	frameTransferSkies                            []*boomSkyFrame
+	boomHeightControl                             []int
+	boomHasHeightTransfers, boomHeightFrameValid  bool
+	boomHeightFront, boomHeightBack               []boomHeightView
 	sectorLightFx                                 []sectorLightEffect
 	subSectorSec                                  []int
 	sectorBBox                                    []worldBBox
@@ -5108,6 +5111,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
+	g.prepareHeightTransfers(camX, camY, eyeZ)
+	defer func() { g.boomHeightFrameValid = false }()
 	focal := doomFocalLength(g.viewW)
 	focalV := g.verticalFocalLength(focal)
 	near := 2.0
@@ -5156,7 +5161,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			continue
 		}
 		frontIdx, backIdx := g.wallRenderSectorIndices(si)
-		front = &g.m.Sectors[frontIdx]
+		front = g.renderSector(frontIdx, false)
+		if back != nil {
+			back = g.renderSector(backIdx, true)
+		}
 		frontLight := g.sectorLightForRender(frontIdx, front)
 		frontFloor := float64(front.FloorHeight)
 		frontCeil := float64(front.CeilingHeight)
@@ -5169,7 +5177,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if back != nil {
 			backFloor = float64(back.FloorHeight)
 			backCeil = float64(back.CeilingHeight)
-			if fz, cz, ok := g.sectorHeightRenderSnapshot(backIdx); ok {
+			if fz, cz, ok := g.sectorBackRenderHeights(backIdx); ok {
 				backFloor = float64(fz) / fracUnit
 				backCeil = float64(cz) / fracUnit
 			}
@@ -5179,10 +5187,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			if ss != classicSubsector {
 				classicSubsector = ss
 				classicFloor, classicCeil = nil, nil
-				if frontFloor < eyeZ {
+				if frontFloor < eyeZ || g.forceHeightPlane(frontIdx, true) {
 					classicFloor = g.findClassicPlane(g.plane3DKeyForSectorCached(frontIdx, front, true), &planeOrder)
 				}
-				if frontCeil > eyeZ || isSkyFlatName(front.CeilingPic) {
+				if frontCeil > eyeZ || isSkyFlatName(front.CeilingPic) || g.forceHeightPlane(frontIdx, false) {
 					classicCeil = g.findClassicPlane(g.plane3DKeyForSectorCached(frontIdx, front, false), &planeOrder)
 				}
 			}
@@ -5571,6 +5579,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 }
 
 func (g *game) sectorLightForRender(secIdx int, sec *mapdata.Sector) int16 {
+	if v := g.renderViewForPointer(secIdx, sec); v != nil {
+		return v.wallLight
+	}
 	if g != nil && secIdx >= 0 {
 		return g.sectorLightLevelCached(secIdx)
 	}
@@ -5618,6 +5629,10 @@ func (g *game) classifyWallPortalCached(frontIdx int, front, back *mapdata.Secto
 		in.FloorLightDiff = g.planeTransfersDiffer(frontIdx, backIdx, true) || g.planeLightForRender(frontIdx, front, true) != g.planeLightForRender(backIdx, back, true)
 		in.CeilingLightDiff = g.planeTransfersDiffer(frontIdx, backIdx, false) || g.planeLightForRender(frontIdx, front, false) != g.planeLightForRender(backIdx, back, false)
 	}
+	if g.heightView(frontIdx, false) != nil {
+		in.ForceFloor = true
+		in.ForceCeiling = true
+	}
 	state := scene.ClassifyWallPortal(in)
 	if (g == nil || !g.opts.SourcePortMode) && in.BackExists && in.IsFrontCeilingSky && in.IsBackCeilingSky &&
 		backCeil > frontFloor && backFloor < frontCeil {
@@ -5626,6 +5641,12 @@ func (g *game) classifyWallPortalCached(frontIdx int, front, back *mapdata.Secto
 		state.MarkCeiling = in.DoomSectorLighting && in.FrontLight != in.BackLight
 		if in.SeparatePlaneLights {
 			state.MarkCeiling = in.CeilingLightDiff
+		}
+	}
+	if g.heightView(frontIdx, false) != nil && back != nil {
+		state.MarkFloor = true
+		if !in.IsFrontCeilingSky {
+			state.MarkCeiling = true
 		}
 	}
 	return state
@@ -5689,6 +5710,15 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 		}
 		key.offsetX, key.offsetY = int64(int32(vector.x*int64(g.worldTic))), int64(int32(vector.y*int64(g.worldTic)))
 	}
+	if v := g.heightView(secIdx, false); v != nil {
+		key.heightHack = true
+		sec = &v.sector
+		offset := v.ceilingOffset
+		if floor {
+			offset = v.floorOffset
+		}
+		key.offsetX, key.offsetY = offset.x, offset.y
+	}
 	key.light = g.planeLightForRender(secIdx, sec, floor)
 	pic := sec.CeilingPic
 	key.height = float64(sec.CeilingHeight)
@@ -5696,7 +5726,7 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 		pic = sec.FloorPic
 		key.height = float64(sec.FloorHeight)
 	}
-	if g.authorityRender != nil || g.clientPrediction != nil {
+	if g.authorityRender != nil || g.clientPrediction != nil || g.heightView(secIdx, false) != nil {
 		if fz, cz, ok := g.sectorHeightRenderSnapshot(secIdx); ok {
 			key.height = float64(cz) / fracUnit
 			if floor {
@@ -14467,7 +14497,7 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		backSectorIdx = c.backSectorIdx
 		animatedLight := g.sectorLightKindCached(frontSectorIdx) != sectorLightEffectNone ||
 			g.sectorLightKindCached(backSectorIdx) != sectorLightEffectNone
-		if !hasTwoSidedMid && c.portalSplitStatic && !animatedLight {
+		if !hasTwoSidedMid && c.portalSplitStatic && !animatedLight && !g.heightPair(frontSectorIdx, backSectorIdx) {
 			d := g.linedefDecisionPseudo3D(ld)
 			if !d.Visible && !c.portalSplit {
 				pp.ld = ld
@@ -14548,7 +14578,7 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 	// A replica's displayed heights advance between snapshots, even while its
 	// world tic stays fixed. Neither the static nor per-tic cache covers them.
 	replica := g.authorityRender != nil || g.clientPrediction != nil
-	cacheOK = cacheOK && !replica
+	cacheOK = cacheOK && !replica && !g.heightPair(frontSectorIdx, backSectorIdx)
 	if cacheOK && segIdx >= 0 && segIdx < len(g.wallSegStaticCache) {
 		c := &g.wallSegStaticCache[segIdx]
 		if c.portalSplitStatic && !animatedLight {
@@ -14558,12 +14588,12 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 			return c.lightTickSplit
 		}
 	}
-	front := &g.m.Sectors[frontSectorIdx]
-	back := &g.m.Sectors[backSectorIdx]
+	front := g.renderSector(frontSectorIdx, false)
+	back := g.renderSector(backSectorIdx, true)
 	heightSplit := front.FloorHeight != back.FloorHeight || front.CeilingHeight != back.CeilingHeight
-	if replica {
+	if replica || g.boomHeightFrameValid {
 		ff, fc, _ := g.sectorHeightRenderSnapshot(frontSectorIdx)
-		bf, bc, _ := g.sectorHeightRenderSnapshot(backSectorIdx)
+		bf, bc, _ := g.sectorBackRenderHeights(backSectorIdx)
 		heightSplit = ff != bf || fc != bc
 	}
 	split := heightSplit ||
@@ -16833,6 +16863,10 @@ func (g *game) cachedSegPortalSplit(frontSectorIdx, backSectorIdx int) (bool, bo
 	if g == nil || g.m == nil {
 		return false, false
 	}
+	if g.heightPair(frontSectorIdx, backSectorIdx) {
+		return false, false
+	}
+
 	if frontSectorIdx < 0 || backSectorIdx < 0 ||
 		frontSectorIdx >= len(g.m.Sectors) || backSectorIdx >= len(g.m.Sectors) {
 		return false, false
@@ -17229,6 +17263,13 @@ func (g *game) sectorHeightSnapshot(sec int) (int64, int64, bool) {
 }
 
 func (g *game) sectorHeightRenderSnapshot(sec int) (int64, int64, bool) {
+	if v := g.heightView(sec, false); v != nil {
+		return v.floor, v.ceiling, true
+	}
+	return g.sectorPhysicalRenderSnapshot(sec)
+}
+
+func (g *game) sectorPhysicalRenderSnapshot(sec int) (int64, int64, bool) {
 	floor, ceil, ok := g.sectorHeightSnapshot(sec)
 	if !ok || g == nil || !g.opts.SourcePortMode {
 		return floor, ceil, ok

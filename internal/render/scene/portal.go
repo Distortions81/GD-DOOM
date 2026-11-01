@@ -1,6 +1,7 @@
 package scene
 
 type WallPortalInput struct {
+	ForceFloor, ForceCeiling         bool
 	SeparatePlaneLights              bool
 	FloorLightDiff, CeilingLightDiff bool
 	FrontFloor                       float64
@@ -77,10 +78,10 @@ func ClassifyWallPortal(in WallPortalInput) WallPortalState {
 		s.BottomWall = s.WorldLow > s.WorldBottom
 	}
 
-	if in.FrontFloor >= in.EyeZ {
+	if in.FrontFloor >= in.EyeZ && !in.ForceFloor {
 		s.MarkFloor = false
 	}
-	if in.FrontCeil <= in.EyeZ && !in.IsFrontCeilingSky {
+	if in.FrontCeil <= in.EyeZ && !in.IsFrontCeilingSky && !in.ForceCeiling {
 		s.MarkCeiling = false
 	}
 	return s

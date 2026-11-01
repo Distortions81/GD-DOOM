@@ -328,6 +328,9 @@ func planeSpanDepth(y int, key plane3DKey, eyeZ, focal, focalV, cy float64) (flo
 	}
 	planeZ := float64(key.height)
 	depth := ((planeZ - eyeZ) / den) * focalV
+	if key.heightHack {
+		depth = math.Abs(depth)
+	}
 	if depth <= 0 {
 		return 0, 0, false
 	}
