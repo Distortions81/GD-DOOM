@@ -4,6 +4,10 @@ package doomruntime
 // each spectre samples only surfaces behind it and nearer sprites cover it.
 // Frames without fuzz retain the existing front-to-back coverage optimization.
 func (g *game) drawSceneCutouts(focal, focalV float64) {
+	if g.boomHasTranslucency && g.hasTranslucentCutout() {
+		g.drawBoomTranslucentCutouts(focal, focalV)
+		return
+	}
 	hasFuzz := false
 	for _, it := range g.billboardQueueScratch {
 		if it.shadow && !it.debugOverlay {

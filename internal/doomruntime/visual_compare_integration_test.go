@@ -93,6 +93,15 @@ func TestVisualRendererCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("GD_VISUAL_TRANMAP") == "1" {
+		table := doomtex.LoadBoomTranMaps(wf)["TRANMAP"]
+		if len(table) != 65536 {
+			table = doomtex.GenerateBoomTranMap(palette)
+		}
+		if err := os.WriteFile(filepath.Join(out, "gd-tranmap.bin"), table, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	fullbright := os.Getenv("GD_VISUAL_LIGHTING") != "1"
 	if fullbright {
 		for i := 0; i < min(len(colormap), 32*256); i++ {
@@ -138,7 +147,7 @@ func TestVisualRendererCapture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			opts := Options{BoomColorMaps: doomtex.LoadBoomColormaps(wf), SpritePatchBank: sprites, Width: width, Height: height, PlayerSlot: 1, SkillLevel: 3, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: indices}
+			opts := Options{BoomTranMaps: doomtex.LoadBoomTranMaps(wf), BoomColorMaps: doomtex.LoadBoomColormaps(wf), SpritePatchBank: sprites, Width: width, Height: height, PlayerSlot: 1, SkillLevel: 3, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: indices}
 			opts.DisableDoomLighting = os.Getenv("GD_VISUAL_DISABLE_LIGHTING") == "1"
 			opts.SourcePortMode = os.Getenv("GD_VISUAL_SOURCE_PORT") == "1"
 			opts.SourcePortSectorLighting = opts.SourcePortMode

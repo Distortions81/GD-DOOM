@@ -1,0 +1,593 @@
+[
+  {
+    "name": "trans-1-front",
+    "map": "MAP01",
+    "X": -192,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-1-angled",
+    "map": "MAP01",
+    "X": -192,
+    "Y": 32,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ],
+        "max_different_percent": 6.666666666666667,
+        "note": "One-column sprite/wall raster boundary exposed by the asymmetric override."
+      }
+    ]
+  },
+  {
+    "name": "trans-1-reverse",
+    "map": "MAP01",
+    "X": 448,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-2-front",
+    "map": "MAP02",
+    "X": -192,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-2-angled",
+    "map": "MAP02",
+    "X": -192,
+    "Y": 32,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-2-reverse",
+    "map": "MAP02",
+    "X": 448,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-3-front",
+    "map": "MAP03",
+    "X": -192,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-3-angled",
+    "map": "MAP03",
+    "X": -192,
+    "Y": 32,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-3-reverse",
+    "map": "MAP03",
+    "X": 448,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-4-front",
+    "map": "MAP04",
+    "X": -192,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-4-angled",
+    "map": "MAP04",
+    "X": -192,
+    "Y": 32,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-4-reverse",
+    "map": "MAP04",
+    "X": 448,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-5-front",
+    "map": "MAP05",
+    "X": -192,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  },
+  {
+    "name": "trans-5-angled",
+    "map": "MAP05",
+    "X": -192,
+    "Y": 32,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ]
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ],
+        "max_different_percent": 6.666666666666667,
+        "note": "One-column sprite/wall raster boundary exposed by the asymmetric override."
+      }
+    ]
+  },
+  {
+    "name": "trans-5-reverse",
+    "map": "MAP05",
+    "X": 448,
+    "Y": 0,
+    "Z": 41,
+    "angle": 2147483648,
+    "tic": 0,
+    "category": "boom-translucency",
+    "checks": [
+      {
+        "name": "layer-center",
+        "box": [
+          150,
+          85,
+          170,
+          100
+        ],
+        "max_different_percent": 5,
+        "note": "One-column crossing-wall raster boundary; other checks require exact pixels."
+      },
+      {
+        "name": "layer-left",
+        "box": [
+          110,
+          85,
+          125,
+          100
+        ]
+      },
+      {
+        "name": "layer-right",
+        "box": [
+          200,
+          85,
+          215,
+          100
+        ]
+      }
+    ]
+  }
+]

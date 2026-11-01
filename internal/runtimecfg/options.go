@@ -339,6 +339,7 @@ type Options struct {
 	BootSplash                   media.WallTexture
 	DoomPaletteRGBA              []byte
 	DoomPalettesRGBA             [][]byte
+	BoomTranMaps                 map[string][]byte
 	BoomColorMaps                map[string][]byte
 	DoomColorMap                 []byte
 	DoomColorMapRows             int

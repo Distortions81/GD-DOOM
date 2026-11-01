@@ -36,13 +36,17 @@ type gpuCommands struct {
 }
 
 type gpuCutoutPass struct {
-	color, logical gpuCommands
-	fuzz           bool
+	tranmapX0, tranmapX1 int
+	tranmapOffset        int
+	color, logical       gpuCommands
+	fuzz                 bool
 }
 
 // gpuRenderer retains all CPU visibility decisions, but records raster work as
 // rectangles for the fragment shader. No rendered image is read back by this path.
 type gpuRenderer struct {
+	tranmapRows                                                              map[*byte]int
+	activeTranmapOffset                                                      int
 	shader                                                                   *ebiten.Shader
 	lowDetailShader                                                          *ebiten.Shader
 	failed                                                                   bool
@@ -110,6 +114,11 @@ func (g *game) beginGPUFrame() {
 		return
 	}
 	if r.shader == nil {
+		if g.boomTranMapCount > 7 {
+			fmt.Printf("GPU renderer unavailable, using CPU: more than seven distinct TRANMAPs in this map\n")
+			r.failed = true
+			return
+		}
 		if err := gpuValidateAssets(g.opts); err != nil {
 			fmt.Printf("GPU renderer unavailable, using CPU: %v\n", err)
 			r.failed = true
@@ -672,7 +681,7 @@ func (r *gpuRenderer) drawCommandsSized(dst *ebiten.Image, commands *gpuCommands
 		if background != nil {
 			other = background
 		}
-		options := ebiten.DrawTrianglesShaderOptions{Blend: blend, Images: [4]*ebiten.Image{atlas, r.lights, r.metadata, other}, Uniforms: map[string]any{"ViewSize": []float32{float32(width), float32(height)}, "FuzzSourceSize": []float32{float32(r.width), float32(r.height)}, "FuzzShade": fuzzShade, "FuzzOffsets": gpuFuzzOffsets[:], "FuzzPaletteProbes": float32(r.fuzzPaletteProbes), "FuzzColormapOffset": float32(258 + max(r.lightRows, 1))}}
+		options := ebiten.DrawTrianglesShaderOptions{Blend: blend, Images: [4]*ebiten.Image{atlas, r.lights, r.metadata, other}, Uniforms: map[string]any{"TranmapOffset": float32(r.activeTranmapOffset), "ViewSize": []float32{float32(width), float32(height)}, "FuzzSourceSize": []float32{float32(r.width), float32(r.height)}, "FuzzShade": fuzzShade, "FuzzOffsets": gpuFuzzOffsets[:], "FuzzPaletteProbes": float32(r.fuzzPaletteProbes), "FuzzColormapOffset": float32(258 + max(r.lightRows, 1))}}
 		dst.DrawTrianglesShader(b.vertices, b.indices, r.shader, &options)
 	}
 }
@@ -737,6 +746,7 @@ func (r *gpuRenderer) nextCutoutPass(fuzz bool) *gpuCutoutPass {
 	p.color.reset()
 	p.logical.reset()
 	p.fuzz = fuzz
+	p.tranmapOffset = 0
 	return p
 }
 
@@ -746,7 +756,7 @@ func (r *gpuRenderer) opaqueCutoutCommands() *gpuCommands {
 	}
 	if r.cutoutPassesUsed > 0 {
 		p := &r.cutoutPasses[r.cutoutPassesUsed-1]
-		if !p.fuzz {
+		if !p.fuzz && p.tranmapOffset == 0 {
 			return &p.color
 		}
 	}
@@ -772,6 +782,16 @@ func (r *gpuRenderer) drawSceneCutoutPasses() {
 	if r.orderedCutouts {
 		for i := 0; i < r.cutoutPassesUsed; i++ {
 			p := &r.cutoutPasses[i]
+			if p.tranmapOffset != 0 {
+				source := r.frame.SubImage(image.Rect(p.tranmapX0, 0, p.tranmapX1+1, r.height)).(*ebiten.Image)
+				options := &ebiten.DrawImageOptions{Blend: ebiten.BlendCopy}
+				options.GeoM.Translate(float64(p.tranmapX0), 0)
+				r.snapshot.DrawImage(source, options)
+				r.activeTranmapOffset = p.tranmapOffset
+				r.drawCommands(r.frame, &p.color, ebiten.BlendSourceOver, r.snapshot, 0)
+				r.activeTranmapOffset = 0
+				continue
+			}
 			if !p.fuzz {
 				r.drawCommands(r.frame, &p.color, ebiten.BlendSourceOver, nil, 0)
 				continue

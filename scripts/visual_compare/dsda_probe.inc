@@ -3,6 +3,7 @@
  * Include in d_main.c and call immediately after D_DoomMainSetup(). */
 #include "r_main.h"
 #include "r_data.h"
+#include "r_draw.h"
 #include "r_fps.h"
 #include "p_maputl.h"
 #include "p_map.h"
@@ -32,6 +33,11 @@ static void GD_VisualProbe(void)
         player_t *p;
         if (death || bright) I_Error("GD fixed-camera probe expects normal lighting and no forced death");
         G_InitNew(2, episode, map, true);
+        if (getenv("GD_VISUAL_TRANMAP") && !strcmp(getenv("GD_VISUAL_TRANMAP"),"1")) {
+            snprintf(path,sizeof(path),"%s/dsda-tranmap.bin",out);
+            image=fopen(path,"wb");if(!image) I_Error("GD probe cannot export TRANMAP");
+            fwrite(main_tranmap,1,65536,image);fclose(image);
+        }
         /* Fresh linedefs have r_validcount == 0. Real play renders after a
          * game tic; invalidate that cache without advancing simulation. */
         gametic = 1;

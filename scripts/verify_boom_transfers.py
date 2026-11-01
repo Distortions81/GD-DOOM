@@ -82,6 +82,7 @@ def main():
     parser.add_argument("--cmake-arg", action="append", default=[])
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--complevel", type=int, choices=(9,11), default=9, help="DSDA compatibility: Boom 2.02 or MBF")
+    parser.add_argument("--check-tranmap", action="store_true", help="compare all 65536 default TRANMAP entries")
     parser.add_argument("--simulate", action="store_true", help="advance real world tics and verify exact offsets/body state")
     parser.add_argument("--actors", action="store_true", help="render map actors in both engines")
     parser.add_argument("--width", type=int, default=320)
@@ -101,7 +102,7 @@ def main():
     maps = ",".join(dict.fromkeys(c["map"] for c in scenes))
     env = dict(os.environ, SDL_AUDIODRIVER="dummy", GD_VISUAL_WAD=str(merged),
                GD_VISUAL_OUT=str(out), GD_VISUAL_WIDTH=str(args.width), GD_VISUAL_HEIGHT=str(args.height),
-               GD_VISUAL_SIMULATE="1" if args.simulate else "0", GD_VISUAL_MAPS=maps, GD_VISUAL_LIGHTING="1", GD_VISUAL_ACTORS="1" if args.actors else "0", GD_VISUAL_SCENES=str(manifest))
+               GD_VISUAL_TRANMAP="1" if args.check_tranmap else "0", GD_VISUAL_SIMULATE="1" if args.simulate else "0", GD_VISUAL_MAPS=maps, GD_VISUAL_LIGHTING="1", GD_VISUAL_ACTORS="1" if args.actors else "0", GD_VISUAL_SCENES=str(manifest))
     # Fixed scenes must never inherit a demo/death/lighting override from a shell.
     for key in ("GD_VISUAL_DEMO", "GD_VISUAL_DISABLE_LIGHTING", "GD_VISUAL_SOURCE_PORT"):
         env.pop(key, None)
@@ -111,6 +112,11 @@ def main():
     run(["xvfb-run", "-a", executable, "-iwad", iwad, "-file", pwad, "-complevel", args.complevel,
          "-nosound", "-nomonsters", "-width", args.width, "-height", args.height, "-vidmode", "8bit",
          "-config", out/"dsda.cfg"], out / "dsda.log", env)
+    if args.check_tranmap:
+        gd = (out/"gd-tranmap.bin").read_bytes()
+        dsda = (out/"dsda-tranmap.bin").read_bytes()
+        if len(gd)!=65536 or gd!=dsda:
+            raise ValueError(f"default TRANMAP differs: {sum(a!=b for a,b in zip(gd,dsda))} entries")
     with (out/"dsda-cameras.csv").open() as f:
         cameras = {r["name"]: r for r in csv.DictReader(f)}
     if len(cameras) != len(scenes):
@@ -163,7 +169,7 @@ def main():
     for path in sorted((ROOT/"internal").rglob("*")):
         if path.suffix in (".go", ".kage"):
             source_hash.update(str(path.relative_to(ROOT)).encode()+b"\0"+path.read_bytes())
-    metadata = dict(simulate=args.simulate, complevel=args.complevel, actors=args.actors, verifier_sha256=digest(Path(__file__)), scenes_sha256=digest(manifest),
+    metadata = dict(default_tranmap_verified=args.check_tranmap, simulate=args.simulate, complevel=args.complevel, actors=args.actors, verifier_sha256=digest(Path(__file__)), scenes_sha256=digest(manifest),
                     gd_source_sha256=source_hash.hexdigest(), reference="DSDA-Doom 0.27.5 software renderer, camera/export probe only",
                     reference_sha256=digest(executable), probe_sha256=digest(ROOT/"scripts/visual_compare/dsda_probe.inc"),
                     iwad_sha256=digest(iwad), pwad_sha256=digest(pwad), dimensions=[args.width,args.height],

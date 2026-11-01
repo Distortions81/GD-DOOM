@@ -321,6 +321,7 @@ const (
 )
 
 type maskedMidSeg struct {
+	tranmap                   []byte
 	classic                   classicWallSampler
 	classicTop, classicBottom []int16
 	scene.MaskedMidSeg
@@ -761,6 +762,12 @@ type game struct {
 	bonusFlashTic                                 int
 	boomFloorLight, boomCeilingLight, boomSkyLine []int
 	frameTransferSkies                            []*boomSkyFrame
+	boomLineTranMap                               [][]byte
+	boomCutoutDepthScratch                        []boomCutoutDepth
+	boomCutoutPreviousScratch                     []int
+	boomCutoutCurrentScratch                      []int
+	boomTranMapCount                              int
+	boomHasTranslucency                           bool
 	boomColormapNames                             [][3]string
 	boomColormapSides                             map[int]mapdata.Sidedef
 	boomColormapCache                             map[string]*boomColormap
@@ -1549,6 +1556,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.initBoomScrollers()
 	g.initBoomTransfers()
 	g.initBoomColormaps()
+	g.initBoomTranslucency()
 	// Initialize eye height after physics snaps player Z/floor/ceiling.
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
@@ -5529,6 +5537,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					}
 				}
 				maskedMids = append(maskedMids, maskedMidSeg{
+					tranmap:    g.tranMapForLine(int(g.m.Segs[si].Linedef)),
 					classic:    pp.classic.forRange(vis.L, vis.R),
 					classicTop: classicTop, classicBottom: classicBottom,
 					MaskedMidSeg: scene.MaskedMidSeg{
@@ -8392,6 +8401,10 @@ func (g *game) drawMaskedMidSegRange(ms maskedMidSeg, x0, x1 int, focal float64,
 	}
 	ms.X0 = x0
 	ms.X1 = x1
+	if len(ms.tranmap) == 65536 {
+		g.drawBoomTranslucentMid(ms, focal, int(shadeMul), doomRow)
+		return
+	}
 	halfH := float64(g.viewH) * 0.5
 	if g.maskedMidSegFullyOccluded(ms, focal, halfH) {
 		return
@@ -9326,6 +9339,10 @@ func (g *game) appendMaskedMidSegToCutoutItems(idx int, ms maskedMidSeg) {
 			shadeMul: uint32(shadeMul),
 			doomRow:  doomRow,
 		})
+	}
+	if len(ms.tranmap) == 65536 {
+		flush(ms.X0, ms.X1)
+		return
 	}
 	for x := ms.X0; x <= ms.X1; x++ {
 		depth, _, ok := stepper.Sample()
@@ -10324,8 +10341,8 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        g.cachedProjectileShadeMul(pi, ref.fullBright, lightMul, f, near),
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
-			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRowAt(sec, ref.fullBright, rx, ry),
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -10407,7 +10424,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        256,
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
 			doomRow:         0,
 			tex:             ref.tex,
 			clipTop:         clipTop,
@@ -10490,7 +10507,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        256,
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
 			doomRow:         0,
 			tex:             ref.tex,
 			clipTop:         clipTop,
@@ -10578,8 +10595,8 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        g.cachedImpactShadeMul(fi, ref.fullBright, lightMul, f, near),
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
-			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRowAt(sec, ref.fullBright, fx.x, fx.y),
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,
@@ -10675,7 +10692,7 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, n
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        256,
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
 			doomRow:         0,
 			tex:             ref.tex,
 			clipTop:         clipTop,
@@ -11476,8 +11493,8 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        shadeMul,
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
-			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRowAt(sec, ref.fullBright, txFixed, tyFixed),
 			tex:             ref.tex,
 			flip:            flip,
 			shadow:          monsterUsesShadow(th.Type),
@@ -11660,8 +11677,8 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near fl
 			y0:              y0,
 			y1:              y1,
 			shadeMul:        shadeMul,
-			boomLightRow:    g.boomHeightFrameValid && !g.opts.SourcePortMode,
-			doomRow:         g.boomSpriteLightRow(sec, ref.fullBright, f),
+			boomLightRow:    (g.boomHeightFrameValid || g.boomHasTranslucency) && !g.opts.SourcePortMode,
+			doomRow:         g.boomSpriteLightRowAt(sec, ref.fullBright, txFixed, tyFixed),
 			tex:             ref.tex,
 			clipTop:         clipTop,
 			clipBottom:      clipBottom,

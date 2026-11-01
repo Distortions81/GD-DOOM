@@ -2,7 +2,8 @@
 package main
 
 // Source images: indexed atlas, packed lighting rows, texture metadata,
-// and either the second animation atlas or the spectre background snapshot.
+// and either the second animation atlas or a fuzz/translucency background.
+var TranmapOffset float
 var ViewSize vec2
 var FuzzSourceSize vec2
 var FuzzShade float
@@ -143,7 +144,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 		uv = vec2(x.r+x.g*256.0, y.r+y.g*256.0)
 	} else if mode == 0 {
 		uv = vec2(fixedTexel(custom.x, custom.z, delta.x, meta.z), fixedTexel(custom.y, custom.w, delta.x, meta.w))
-	} else if mode == 1 {
+	} else if mode == 1 || mode == 13 {
 		uv = vec2(custom.x, fixedTexel(custom.y, custom.w, delta.y, meta.w))
 	} else {
 		uv = floor(custom.xy + vec2(delta)*custom.zw)
@@ -159,7 +160,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 		other := metadata(int(color.b))
 		second = imageSrc3UnsafeAt(imageSrc0Origin()+other.xy+uv+vec2(0.5))
 	}
-	if mode != 0 && mode != 1 && mode != 10 && p.g < 0.5 && (blendAlpha == 0.0 || second.g < 0.5) {
+	if mode != 0 && mode != 1 && mode != 13 && mode != 10 && p.g < 0.5 && (blendAlpha == 0.0 || second.g < 0.5) {
 		discard()
 	}
 	if mode == 8 || mode == 9 {
@@ -180,5 +181,15 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 		otherColor := shade(floor(second.r*255.0+0.5), row)
 		result = vec4(floor(mix(result.rgb, otherColor.rgb, blendAlpha)*255.0+0.5)/255.0, 1.0)
 	}
+	if mode == 13 {
+  source := fuzzPaletteIndex(result)
+  if row >= 257.0 {
+   source=floor(imageSrc1UnsafeAt(imageSrc0Origin()+vec2(index+0.5,FuzzColormapOffset+row-257.0+0.5)).r*255.0+0.5)
+  }
+  background:=imageSrc3At(imageSrc0Origin()+floor(dstPos.xy)+vec2(0.5))
+  dest:=fuzzPaletteIndex(background)
+  mixed:=floor(imageSrc2UnsafeAt(imageSrc0Origin()+vec2(source+0.5,TranmapOffset+dest+0.5)).r*255.0+0.5)
+  return shade(mixed,256.0)
+ }
 	return result
 }

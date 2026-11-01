@@ -6,6 +6,13 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Boom translucency (260): tag-zero local application, tagged transfers,
+  named 65,536-byte filters, supplied `TRANMAP` overrides and the generated
+  default 66% source filter. Source lighting is applied before table lookup.
+  Masked holes stay clear; actors and opaque/translucent walls paint in depth
+  order, including crossing walls. CPU and GPU use the same palette lookup.
+  RGB shading in Source Port is quantized for this indexed effect. The setup
+  references rebuild on load; no additional simulation/save change is needed.
 - Height transfers (242): camera-dependent fake floors/ceilings, deep-water
   plane textures, independent model plane lights, model scrolling offsets and
   sky exceptions. The inclusive waterline and one-16.16-unit plane separation
@@ -371,12 +378,97 @@ save/keyframe continuation while accelerating. The behavior follows
 [DSDA's compatible scroller setup](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_spec.c)
 and [control-scroller updates](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/dsda/scroll.c).
 
+## Translucency verification
+
+`python3 scripts/make_boom_translucency_wad.py` builds two original PWADs and
+their scene manifests. The fixtures cover two overlapping masked walls,
+transparent holes, actors in front/between/behind the layers, an opaque front
+wall, crossing walls, reverse views, asymmetric named filters and an overriding
+global `TRANMAP`. No IWAD artwork or generated IWAD-based filter is stored
+in these fixtures.
+
+```sh
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad testdata/boom/translucency.wad \
+  --scenes testdata/boom/translucency-scenes.json --actors --check-tranmap \
+  --reference-source /path/to/clean/dsda-doom-0.27.5 \
+  --out /tmp/boom-translucency
+
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad testdata/boom/translucency-override.wad \
+  --scenes testdata/boom/translucency-override-scenes.json \
+  --actors --check-tranmap \
+  --reference /tmp/boom-translucency/reference-build/dsda-doom \
+  --out /tmp/boom-translucency-override
+```
+
+Across **30 fixed views**, 86 of 90 checked regions match DSDA pixel for pixel.
+Four regions permit one differing column (5% or 6.67% of their narrow regions)
+at native raster boundaries; their limits are explicit in the manifests.
+The complete CPU/GPU pairs match exactly, including the Source Port captures.
+Whole-frame DSDA differences remain below 1% in these fixtures and are shown
+in the diagnostic images. These are scoped comparisons, not full raster parity.
+
+`--check-tranmap` exports the reference filter and compares **all 65,536
+entries**. Both the generated default and supplied override match. The shader
+tests separately exercise every destination/source pair through two asymmetric
+layers using unique palette colors. Other focused tests cover tag/setup order,
+shared control sides, malformed-table texture fallback, source lighting before
+lookup, successive layers, rebuilt save references and ordinary-map fast paths.
+Framebuffer RGB is recovered through the renderer's existing palette lookup;
+the tests do not establish every duplicate-palette-index/custom-filter case.
+
+The earlier 19 water/actor views and two Ancient Aliens transfer views still
+pass their checks. All five existing no-monsters demo comparisons retain their
+**5,772 matching frames and exit tics**. The reference's BSP, sprite, plane and
+seg renderers are unchanged; the capture probe only adds resource export.
+Setup and blending follow [DSDA 260 setup](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_setup.c),
+[TRANMAP generation](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/dsda/tranmap.c)
+and [column compositing](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_drawflush.inl).
+
+### Rendering cost
+
+Maps without 260 keep the original cutout path and do not allocate translucency
+references or generate a filter. Visible translucent cutouts enable per-column
+depth ordering, grouped into adjacent runs. GPU passes reuse buffers and copy
+only the affected background columns; gameplay performs no framebuffer readback.
+Seven distinct referenced filters fit the current GPU metadata atlas; maps
+exceeding that limit use the CPU renderer.
+
+The before/after benchmark uses commit `5305ee5`, 20 warmup frames and **120
+measured frames per case**, at fixed cameras with VSync off. It times the world
+draw plus synchronized `ReadPixels`, which is benchmark-only. This host uses
+Mesa llvmpipe software rendering under Xvfb, so shader-backend numbers do not
+predict hardware-GPU gameplay FPS. A repeat vanilla-only run measured:
+
+| MAP01 view | Before p50/p95/p99 ms | After p50/p95/p99 ms |
+| --- | --- | --- |
+| CPU, 320×200 | 0.763 / 0.848 / 0.920 | 0.871 / 0.981 / 1.118 |
+| Shader, 320×200 | 1.636 / 1.817 / 1.839 | 1.677 / 1.863 / 1.892 |
+| CPU, 1280×800 | 6.757 / 7.610 / 8.286 | 6.651 / 7.212 / 7.326 |
+| Shader, 1280×800 | 8.747 / 9.198 / 9.241 | 8.884 / 9.385 / 9.580 |
+
+The low-resolution CPU increase is about 0.11 ms; this is not a zero-overhead
+claim. The separate full run measured the 1280×800 two-layer fixture at
+11.845 / 12.361 / 12.694 ms on CPU and 19.123 / 22.362 / 22.903 ms on the shader
+backend (p50/p95/p99). With opaque panels, the corresponding p50 values were
+5.533 and 7.382 ms. That comparison includes the extra background visibility,
+ordering and lookup work required by transparent panels.
+
+`TestBoomFrameTiming` is opt-in and portable to the previous commit for paired
+runs. Set `GD_FRAME_TIMING_OUT`, `GD_FRAME_TIMING_IWAD` and
+`GD_FRAME_TIMING_FIXTURE` (the capture harness's merged fixture WAD), then run
+`go test -tags integration ./internal/doomruntime -run '^TestBoomFrameTiming$'`.
+`GD_FRAME_TIMING_ONLY=vanilla-map01` repeats the vanilla views alone. These local
+samples are limited; combat, large translucent scenes and hardware GPUs need
+their own measurements.
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, friction, wind/pushers,
 silent line-to-line teleports/crushers,
-translucency, custom `ANIMATED`/`SWITCHES` tables,
+custom `ANIMATED`/`SWITCHES` tables,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
 

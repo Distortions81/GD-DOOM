@@ -69,8 +69,29 @@ func (g *game) boomSpriteLightLevel(sec int) int16 {
 	return g.sectorLightLevelCached(sec)
 }
 func (g *game) boomSpriteLightRow(sec int, fullbright bool, depth float64) int {
-	if fullbright || !g.boomHeightFrameValid || g.opts.SourcePortMode {
+	if fullbright || (!g.boomHeightFrameValid && !g.boomHasTranslucency) || g.opts.SourcePortMode {
 		return 0
 	}
 	return doomWallLightRow(g.boomSpriteLightLevel(sec), 0, depth, float64(g.viewW)/2)
+}
+
+// R_ProjectSprite quantizes depth with Doom's fine trig table before selecting
+// scalelight. Even angle zero has a small sine term, significant at row edges.
+func (g *game) boomSpriteLightRowAt(sec int, fullbright bool, x, y int64) int {
+	if fullbright || (!g.boomHeightFrameValid && !g.boomHasTranslucency) || g.opts.SourcePortMode {
+		return 0
+	}
+	dx, dy := x-floorFixed(g.renderPX), y-floorFixed(g.renderPY)
+	depth := fixedMul(dx, doomFineCosine(g.renderAngle)) + fixedMul(dy, doomFineSineAtAngle(g.renderAngle))
+	projection := int64(g.viewW/2) * fracUnit
+	index := 0
+	if depth > 0 && projection > 0 {
+		scale := fixedDiv(projection, depth)
+		index = min(doomMaxLightScale-1, max(0, int((scale*160/int64(g.viewW/2))>>12)))
+	}
+	light := g.boomSpriteLightLevel(sec)
+	if !doomSectorLighting {
+		light = 255
+	}
+	return doomClampColorMapRow(doomStartMap(doomClampLightNum(int(light)>>doomLightSegShift)) - index/doomDistMap)
 }

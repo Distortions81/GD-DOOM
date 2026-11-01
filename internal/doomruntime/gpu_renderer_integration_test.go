@@ -61,6 +61,7 @@ func runGPUFramebufferComparison(t *testing.T, includeFuzz bool) {
 		gpuCompareTextureCoordinates(t)
 		gpuCompareHiddenSky(t)
 		gpuCompareFaithfulPalette(t)
+		gpuCompareBoomTranslucency(t)
 		if includeFuzz {
 			gpuCompareSpectreFuzz(t)
 			gpuCompareFuzzDrawOrder(t)

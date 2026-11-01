@@ -24,7 +24,7 @@ func (g *game) initBoomTransfers() {
 		g.boomCeilingLight[i] = -1
 	}
 	for i, line := range g.m.Linedefs {
-		if !mapdata.IsTransferSpecial(line.Special) {
+		if !mapdata.IsTransferSpecial(line.Special) || line.Special == 260 {
 			continue
 		}
 		control, ok := g.sectorIndexFromSidedef(line.SideNum[0])
