@@ -7,6 +7,7 @@ import (
 )
 
 type plane3DKey struct {
+	skyLine          int
 	offsetX, offsetY int64
 	height           float64 // Map units; network presentation preserves sub-unit planes.
 	light            int16
@@ -160,7 +161,7 @@ func addCoveredRange(covered []spanRange, x1, x2 int) []spanRange {
 func plane3DKeyToScene(key plane3DKey) scene.PlaneKey {
 	return scene.PlaneKey{
 		Height: key.height, Light: key.light, Flat: strconv.FormatUint(uint64(key.flatID), 10),
-		Sky: key.sky, Floor: key.floor, OffsetX: key.offsetX, OffsetY: key.offsetY,
+		SkyLine: key.skyLine, Sky: key.sky, Floor: key.floor, OffsetX: key.offsetX, OffsetY: key.offsetY,
 	}
 }
 
@@ -172,7 +173,7 @@ func plane3DKeyFromScene(key scene.PlaneKey) plane3DKey {
 		}
 	}
 	return plane3DKey{
-		height: key.Height, offsetX: key.OffsetX, offsetY: key.OffsetY,
+		skyLine: key.SkyLine, height: key.Height, offsetX: key.OffsetX, offsetY: key.OffsetY,
 		light:  key.Light,
 		flatID: flatID,
 		sky:    key.Sky,

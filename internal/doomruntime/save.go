@@ -1517,6 +1517,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.ensureWeaponDefaults()
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
+	g.refreshSectorPlaneCacheLighting()
 	g.syncRenderState()
 }
 

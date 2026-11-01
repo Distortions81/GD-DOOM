@@ -91,7 +91,7 @@ func auditWAD(path string) (*wadAudit, error) {
 		mapName := string(name)
 		for i, ld := range m.Linedefs {
 			info := mapdata.LookupLineSpecial(ld.Special)
-			if mapdata.IsScrollingWallSpecial(ld.Special) {
+			if mapdata.IsScrollingWallSpecial(ld.Special) || mapdata.IsTransferSpecial(ld.Special) {
 				continue
 			}
 			if ld.Special != 0 && info.Trigger == mapdata.TriggerUnknown {

@@ -1,0 +1,33 @@
+[
+  {
+    "name": "aaliens01-start",
+    "map": "MAP01",
+    "X": 1160,
+    "Y": -2024,
+    "Z": -39,
+    "angle": 3758096384,
+    "tic": 0,
+    "category": "real-map",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          64,
+          0,
+          256,
+          16
+        ]
+      }
+    ]
+  },
+  {
+    "name": "aaliens01-east",
+    "map": "MAP01",
+    "X": 1160,
+    "Y": -2024,
+    "Z": -39,
+    "angle": 0,
+    "tic": 0,
+    "category": "real-map"
+  }
+]

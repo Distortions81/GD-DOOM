@@ -1,11 +1,13 @@
 package scene
 
 type WallPortalInput struct {
-	FrontFloor float64
-	FrontCeil  float64
-	BackFloor  float64
-	BackCeil   float64
-	EyeZ       float64
+	SeparatePlaneLights              bool
+	FloorLightDiff, CeilingLightDiff bool
+	FrontFloor                       float64
+	FrontCeil                        float64
+	BackFloor                        float64
+	BackCeil                         float64
+	EyeZ                             float64
 
 	FrontFloorFlat   string
 	FrontCeilingFlat string
@@ -52,12 +54,17 @@ func ClassifyWallPortal(in WallPortalInput) WallPortalState {
 			s.WorldTop = s.WorldHigh
 		}
 		lightDiff := in.BackLight != in.FrontLight && in.DoomSectorLighting
+		floorDiff, ceilDiff := lightDiff, lightDiff
+		if in.SeparatePlaneLights {
+			floorDiff = in.FloorLightDiff && in.DoomSectorLighting
+			ceilDiff = in.CeilingLightDiff && in.DoomSectorLighting
+		}
 		s.MarkFloor = s.WorldLow != s.WorldBottom ||
 			in.BackFloorFlat != in.FrontFloorFlat ||
-			lightDiff
+			floorDiff
 		s.MarkCeiling = s.WorldHigh != s.WorldTop ||
 			in.BackCeilingFlat != in.FrontCeilingFlat ||
-			lightDiff
+			ceilDiff
 		if skyPortal && in.BackCeil != in.FrontCeil {
 			s.MarkCeiling = true
 		}

@@ -126,6 +126,8 @@ func TestVisualRendererCapture(t *testing.T) {
 			}
 			opts := Options{Width: width, Height: height, PlayerSlot: 1, SkillLevel: 3, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: indices}
 			opts.DisableDoomLighting = os.Getenv("GD_VISUAL_DISABLE_LIGHTING") == "1"
+			opts.SourcePortMode = os.Getenv("GD_VISUAL_SOURCE_PORT") == "1"
+			opts.SourcePortSectorLighting = opts.SourcePortMode
 			opts.WallTextureAnimSequences = doomtex.LoadWallTextureAnimSequences(ts, doomtex.DoomWallAnimDefs)
 			opts.FlatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
 			g := newGame(m, opts)

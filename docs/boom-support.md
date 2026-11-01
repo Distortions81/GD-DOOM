@@ -6,6 +6,15 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Per-sector sky transfers (271/272): upper sidedef texture, Doom BAM horizontal
+  offsets, vertical offsets, optional flipping, sky floors and several skies
+  visible together. Tall skies retain their declared height. CPU/GPU share
+  per-sky coordinate lookups; Source Port honors its lighting settings.
+- Floor/ceiling light transfers (213/261): planes read the control sector's
+  current light, including glow/flash effects, while walls retain their own
+  sector lighting. Map references are rebuilt on load; restored light caches
+  are refreshed. These static features do not change simulation/save formats.
+
 - XNOD and zlib-compressed ZNOD data in the `NODES` lump, including fractional
   16.16 split vertices, 32-bit seg/subsector indices and BSP child references.
   Classic nodes use the same widened traversal. Malformed counts, references,
@@ -162,11 +171,60 @@ The generalized mover behavior follows [DSDA p_genlin.c](https://github.com/kraf
 Decoder tests cover both encodings, fractional
 vertices, indices above 65535, truncated payloads, bad counts and cyclic nodes.
 
+## Sky/light screenshot verification
+
+`testdata/boom/transfers.wad` contains original room geometry and a uniform
+flat for isolating transferred light from flat UV sampling. Regenerate it with
+`python3 scripts/make_boom_transfer_wad.py`. Its ten fixed views cover floor and
+ceiling lights, 271/272 flipping, both offsets, multiple skies and sky floors.
+Two additional fixed views use the hash-pinned Ancient Aliens WAD above.
+
+The capture harness builds a private copy of DSDA-Doom **0.27.5**, adding only
+camera setup, actor/HUD suppression, raw PLAYPAL export and camera logging.
+The software BSP/plane/column renderers are unchanged. Camera X/Y/eye Z,
+angle, leveltime and output dimensions must match before comparison succeeds.
+Only fixed cameras are accepted by this harness; it does not replay demos.
+
+```sh
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad testdata/boom/transfers.wad \
+  --scenes testdata/boom/transfer-scenes.json \
+  --reference-source /path/to/clean/dsda-doom-0.27.5 \
+  --out /tmp/boom-transfer-fixtures
+
+python3 scripts/verify_boom_transfers.py --iwad wads/DOOM2.WAD \
+  --pwad /path/to/aaliens_v1_2.wad \
+  --scenes testdata/boom/ancient-aliens-transfer-scenes.json \
+  --reference /tmp/boom-transfer-fixtures/reference-build/dsda-doom \
+  --out /tmp/boom-transfer-aaliens
+```
+
+Building the reference requires CMake, a C/C++ compiler, SDL2/SDL2_mixer, zlib,
+libzip and OpenGL development files. Optional music/image libraries are disabled.
+`--cmake-arg=-DNAME=value` can select a local dependency prefix. Capturing also
+requires Go, Pillow and `xvfb-run`. WADs and reference binaries remain local.
+
+At 320×200, all **15 explicitly checked transfer regions** matched DSDA pixel
+for pixel across these 12 views. Every full CPU/GPU pair also matched exactly.
+The ten fixture views additionally had identical CPU/GPU output in Source Port
+mode with sector lighting enabled. Whole-frame DSDA differences remain:
+fixture views differed at about 1.01–2.10% of pixels; the two Ancient Aliens
+views differed at 22.99–24.26%, with mean absolute channel error 1.72–1.73/255.
+The residual images include wall sampling and boundary differences; these checks
+establish the selected transfer effects, not full-frame DSDA raster parity.
+
+Each output directory includes `index.html`, three-way comparison images,
+amplified difference images, exact camera logs, source/content/binary hashes and
+`results.json`. The manifest's explicit regions use zero differing pixels as
+the pass criterion. Whole-frame differences are reported separately.
+Implementation references are [DSDA sky planes](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/r_plane.c)
+and [transfer setup](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_spec.c).
+
 ## Remaining work
 
 Generalized stairs/crushers and distinct card/skull locked doors, complete independent
 floor/ceiling slot handling for legacy actions, displacement/accelerative and
-wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers, height/light
+wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers, height
 transfers, deep water, translucency, custom `ANIMATED`/`SWITCHES` tables,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.

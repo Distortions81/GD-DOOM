@@ -629,151 +629,153 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected             []bool
-	thingDropped               []bool
-	thingThinkerOrder          []int64
-	thingSpawnPoint            []mapdata.Thing
-	prevThingX                 []int64
-	prevThingY                 []int64
-	prevThingZ                 []int64
-	thingRenderBlendFromX      []int64
-	thingRenderBlendFromY      []int64
-	thingRenderBlendTics       []int
-	thingX                     []int64
-	thingY                     []int64
-	thingMomX                  []int64
-	thingMomY                  []int64
-	thingMomZ                  []int64
-	thingTracerFireOrder       []int64
-	thingAngleState            []uint32
-	thingZState                []int64
-	thingFloorState            []int64
-	thingCeilState             []int64
-	thingSupportValid          []bool
-	thingSkullFly              []bool
-	skullRejectedAt            map[int]int
-	thingResumeChaseNow        []bool
-	thingBlockOrder            []int64
-	thingBlockCell             []int
-	thingBlockCells            [][]int
-	thingHP                    []int
-	thingAggro                 []bool
-	thingAmbush                []bool
-	thingTargetPlayer          []bool
-	thingTargetPlayerSlot      []int
-	thingTargetIdx             []int
-	thingTargetDirectReacquire []bool
-	thingThreshold             []int
-	thingCooldown              []int
-	thingMoveDir               []monsterMoveDir
-	thingMoveCount             []int
-	thingJustAtk               []bool
-	thingInFloat               []bool
-	thingJustHit               []bool
-	thingReactionTics          []int
-	thingWakeTics              []int
-	thingLastLook              []int
-	thingDead                  []bool
-	thingGibbed                []bool
-	thingGibTick               []int
-	thingTelefragTick          []int
-	thingXDeath                []bool
-	thingDeathTics             []int
-	thingAttackTics            []int
-	thingAttackPhase           []int
-	thingAttackFireTics        []int
-	thingPainTics              []int
-	thingThinkWait             []int
-	thingDoomState             []int
-	thingState                 []monsterThinkState
-	thingStateTics             []int
-	thingStatePhase            []int
-	thingWorldAnimRef          []thingAnimRefState
-	thingShadeTick             []int
-	thingShadeMul              []uint32
-	bossSpawnCubes             []bossSpawnCube
-	bossSpawnFires             []bossSpawnFire
-	bossBrainTargetOrder       int
-	bossBrainEasyToggle        bool
-	projectiles                []projectile
-	projectileImpacts          []projectileImpact
-	projectileShadeTick        []int
-	projectileShadeMul         []uint32
-	impactShadeTick            []int
-	impactShadeMul             []uint32
-	hitscanPuffs               []hitscanPuff
-	nextThinkerOrder           int64
-	nextBlockmapOrder          int64
-	platFree                   []*platThinker
-	cheatLevel                 int
-	invulnerable               bool
-	noClip                     bool
-	inventory                  playerInventory
-	alwaysRun                  bool
-	autoWeaponSwitch           bool
-	weaponRefire               bool
-	weaponAttackDown           bool
-	useButtonDown              bool
-	prevWeaponState            weaponPspriteState
-	prevWeaponFlashState       weaponPspriteState
-	prevWeaponPSpriteY         int
-	weaponState                weaponPspriteState
-	weaponStateTics            int
-	weaponFlashState           weaponPspriteState
-	weaponFlashTics            int
-	weaponPSpriteY             int
-	weaponPose, prevWeaponPose weaponPresentationPose
-	weaponClassicImage         *ebiten.Image
-	weaponClassicPixels        []byte
-	weaponFuzzPixels           []byte
-	weaponFuzzLogical          []byte
-	weaponFuzzPalette          map[uint32]byte
-	weaponFuzzColors           []byte
-	weaponFuzzGamma            int
-	stats                      playerStats
-	worldTic                   int
-	levelKillsTotal            int
-	levelItemsTotal            int
-	playerKillCount            int
-	playerItemCount            int
-	worldTicSample             int
-	spectreFuzzPos             int
-	spectreFuzzCoarseX         int
-	spectreFuzzCoarseY         int
-	spectreFuzzCoarseSet       bool
-	spectreFuzzSamplePix       []uint32
-	spectreFuzzSampleTic       int
-	spectreFuzzSampleInit      bool
-	playerViewZ                int64
-	secretFound                []bool
-	secretsFound               int
-	secretsTotal               int
-	sectorSoundTarget          []bool
-	sectorSoundPlayerSlot      []int
-	isDead                     bool
-	playerReborn               bool
-	playerMobjHealth           int
-	damageFlashTic             int
-	bonusFlashTic              int
-	sectorLightFx              []sectorLightEffect
-	subSectorSec               []int
-	sectorBBox                 []worldBBox
-	subSectorLoopVerts         [][]uint32
-	subSectorLoopDiag          []loopBuildDiag
-	subSectorPoly              [][]worldPt
-	subSectorTris              [][][3]int
-	subSectorBBox              []worldBBox
-	dynamicSectorMask          []bool
-	staticSubSectorMask        []bool
-	subSectorPlaneID           []int
-	sectorSubSectors           [][]int
-	holeFillPolys              []holeFillPoly
-	sectorPlaneTris            [][]worldTri
-	sectorPlaneCache           []sectorPlaneCacheEntry
-	sectorLightCacheTick       int
-	sectorLightCacheValid      bool
-	orphanSubSector            []bool
-	orphanRepairQueue          []orphanRepairCandidate
+	thingCollected                                []bool
+	thingDropped                                  []bool
+	thingThinkerOrder                             []int64
+	thingSpawnPoint                               []mapdata.Thing
+	prevThingX                                    []int64
+	prevThingY                                    []int64
+	prevThingZ                                    []int64
+	thingRenderBlendFromX                         []int64
+	thingRenderBlendFromY                         []int64
+	thingRenderBlendTics                          []int
+	thingX                                        []int64
+	thingY                                        []int64
+	thingMomX                                     []int64
+	thingMomY                                     []int64
+	thingMomZ                                     []int64
+	thingTracerFireOrder                          []int64
+	thingAngleState                               []uint32
+	thingZState                                   []int64
+	thingFloorState                               []int64
+	thingCeilState                                []int64
+	thingSupportValid                             []bool
+	thingSkullFly                                 []bool
+	skullRejectedAt                               map[int]int
+	thingResumeChaseNow                           []bool
+	thingBlockOrder                               []int64
+	thingBlockCell                                []int
+	thingBlockCells                               [][]int
+	thingHP                                       []int
+	thingAggro                                    []bool
+	thingAmbush                                   []bool
+	thingTargetPlayer                             []bool
+	thingTargetPlayerSlot                         []int
+	thingTargetIdx                                []int
+	thingTargetDirectReacquire                    []bool
+	thingThreshold                                []int
+	thingCooldown                                 []int
+	thingMoveDir                                  []monsterMoveDir
+	thingMoveCount                                []int
+	thingJustAtk                                  []bool
+	thingInFloat                                  []bool
+	thingJustHit                                  []bool
+	thingReactionTics                             []int
+	thingWakeTics                                 []int
+	thingLastLook                                 []int
+	thingDead                                     []bool
+	thingGibbed                                   []bool
+	thingGibTick                                  []int
+	thingTelefragTick                             []int
+	thingXDeath                                   []bool
+	thingDeathTics                                []int
+	thingAttackTics                               []int
+	thingAttackPhase                              []int
+	thingAttackFireTics                           []int
+	thingPainTics                                 []int
+	thingThinkWait                                []int
+	thingDoomState                                []int
+	thingState                                    []monsterThinkState
+	thingStateTics                                []int
+	thingStatePhase                               []int
+	thingWorldAnimRef                             []thingAnimRefState
+	thingShadeTick                                []int
+	thingShadeMul                                 []uint32
+	bossSpawnCubes                                []bossSpawnCube
+	bossSpawnFires                                []bossSpawnFire
+	bossBrainTargetOrder                          int
+	bossBrainEasyToggle                           bool
+	projectiles                                   []projectile
+	projectileImpacts                             []projectileImpact
+	projectileShadeTick                           []int
+	projectileShadeMul                            []uint32
+	impactShadeTick                               []int
+	impactShadeMul                                []uint32
+	hitscanPuffs                                  []hitscanPuff
+	nextThinkerOrder                              int64
+	nextBlockmapOrder                             int64
+	platFree                                      []*platThinker
+	cheatLevel                                    int
+	invulnerable                                  bool
+	noClip                                        bool
+	inventory                                     playerInventory
+	alwaysRun                                     bool
+	autoWeaponSwitch                              bool
+	weaponRefire                                  bool
+	weaponAttackDown                              bool
+	useButtonDown                                 bool
+	prevWeaponState                               weaponPspriteState
+	prevWeaponFlashState                          weaponPspriteState
+	prevWeaponPSpriteY                            int
+	weaponState                                   weaponPspriteState
+	weaponStateTics                               int
+	weaponFlashState                              weaponPspriteState
+	weaponFlashTics                               int
+	weaponPSpriteY                                int
+	weaponPose, prevWeaponPose                    weaponPresentationPose
+	weaponClassicImage                            *ebiten.Image
+	weaponClassicPixels                           []byte
+	weaponFuzzPixels                              []byte
+	weaponFuzzLogical                             []byte
+	weaponFuzzPalette                             map[uint32]byte
+	weaponFuzzColors                              []byte
+	weaponFuzzGamma                               int
+	stats                                         playerStats
+	worldTic                                      int
+	levelKillsTotal                               int
+	levelItemsTotal                               int
+	playerKillCount                               int
+	playerItemCount                               int
+	worldTicSample                                int
+	spectreFuzzPos                                int
+	spectreFuzzCoarseX                            int
+	spectreFuzzCoarseY                            int
+	spectreFuzzCoarseSet                          bool
+	spectreFuzzSamplePix                          []uint32
+	spectreFuzzSampleTic                          int
+	spectreFuzzSampleInit                         bool
+	playerViewZ                                   int64
+	secretFound                                   []bool
+	secretsFound                                  int
+	secretsTotal                                  int
+	sectorSoundTarget                             []bool
+	sectorSoundPlayerSlot                         []int
+	isDead                                        bool
+	playerReborn                                  bool
+	playerMobjHealth                              int
+	damageFlashTic                                int
+	bonusFlashTic                                 int
+	boomFloorLight, boomCeilingLight, boomSkyLine []int
+	frameTransferSkies                            []*boomSkyFrame
+	sectorLightFx                                 []sectorLightEffect
+	subSectorSec                                  []int
+	sectorBBox                                    []worldBBox
+	subSectorLoopVerts                            [][]uint32
+	subSectorLoopDiag                             []loopBuildDiag
+	subSectorPoly                                 [][]worldPt
+	subSectorTris                                 [][][3]int
+	subSectorBBox                                 []worldBBox
+	dynamicSectorMask                             []bool
+	staticSubSectorMask                           []bool
+	subSectorPlaneID                              []int
+	sectorSubSectors                              [][]int
+	holeFillPolys                                 []holeFillPoly
+	sectorPlaneTris                               [][]worldTri
+	sectorPlaneCache                              []sectorPlaneCacheEntry
+	sectorLightCacheTick                          int
+	sectorLightCacheValid                         bool
+	orphanSubSector                               []bool
+	orphanRepairQueue                             []orphanRepairCandidate
 
 	mapFloorLayer                 *ebiten.Image
 	mapFloorPix                   []byte
@@ -1534,6 +1536,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.initPhysics()
 	g.initTimedDoorSpecials()
 	g.initBoomScrollers()
+	g.initBoomTransfers()
 	// Initialize eye height after physics snaps player Z/floor/ceiling.
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
@@ -5186,7 +5189,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 		if !g.opts.SourcePortMode && back != nil && frontFloor == backFloor && frontCeil == backCeil &&
 			front.FloorPic == back.FloorPic && front.CeilingPic == back.CeilingPic &&
-			frontLight == g.sectorLightForRender(backIdx, back) && (frontSideDef == nil || frontSideDef.Mid == "" || frontSideDef.Mid == "-") {
+			frontLight == g.sectorLightForRender(backIdx, back) && !g.planeTransfersDiffer(frontIdx, backIdx, true) && !g.planeTransfersDiffer(frontIdx, backIdx, false) && (frontSideDef == nil || frontSideDef.Mid == "" || frontSideDef.Mid == "-") {
 			// R_AddLine ignores identical-sector trigger lines. Processing one
 			// can change the current visplane and later sky/flat coverage.
 			continue
@@ -5577,11 +5580,14 @@ func (g *game) sectorLightForRender(secIdx int, sec *mapdata.Sector) int16 {
 	return 160
 }
 
-func (g *game) sectorsLightDifferForRender(frontSectorIdx, backSectorIdx int, front, back *mapdata.Sector) bool {
+func (g *game) sectorsLightDifferForRender(a, b int, front, back *mapdata.Sector) bool {
+	if g.skyLineForSector(a) != g.skyLineForSector(b) {
+		return true
+	}
 	if !doomSectorLighting && g != nil && g.opts.SourcePortMode {
 		return false
 	}
-	return g.sectorLightForRender(frontSectorIdx, front) != g.sectorLightForRender(backSectorIdx, back)
+	return g.sectorLightForRender(a, front) != g.sectorLightForRender(b, back) || g.planeTransfersDiffer(a, b, true) || g.planeTransfersDiffer(a, b, false) || g.planeLightForRender(a, front, true) != g.planeLightForRender(b, back, true) || g.planeLightForRender(a, front, false) != g.planeLightForRender(b, back, false)
 }
 
 func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) scene.WallPortalState {
@@ -5607,12 +5613,20 @@ func (g *game) classifyWallPortalCached(frontIdx int, front, back *mapdata.Secto
 		in.BackLight = g.sectorLightForRender(backIdx, back)
 		in.IsBackCeilingSky = isSkyFlatName(back.CeilingPic)
 	}
+	if g != nil && back != nil {
+		in.SeparatePlaneLights = true
+		in.FloorLightDiff = g.planeTransfersDiffer(frontIdx, backIdx, true) || g.planeLightForRender(frontIdx, front, true) != g.planeLightForRender(backIdx, back, true)
+		in.CeilingLightDiff = g.planeTransfersDiffer(frontIdx, backIdx, false) || g.planeLightForRender(frontIdx, front, false) != g.planeLightForRender(backIdx, back, false)
+	}
 	state := scene.ClassifyWallPortal(in)
 	if (g == nil || !g.opts.SourcePortMode) && in.BackExists && in.IsFrontCeilingSky && in.IsBackCeilingSky &&
 		backCeil > frontFloor && backFloor < frontCeil {
 		// R_StoreWallRange substitutes the back sky height before deciding
 		// whether to mark the ceiling; a sky height change alone is not a seam.
 		state.MarkCeiling = in.DoomSectorLighting && in.FrontLight != in.BackLight
+		if in.SeparatePlaneLights {
+			state.MarkCeiling = in.CeilingLightDiff
+		}
 	}
 	return state
 }
@@ -5675,7 +5689,7 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 		}
 		key.offsetX, key.offsetY = int64(int32(vector.x*int64(g.worldTic))), int64(int32(vector.y*int64(g.worldTic)))
 	}
-	key.light = g.sectorLightForRender(secIdx, sec)
+	key.light = g.planeLightForRender(secIdx, sec, floor)
 	pic := sec.CeilingPic
 	key.height = float64(sec.CeilingHeight)
 	if floor {
@@ -5690,7 +5704,8 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 			}
 		}
 	}
-	if (!floor || !g.opts.SourcePortMode) && isSkyFlatName(pic) {
+	if isSkyFlatName(pic) {
+		key.skyLine = g.skyLineForSector(secIdx)
 		key.sky = true
 		key.height = 0
 		key.light = 0
@@ -5919,6 +5934,7 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 	if g == nil {
 		return
 	}
+	g.frameTransferSkies = g.frameTransferSkies[:0]
 	g.frameSkyLayerEnabled = false
 	g.frameSkyTex32 = nil
 	g.frameSkyIndexed = nil
@@ -9672,6 +9688,15 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
 	planeFlatSamples := make([]flatTextureBlendSample, len(planes))
+	transferredSkies := g.prepareTransferredSkies(planes, math.Atan2(sa, ca), focal)
+	lookupRows := make(map[int]int)
+	for i, f := range g.frameTransferSkies {
+		for id, s := range transferredSkies {
+			if f == s {
+				lookupRows[id] = 2 * (i + 1)
+			}
+		}
+	}
 	skyTexReady := hasSky &&
 		len(g.frameSkyColU) == w &&
 		len(g.frameSkyRowV) == h &&
@@ -9679,7 +9704,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		g.frameSkyTexW > 0
 	skyLayerEnabled := skyTexReady && g.frameSkyLayerEnabled
 	var gpuSky gpuTexture
-	if g.gpuFrame != nil && !g.opts.SourcePortMode && skyTexReady {
+	if g.gpuFrame != nil && (!g.opts.SourcePortMode || len(g.frameTransferSkies) > 0) && skyTexReady {
 		_, skyTex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name)
 		if ok {
 			if !g.opts.SourcePortMode && skyTex.ClassicOpaque != nil {
@@ -9728,6 +9753,29 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			rowOccluders = g.billboardPlaneOccluderRows[sp.y]
 		}
 		if key.sky {
+			transferred := transferredSkies[key.skyLine]
+			if transferred != nil {
+				if len(rowOccluders) != 0 {
+					planeClipScratch = clipRangeAgainstBillboardPlaneOccluders(x1, x2, 0xFFFF, rowOccluders, planeClipScratch)
+				} else {
+					planeClipScratch = append(planeClipScratch[:0], solidSpan{L: x1, R: x2})
+				}
+				if g.gpuFrame != nil {
+					if transferred.ready {
+						for _, vis := range planeClipScratch {
+							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, transferred.gpu, transferred.gpu, 10, 256, 0, float32(lookupRows[key.skyLine]), 0, 0, 0)
+						}
+					}
+					return planeClipScratch
+				}
+				v := transferred.rows[sp.y]
+				for _, vis := range planeClipScratch {
+					for x := vis.L; x <= vis.R; x++ {
+						pix32[rowPix+x] = g.transferredSkyPixel(transferred, v*transferred.texture.Width+transferred.columns[x])
+					}
+				}
+				return planeClipScratch
+			}
 			if len(rowOccluders) != 0 {
 				planeClipScratch = clipRangeAgainstBillboardPlaneOccluders(x1, x2, 0xFFFF, rowOccluders, planeClipScratch)
 				if len(planeClipScratch) == 0 {
@@ -9739,7 +9787,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			if g.gpuFrame != nil {
 				if skyTexReady {
 					for _, vis := range planeClipScratch {
-						if g.opts.SourcePortMode {
+						if g.opts.SourcePortMode && len(g.frameTransferSkies) == 0 {
 							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuTexture{}, gpuTexture{}, 7, 0, 0, 0, 0, 0, 0)
 						} else {
 							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuSky, gpuSky, 10, 256, 0, 0, 0, 0, 0)

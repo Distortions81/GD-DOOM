@@ -1,0 +1,248 @@
+[
+  {
+    "name": "transfer-1-east",
+    "map": "MAP01",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "ceiling-light",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      },
+      {
+        "name": "floor-light",
+        "box": [
+          80,
+          180,
+          240,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-1-north",
+    "map": "MAP01",
+    "X": -128,
+    "Y": -80,
+    "Z": 41,
+    "angle": 1073741824,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "ceiling-light",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      },
+      {
+        "name": "floor-light",
+        "box": [
+          80,
+          180,
+          240,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-2-east",
+    "map": "MAP02",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-2-north",
+    "map": "MAP02",
+    "X": -128,
+    "Y": -80,
+    "Z": 41,
+    "angle": 1073741824,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-3-east",
+    "map": "MAP03",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-3-north",
+    "map": "MAP03",
+    "X": -128,
+    "Y": -80,
+    "Z": 41,
+    "angle": 1073741824,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "transferred-sky",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-4-east",
+    "map": "MAP04",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "multi-sky",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      },
+      {
+        "name": "floor-light",
+        "box": [
+          80,
+          180,
+          240,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-4-north",
+    "map": "MAP04",
+    "X": -128,
+    "Y": -80,
+    "Z": 41,
+    "angle": 1073741824,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "multi-sky",
+        "box": [
+          80,
+          0,
+          240,
+          25
+        ]
+      },
+      {
+        "name": "floor-light",
+        "box": [
+          80,
+          180,
+          240,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-5-east",
+    "map": "MAP05",
+    "X": -128,
+    "Y": 0,
+    "Z": 41,
+    "angle": 0,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "floor-sky",
+        "box": [
+          80,
+          180,
+          240,
+          200
+        ]
+      }
+    ]
+  },
+  {
+    "name": "transfer-5-north",
+    "map": "MAP05",
+    "X": -128,
+    "Y": -80,
+    "Z": 41,
+    "angle": 1073741824,
+    "tic": 0,
+    "category": "transfer",
+    "checks": [
+      {
+        "name": "floor-sky",
+        "box": [
+          80,
+          180,
+          240,
+          200
+        ]
+      }
+    ]
+  }
+]

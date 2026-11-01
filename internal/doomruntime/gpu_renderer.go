@@ -671,8 +671,8 @@ func (r *gpuRenderer) drawCommandsSized(dst *ebiten.Image, commands *gpuCommands
 func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	r := g.gpuFrame
 	var skyBackground *ebiten.Image
-	if !g.opts.SourcePortMode {
-		r.updateSkyLookup(g.frameSkyColU, g.frameSkyRowV)
+	if !g.opts.SourcePortMode || len(g.frameTransferSkies) > 0 {
+		r.updateSkyLookup(g.frameSkyColU, g.frameSkyRowV, g.frameTransferSkies...)
 		skyBackground = r.skyLookup
 	}
 	if r.metadataDirty {
@@ -686,7 +686,7 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	}
 	r.frame.Fill(background)
 	r.snapshot.Clear()
-	if r.skyCommands.used > 0 {
+	if r.skyCommands.used > 0 && len(g.frameTransferSkies) == 0 {
 		if key, tex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name); ok {
 			g.initSkyLayerShader()
 			if g.enableSkyLayerFrame(camAng, focal, key, tex, effectiveSkyTexHeight(tex)) {
@@ -694,7 +694,7 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 			}
 		}
 	}
-	if g.opts.SourcePortMode {
+	if g.opts.SourcePortMode && len(g.frameTransferSkies) == 0 {
 		skyBackground = r.snapshot
 	}
 	r.drawCommands(r.frame, &r.skyCommands, ebiten.BlendSourceOver, skyBackground, g.worldTic)
@@ -788,19 +788,28 @@ func (r *gpuRenderer) drawSceneCutoutPasses() {
 
 // Keep Faithful sky sampling identical to the CPU's column/row lookups.
 // Only the lookup coordinates are uploaded; the sky texture stays in its atlas.
-func (r *gpuRenderer) updateSkyLookup(columns, rows []int) {
+func (r *gpuRenderer) updateSkyLookup(columns, rows []int, transfers ...*boomSkyFrame) {
+	height := 2 * (1 + len(transfers))
 	w := max(len(columns), len(rows))
+	for _, f := range transfers {
+		w = max(w, len(f.columns))
+		w = max(w, len(f.rows))
+	}
 	if w == 0 {
 		return
 	}
-	if r.skyLookup == nil || r.skyLookup.Bounds().Dx() != w {
+	if r.skyLookup == nil || (r.skyLookup.Bounds().Dx() != w || r.skyLookup.Bounds().Dy() != height) {
 		if r.skyLookup != nil {
 			r.skyLookup.Deallocate()
 		}
-		r.skyLookup = newUnmanagedImage(w, 2)
-		r.skyLookupPixels = make([]byte, w*2*4)
+		r.skyLookup = newUnmanagedImage(w, height)
+		r.skyLookupPixels = make([]byte, w*height*4)
 	}
-	for y, coords := range [][]int{columns, rows} {
+	coordsList := [][]int{columns, rows}
+	for _, f := range transfers {
+		coordsList = append(coordsList, f.columns, f.rows)
+	}
+	for y, coords := range coordsList {
 		for x, coord := range coords {
 			i := (y*w + x) * 4
 			r.skyLookupPixels[i], r.skyLookupPixels[i+1], r.skyLookupPixels[i+3] = byte(coord), byte(coord>>8), 255

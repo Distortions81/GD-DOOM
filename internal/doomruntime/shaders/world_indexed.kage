@@ -138,8 +138,8 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	var uv vec2
 	if mode == 10 {
 		// Faithful sky uses the CPU's exact per-column and per-row coordinates.
-		x := floor(imageSrc3UnsafeAt(imageSrc0Origin()+vec2(floor(dstPos.x)+0.5, 0.5)).rg*255.0+vec2(0.5))
-		y := floor(imageSrc3UnsafeAt(imageSrc0Origin()+vec2(floor(dstPos.y)+0.5, 1.5)).rg*255.0+vec2(0.5))
+		x := floor(imageSrc3UnsafeAt(imageSrc0Origin()+vec2(floor(dstPos.x)+0.5, custom.x+0.5)).rg*255.0+vec2(0.5))
+		y := floor(imageSrc3UnsafeAt(imageSrc0Origin()+vec2(floor(dstPos.y)+0.5, custom.x+1.5)).rg*255.0+vec2(0.5))
 		uv = vec2(x.r+x.g*256.0, y.r+y.g*256.0)
 	} else if mode == 0 {
 		uv = vec2(fixedTexel(custom.x, custom.z, delta.x, meta.z), fixedTexel(custom.y, custom.w, delta.x, meta.w))

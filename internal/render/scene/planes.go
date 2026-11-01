@@ -3,6 +3,7 @@ package scene
 const PlaneUnset int16 = -1
 
 type PlaneKey struct {
+	SkyLine          int
 	OffsetX, OffsetY int64
 	Height           float64 // Map units, including interpolated fractional heights.
 	Light            int16
