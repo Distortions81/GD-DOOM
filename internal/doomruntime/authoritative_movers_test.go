@@ -86,7 +86,7 @@ func supportTransitionTestWorld(t *testing.T, entering bool) (*Authority, *Clien
 	m.Sidedefs = append(m.Sidedefs, mapdata.Sidedef{Sector: 1})
 	m.Linedefs[0].SideNum[0] = 1
 	m.SubSectors = []mapdata.SubSector{{SegCount: 1, FirstSeg: 2}, {SegCount: 1}}
-	m.Nodes = []mapdata.Node{{DY: 128, ChildID: [2]uint16{0x8000, 0x8001}}}
+	m.Nodes = []mapdata.Node{{DY: 128, ChildID: [2]uint32{0x80000000, 0x80000001}}}
 	m.Things[0].X = 2
 	if entering {
 		m.Things[0].X = -2

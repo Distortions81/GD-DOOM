@@ -31,7 +31,7 @@ func TestSubsectorVertexLoopFromSegOrder(t *testing.T) {
 	if len(chain) != 4 {
 		t.Fatalf("expected 4 vertices, got %d", len(chain))
 	}
-	want := []uint16{0, 1, 2, 3}
+	want := []uint32{0, 1, 2, 3}
 	for i := range want {
 		if chain[i] != want[i] {
 			t.Fatalf("chain[%d]=%d want %d", i, chain[i], want[i])

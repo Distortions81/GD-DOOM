@@ -207,6 +207,9 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 	if v == nil {
 		return nil
 	}
+	if err := w.bool(v.ExtendedNodes); err != nil {
+		return err
+	}
 	if err := w.mapName(v.Name); err != nil {
 		return err
 	}
@@ -224,10 +227,10 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 		return err
 	}
 	for _, it := range v.Vertexes {
-		if err := w.i16(it.X); err != nil {
+		if err := w.f64(it.X); err != nil {
 			return err
 		}
-		if err := w.i16(it.Y); err != nil {
+		if err := w.f64(it.Y); err != nil {
 			return err
 		}
 	}
@@ -308,7 +311,16 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 		return err
 	}
 	for _, it := range v.Segs {
-		for _, n := range []uint16{it.StartVertex, it.EndVertex, it.Angle, it.Linedef, it.Direction, it.Offset} {
+		if err := w.u32(it.StartVertex); err != nil {
+			return err
+		}
+		if err := w.u32(it.EndVertex); err != nil {
+			return err
+		}
+		if err := w.f64(it.Offset); err != nil {
+			return err
+		}
+		for _, n := range []uint16{it.Angle, it.Linedef, it.Direction} {
 			if err := w.u16(n); err != nil {
 				return err
 			}
@@ -318,10 +330,10 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 		return err
 	}
 	for _, it := range v.SubSectors {
-		if err := w.u16(it.SegCount); err != nil {
+		if err := w.u32(it.SegCount); err != nil {
 			return err
 		}
-		if err := w.u16(it.FirstSeg); err != nil {
+		if err := w.u32(it.FirstSeg); err != nil {
 			return err
 		}
 	}
@@ -342,7 +354,7 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 			}
 		}
 		for _, n := range it.ChildID {
-			if err := w.u16(n); err != nil {
+			if err := w.u32(n); err != nil {
 				return err
 			}
 		}
@@ -1358,6 +1370,9 @@ func (r saveBinaryReader) mapData() (*mapdata.Map, error) {
 		return nil, err
 	}
 	v := &mapdata.Map{}
+	if v.ExtendedNodes, err = r.bool(); err != nil {
+		return nil, err
+	}
 	if v.Name, err = r.mapName(); err != nil {
 		return nil, err
 	}
@@ -1376,10 +1391,10 @@ func (r saveBinaryReader) mapData() (*mapdata.Map, error) {
 	if v.Vertexes, err = readSlice(r, func() (mapdata.Vertex, error) {
 		var it mapdata.Vertex
 		var err error
-		if it.X, err = r.i16(); err != nil {
+		if it.X, err = r.f64(); err != nil {
 			return it, err
 		}
-		if it.Y, err = r.i16(); err != nil {
+		if it.Y, err = r.f64(); err != nil {
 			return it, err
 		}
 		return it, nil
@@ -1468,10 +1483,13 @@ func (r saveBinaryReader) mapData() (*mapdata.Map, error) {
 	}
 	if v.Segs, err = readSlice(r, func() (mapdata.Seg, error) {
 		var it mapdata.Seg
-		if it.StartVertex, err = r.u16(); err != nil {
+		if it.StartVertex, err = r.u32(); err != nil {
 			return it, err
 		}
-		if it.EndVertex, err = r.u16(); err != nil {
+		if it.EndVertex, err = r.u32(); err != nil {
+			return it, err
+		}
+		if it.Offset, err = r.f64(); err != nil {
 			return it, err
 		}
 		if it.Angle, err = r.u16(); err != nil {
@@ -1483,19 +1501,17 @@ func (r saveBinaryReader) mapData() (*mapdata.Map, error) {
 		if it.Direction, err = r.u16(); err != nil {
 			return it, err
 		}
-		if it.Offset, err = r.u16(); err != nil {
-			return it, err
-		}
+
 		return it, nil
 	}); err != nil {
 		return nil, err
 	}
 	if v.SubSectors, err = readSlice(r, func() (mapdata.SubSector, error) {
 		var it mapdata.SubSector
-		if it.SegCount, err = r.u16(); err != nil {
+		if it.SegCount, err = r.u32(); err != nil {
 			return it, err
 		}
-		if it.FirstSeg, err = r.u16(); err != nil {
+		if it.FirstSeg, err = r.u32(); err != nil {
 			return it, err
 		}
 		return it, nil
@@ -1520,7 +1536,7 @@ func (r saveBinaryReader) mapData() (*mapdata.Map, error) {
 			}
 		}
 		for i := range it.ChildID {
-			if it.ChildID[i], err = r.u16(); err != nil {
+			if it.ChildID[i], err = r.u32(); err != nil {
 				return it, err
 			}
 		}

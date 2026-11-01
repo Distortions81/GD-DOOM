@@ -93,7 +93,7 @@ func TestTryMoveWithPickupProbe_NoClipCrossesBlockingLine(t *testing.T) {
 				{Linedef: 0, Direction: 1},
 			},
 			Nodes: []mapdata.Node{
-				{DX: 0, DY: 128, ChildID: [2]uint16{0x8001, 0x8000}},
+				{DX: 0, DY: 128, ChildID: [2]uint32{0x80000001, 0x80000000}},
 			},
 		},
 		subSectorSec: []int{0, 1},

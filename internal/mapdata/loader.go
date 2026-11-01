@@ -75,17 +75,27 @@ func LoadMap(f *wad.File, name MapName) (*Map, error) {
 	if m.Vertexes, err = decodeVertexes(f, resolved["VERTEXES"]); err != nil {
 		return nil, err
 	}
-	if m.Segs, err = decodeSegs(f, resolved["SEGS"]); err != nil {
+	nodeData, err := f.LumpDataView(resolved["NODES"])
+	if err != nil {
 		return nil, err
 	}
-	if m.SubSectors, err = decodeSubSectors(f, resolved["SSECTORS"]); err != nil {
-		return nil, err
-	}
-	if m.Nodes, err = decodeNodes(f, resolved["NODES"]); err != nil {
-		if wadHasXNOD(f) {
-			return nil, fmt.Errorf("map %s has no usable vanilla NODES lump and includes XNOD data; it may use a BSP node format we do not support", target)
+	if len(nodeData) >= 4 && (string(nodeData[:4]) == "XNOD" || string(nodeData[:4]) == "ZNOD") {
+		if err = decodeExtendedNodes(m, nodeData); err != nil {
+			return nil, fmt.Errorf("map %s: %w", target, err)
 		}
-		return nil, err
+	} else {
+		if m.Segs, err = decodeSegs(f, resolved["SEGS"]); err != nil {
+			return nil, err
+		}
+		if m.SubSectors, err = decodeSubSectors(f, resolved["SSECTORS"]); err != nil {
+			return nil, err
+		}
+		if m.Nodes, err = decodeNodes(f, resolved["NODES"]); err != nil {
+			if wadHasXNOD(f) {
+				return nil, fmt.Errorf("map %s has no usable vanilla NODES lump and includes XNOD data; it may use a BSP node format we do not support", target)
+			}
+			return nil, err
+		}
 	}
 	if m.Sectors, err = decodeSectors(f, resolved["SECTORS"]); err != nil {
 		return nil, err
@@ -243,8 +253,8 @@ func decodeVertexes(f *wad.File, l wad.Lump) ([]Vertex, error) {
 	for i := 0; i < len(data); i += size {
 		r := data[i : i+size]
 		out = append(out, Vertex{
-			X: int16(binary.LittleEndian.Uint16(r[0:2])),
-			Y: int16(binary.LittleEndian.Uint16(r[2:4])),
+			X: float64(int16(binary.LittleEndian.Uint16(r[0:2]))),
+			Y: float64(int16(binary.LittleEndian.Uint16(r[2:4]))),
 		})
 	}
 	return out, nil
@@ -263,12 +273,12 @@ func decodeSegs(f *wad.File, l wad.Lump) ([]Seg, error) {
 	for i := 0; i < len(data); i += size {
 		r := data[i : i+size]
 		out = append(out, Seg{
-			StartVertex: binary.LittleEndian.Uint16(r[0:2]),
-			EndVertex:   binary.LittleEndian.Uint16(r[2:4]),
+			StartVertex: uint32(binary.LittleEndian.Uint16(r[0:2])),
+			EndVertex:   uint32(binary.LittleEndian.Uint16(r[2:4])),
 			Angle:       binary.LittleEndian.Uint16(r[4:6]),
 			Linedef:     binary.LittleEndian.Uint16(r[6:8]),
 			Direction:   binary.LittleEndian.Uint16(r[8:10]),
-			Offset:      binary.LittleEndian.Uint16(r[10:12]),
+			Offset:      float64(binary.LittleEndian.Uint16(r[10:12])),
 		})
 	}
 	return out, nil
@@ -287,8 +297,8 @@ func decodeSubSectors(f *wad.File, l wad.Lump) ([]SubSector, error) {
 	for i := 0; i < len(data); i += size {
 		r := data[i : i+size]
 		out = append(out, SubSector{
-			SegCount: binary.LittleEndian.Uint16(r[0:2]),
-			FirstSeg: binary.LittleEndian.Uint16(r[2:4]),
+			SegCount: uint32(binary.LittleEndian.Uint16(r[0:2])),
+			FirstSeg: uint32(binary.LittleEndian.Uint16(r[2:4])),
 		})
 	}
 	return out, nil
@@ -316,8 +326,8 @@ func decodeNodes(f *wad.File, l wad.Lump) ([]Node, error) {
 			n.BBoxR[bi] = int16(binary.LittleEndian.Uint16(r[8+bi*2 : 10+bi*2]))
 			n.BBoxL[bi] = int16(binary.LittleEndian.Uint16(r[16+bi*2 : 18+bi*2]))
 		}
-		n.ChildID[0] = binary.LittleEndian.Uint16(r[24:26])
-		n.ChildID[1] = binary.LittleEndian.Uint16(r[26:28])
+		n.ChildID[0] = classicNodeChild(binary.LittleEndian.Uint16(r[24:26]))
+		n.ChildID[1] = classicNodeChild(binary.LittleEndian.Uint16(r[26:28]))
 		out = append(out, n)
 	}
 	return out, nil
@@ -446,4 +456,11 @@ func parseName(b []byte) string {
 		n--
 	}
 	return string(b[:n])
+}
+
+func classicNodeChild(child uint16) uint32 {
+	if child&0x8000 != 0 {
+		return SubsectorFlag | uint32(child&0x7fff)
+	}
+	return uint32(child)
 }

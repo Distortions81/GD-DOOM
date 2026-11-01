@@ -66,7 +66,7 @@ func main() {
 			ld := m.Linedefs[lineIdx]
 			v1 := m.Vertexes[ld.V1]
 			v2 := m.Vertexes[ld.V2]
-			fmt.Printf("line %d verts=(%d,%d)->(%d,%d)\n", lineIdx, v1.X, v1.Y, v2.X, v2.Y)
+			fmt.Printf("line %v verts=(%v,%v)->(%v,%v)\n", lineIdx, v1.X, v1.Y, v2.X, v2.Y)
 		}
 	}
 

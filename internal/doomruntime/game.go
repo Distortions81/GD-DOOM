@@ -758,7 +758,7 @@ type game struct {
 	sectorLightFx              []sectorLightEffect
 	subSectorSec               []int
 	sectorBBox                 []worldBBox
-	subSectorLoopVerts         [][]uint16
+	subSectorLoopVerts         [][]uint32
 	subSectorLoopDiag          []loopBuildDiag
 	subSectorPoly              [][]worldPt
 	subSectorTris              [][][3]int
@@ -5142,8 +5142,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		wallLightBias := doomWallLightBias(&ld, g.m.Vertexes)
 		if !g.opts.SourcePortMode {
 			seg := g.m.Segs[si]
-			axis := mapdata.Linedef{V1: seg.StartVertex, V2: seg.EndVertex}
-			wallLightBias = doomWallLightBias(&axis, g.m.Vertexes)
+			wallLightBias = segWallLightBias(seg, g.m.Vertexes)
 		}
 		var frontSideDef *mapdata.Sidedef
 		if pp.frontSideDefIdx >= 0 && pp.frontSideDefIdx < len(g.m.Sidedefs) {
@@ -14469,7 +14468,7 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 	prepass := scene.BuildWallPrepassFromWorld(input, camX, camY, ca, sa, g.viewW, focal, near)
 	pp.prepass = prepass
 	if !g.opts.SourcePortMode && si >= 0 && si < len(g.m.Segs) {
-		pp.classic = newClassicWallSampler(input, uint32(uint16(g.m.Segs[si].Angle))<<16, camX, camY, ca, sa, g.viewW)
+		pp.classic = newClassicWallSampler(input, g.segRenderAngle(g.m.Segs[si]), camX, camY, ca, sa, g.viewW)
 		left, right, visible := pp.classic.projection.wallBounds(input, camX, camY, pp.classic.view)
 		if !visible {
 			pp.prepass.OK = false
@@ -15325,8 +15324,8 @@ func (g *game) subSectorVerticesFromSegList(ss int) ([]worldPt, float64, float64
 		return nil, 0, 0, false
 	}
 	verts := make([]worldPt, 0, sub.SegCount)
-	var firstStart uint16
-	var prevEnd uint16
+	var firstStart uint32
+	var prevEnd uint32
 	haveEdge := false
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
@@ -15493,8 +15492,8 @@ type holeEdgeDirBucket struct {
 }
 
 type subsectorEdge struct {
-	a uint16
-	b uint16
+	a uint32
+	b uint32
 }
 
 func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool) {
@@ -15505,7 +15504,7 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	if sub.SegCount < 3 {
 		return nil, 0, 0, false
 	}
-	var chain []uint16
+	var chain []uint32
 	if ss < len(g.subSectorLoopVerts) && len(g.subSectorLoopVerts[ss]) >= 3 {
 		chain = g.subSectorLoopVerts[ss]
 	} else {
@@ -15594,7 +15593,7 @@ func normalizeAndValidateConvexFanPolygon(verts []worldPt) bool {
 	return true
 }
 
-func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]uint16, bool) {
+func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]uint32, bool) {
 	chain, _, ok := subsectorVertexLoopFromSegOrderDiag(m, sub)
 	if ok {
 		return chain, true
@@ -15602,7 +15601,7 @@ func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]u
 	return subsectorVertexLoopNormalized(m, sub)
 }
 
-func subsectorVertexLoopFromSegOrderDiag(m *mapdata.Map, sub mapdata.SubSector) ([]uint16, loopBuildDiag, bool) {
+func subsectorVertexLoopFromSegOrderDiag(m *mapdata.Map, sub mapdata.SubSector) ([]uint32, loopBuildDiag, bool) {
 	if sub.SegCount < 3 {
 		return nil, loopDiagDeadEnd, false
 	}
@@ -15628,7 +15627,7 @@ func subsectorVertexLoopFromSegOrderDiag(m *mapdata.Map, sub mapdata.SubSector) 
 	// - no geometric sorting
 	// - no best-angle guessing
 	// - require exact directed cycle using all segs.
-	next := make(map[uint16]int, len(edges))
+	next := make(map[uint32]int, len(edges))
 	for i, e := range edges {
 		if _, exists := next[e.a]; exists {
 			return nil, loopDiagMultipleCandidates, false
@@ -15638,7 +15637,7 @@ func subsectorVertexLoopFromSegOrderDiag(m *mapdata.Map, sub mapdata.SubSector) 
 
 	startV := edges[0].a
 	curV := edges[0].b
-	loop := make([]uint16, 0, len(edges))
+	loop := make([]uint32, 0, len(edges))
 	loop = append(loop, startV)
 	used := make([]bool, len(edges))
 	used[0] = true
@@ -15668,13 +15667,13 @@ func subsectorVertexLoopFromSegOrderDiag(m *mapdata.Map, sub mapdata.SubSector) 
 	return nil, loopDiagNoClose, false
 }
 
-func subsectorVertexLoopNormalized(m *mapdata.Map, sub mapdata.SubSector) ([]uint16, bool) {
+func subsectorVertexLoopNormalized(m *mapdata.Map, sub mapdata.SubSector) ([]uint32, bool) {
 	if m == nil || sub.SegCount < 3 {
 		return nil, false
 	}
 	type dirEdge struct {
-		a uint16
-		b uint16
+		a uint32
+		b uint32
 	}
 	edges := make([]dirEdge, 0, sub.SegCount)
 	sumX := 0.0
@@ -15718,7 +15717,7 @@ func subsectorVertexLoopNormalized(m *mapdata.Map, sub mapdata.SubSector) ([]uin
 	used := make([]bool, len(edges))
 	used[0] = true
 	usedCount := 1
-	chain := make([]uint16, 0, len(edges)*2+2)
+	chain := make([]uint32, 0, len(edges)*2+2)
 	chain = append(chain, first.a, first.b)
 	currEnd := first.b
 	prevAngle := angleOfStart(first)
@@ -15727,8 +15726,8 @@ func subsectorVertexLoopNormalized(m *mapdata.Map, sub mapdata.SubSector) ([]uin
 	for usedCount < len(edges) {
 		best := -1
 		bestDiff := math.MaxFloat64
-		bestStart := uint16(0)
-		bestEnd := uint16(0)
+		bestStart := uint32(0)
+		bestEnd := uint32(0)
 		bestContinuity := 2
 		for i, e := range edges {
 			if used[i] {
@@ -15783,11 +15782,11 @@ func subsectorVertexLoopNormalized(m *mapdata.Map, sub mapdata.SubSector) ([]uin
 	return chain, true
 }
 
-func simplifyVertexChainIndices(m *mapdata.Map, in []uint16) []uint16 {
+func simplifyVertexChainIndices(m *mapdata.Map, in []uint32) []uint32 {
 	if len(in) < 3 || m == nil {
 		return in
 	}
-	out := make([]uint16, 0, len(in))
+	out := make([]uint32, 0, len(in))
 	for _, vi := range in {
 		if len(out) == 0 || out[len(out)-1] != vi {
 			out = append(out, vi)
@@ -15803,7 +15802,7 @@ func simplifyVertexChainIndices(m *mapdata.Map, in []uint16) []uint16 {
 	changed := true
 	for changed && len(out) >= 3 {
 		changed = false
-		next := make([]uint16, 0, len(out))
+		next := make([]uint32, 0, len(out))
 		for i := 0; i < len(out); i++ {
 			prev := out[(i-1+len(out))%len(out)]
 			cur := out[i]
@@ -15836,7 +15835,7 @@ func simplifyVertexChainIndices(m *mapdata.Map, in []uint16) []uint16 {
 }
 
 func uniqueSubsectorVertices(m *mapdata.Map, sub mapdata.SubSector) ([]worldPt, bool) {
-	seen := make(map[uint16]struct{}, int(sub.SegCount)*2)
+	seen := make(map[uint32]struct{}, int(sub.SegCount)*2)
 	out := make([]worldPt, 0, int(sub.SegCount)*2)
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
@@ -15844,7 +15843,7 @@ func uniqueSubsectorVertices(m *mapdata.Map, sub mapdata.SubSector) ([]worldPt, 
 			continue
 		}
 		sg := m.Segs[si]
-		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
+		for _, vi := range []uint32{sg.StartVertex, sg.EndVertex} {
 			if _, ok := seen[vi]; ok {
 				continue
 			}
@@ -15859,12 +15858,12 @@ func uniqueSubsectorVertices(m *mapdata.Map, sub mapdata.SubSector) ([]worldPt, 
 	return out, len(out) >= 3
 }
 
-func chainSubsectorEdges(edges []subsectorEdge) ([]uint16, bool) {
+func chainSubsectorEdges(edges []subsectorEdge) ([]uint32, bool) {
 	if len(edges) == 0 {
 		return nil, false
 	}
 	used := make([]bool, len(edges))
-	chain := make([]uint16, 0, len(edges)+1)
+	chain := make([]uint32, 0, len(edges)+1)
 	chain = append(chain, edges[0].a, edges[0].b)
 	used[0] = true
 	for len(chain) <= len(edges)+1 {
@@ -15908,7 +15907,7 @@ func chainSubsectorEdges(edges []subsectorEdge) ([]uint16, bool) {
 	return nil, false
 }
 
-func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]uint16, bool) {
+func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]uint32, bool) {
 	if m == nil || sub.SegCount < 3 {
 		return nil, false
 	}
@@ -15933,20 +15932,20 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 
 	// First try a bounded mutation search over edge order/orientation to find a
 	// valid simple closed loop that uses all edges exactly once.
-	if chain, ok := func() ([]uint16, bool) {
+	if chain, ok := func() ([]uint32, bool) {
 		type stepChoice struct {
 			edge int
-			next uint16
+			next uint32
 			area float64
 			dist float64
 		}
 		const maxExplore = 50000
 		explored := 0
 		bestArea := math.Inf(1)
-		var bestChain []uint16
+		var bestChain []uint32
 
-		var dfs func(start uint16, prev uint16, cur uint16, used []bool, usedCount int, chain []uint16, inPath map[uint16]bool)
-		dfs = func(start uint16, prev uint16, cur uint16, used []bool, usedCount int, chain []uint16, inPath map[uint16]bool) {
+		var dfs func(start uint32, prev uint32, cur uint32, used []bool, usedCount int, chain []uint32, inPath map[uint32]bool)
+		dfs = func(start uint32, prev uint32, cur uint32, used []bool, usedCount int, chain []uint32, inPath map[uint32]bool) {
 			if explored >= maxExplore {
 				return
 			}
@@ -15955,7 +15954,7 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 				if cur != start || len(chain) < 4 {
 					return
 				}
-				cand := append([]uint16(nil), chain[:len(chain)-1]...)
+				cand := append([]uint32(nil), chain[:len(chain)-1]...)
 				cand = simplifyVertexChainIndices(m, cand)
 				if len(cand) < 3 {
 					return
@@ -15980,7 +15979,7 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 				if used[i] {
 					continue
 				}
-				var next uint16
+				var next uint32
 				if e.a == cur {
 					next = e.b
 				} else if e.b == cur {
@@ -16052,14 +16051,14 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 		}
 
 		for i, e := range edges {
-			startPairs := [][2]uint16{{e.a, e.b}, {e.b, e.a}}
+			startPairs := [][2]uint32{{e.a, e.b}, {e.b, e.a}}
 			for _, p := range startPairs {
 				start := p[0]
 				next := p[1]
 				used := make([]bool, len(edges))
 				used[i] = true
-				chain := []uint16{start, next}
-				inPath := map[uint16]bool{
+				chain := []uint32{start, next}
+				inPath := map[uint32]bool{
 					start: true,
 					next:  true,
 				}
@@ -16081,7 +16080,7 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 	}
 
 	used := make([]bool, len(edges))
-	chain := make([]uint16, 0, len(edges)+1)
+	chain := make([]uint32, 0, len(edges)+1)
 	chain = append(chain, edges[0].a, edges[0].b)
 	used[0] = true
 	prev := edges[0].a
@@ -16089,14 +16088,14 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 
 	for steps := 1; steps < len(edges); steps++ {
 		best := -1
-		bestNext := uint16(0)
+		bestNext := uint32(0)
 		bestArea2 := math.Inf(1)
 		bestDist2 := math.Inf(1)
 		for i, e := range edges {
 			if used[i] {
 				continue
 			}
-			var next uint16
+			var next uint32
 			if e.a == cur {
 				next = e.b
 			} else if e.b == cur {
@@ -16140,7 +16139,7 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 				if used[i] {
 					continue
 				}
-				var next uint16
+				var next uint32
 				if e.a == cur {
 					next = e.b
 				} else if e.b == cur {
@@ -16172,8 +16171,8 @@ func subsectorVertexLoopByEdgeChain(m *mapdata.Map, sub mapdata.SubSector) ([]ui
 	return chain, true
 }
 
-func rawSubsectorVertexOrder(m *mapdata.Map, sub mapdata.SubSector) []uint16 {
-	chain := make([]uint16, 0, sub.SegCount)
+func rawSubsectorVertexOrder(m *mapdata.Map, sub mapdata.SubSector) []uint32 {
+	chain := make([]uint32, 0, sub.SegCount)
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
 		if si < 0 || si >= len(m.Segs) {
@@ -16191,7 +16190,7 @@ func rawSubsectorVertexOrder(m *mapdata.Map, sub mapdata.SubSector) []uint16 {
 	return chain
 }
 
-func vertexChainToWorld(m *mapdata.Map, chain []uint16) []worldPt {
+func vertexChainToWorld(m *mapdata.Map, chain []uint32) []worldPt {
 	if len(chain) < 3 {
 		return nil
 	}
@@ -16836,7 +16835,7 @@ func (g *game) initSubSectorSectorCache() {
 	}
 	g.subSectorSec = make([]int, len(g.m.SubSectors))
 	g.sectorBBox = buildSectorBBoxCache(g.m)
-	g.subSectorLoopVerts = make([][]uint16, len(g.m.SubSectors))
+	g.subSectorLoopVerts = make([][]uint32, len(g.m.SubSectors))
 	g.subSectorLoopDiag = make([]loopBuildDiag, len(g.m.SubSectors))
 	g.subSectorBBox = make([]worldBBox, len(g.m.SubSectors))
 	g.subSectorPoly = make([][]worldPt, len(g.m.SubSectors))
@@ -16950,7 +16949,7 @@ func (g *game) buildSubSectorLoopCache() {
 		return
 	}
 	if len(g.subSectorLoopVerts) != len(g.m.SubSectors) {
-		g.subSectorLoopVerts = make([][]uint16, len(g.m.SubSectors))
+		g.subSectorLoopVerts = make([][]uint32, len(g.m.SubSectors))
 	}
 	for ss, sub := range g.m.SubSectors {
 		g.subSectorLoopVerts[ss] = nil
@@ -17023,7 +17022,7 @@ func (g *game) buildSubSectorPolysFromSegLoops() {
 	}
 	loopSets := g.buildSectorLoopSets()
 	for ss := range g.m.SubSectors {
-		loop := []uint16(nil)
+		loop := []uint32(nil)
 		src := subPolySrcPrebuiltLoop
 		if ss < len(g.subSectorLoopVerts) && len(g.subSectorLoopVerts[ss]) >= 3 {
 			loop = g.subSectorLoopVerts[ss]
@@ -18008,10 +18007,10 @@ func (g *game) subSectorAtFixed(x, y int64) int {
 		}
 		return 0
 	}
-	child := uint16(len(g.m.Nodes) - 1)
+	child := uint32(len(g.m.Nodes) - 1)
 	for {
-		if child&0x8000 != 0 {
-			ss := int(child & 0x7fff)
+		if child&mapdata.SubsectorFlag != 0 {
+			ss := int(child & ^mapdata.SubsectorFlag)
 			if ss < 0 || ss >= len(g.m.SubSectors) {
 				return -1
 			}
@@ -18620,7 +18619,7 @@ func (g *game) subSectorSegBBox(ss int) (worldBBox, bool) {
 			continue
 		}
 		sg := g.m.Segs[si]
-		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
+		for _, vi := range []uint32{sg.StartVertex, sg.EndVertex} {
 			if int(vi) >= len(g.m.Vertexes) {
 				continue
 			}
@@ -18829,13 +18828,13 @@ func (g *game) buildSubSectorPolysFromNodes() {
 		{x: g.bounds.minX - pad, y: g.bounds.maxY + pad},
 	}
 
-	var walk func(child uint16, poly []worldPt)
-	walk = func(child uint16, poly []worldPt) {
+	var walk func(child uint32, poly []worldPt)
+	walk = func(child uint32, poly []worldPt) {
 		if len(poly) < 3 {
 			return
 		}
-		if child&0x8000 != 0 {
-			ss := int(child & 0x7fff)
+		if child&mapdata.SubsectorFlag != 0 {
+			ss := int(child & ^mapdata.SubsectorFlag)
 			if ss < 0 || ss >= len(g.m.SubSectors) {
 				return
 			}
@@ -18881,7 +18880,7 @@ func (g *game) buildSubSectorPolysFromNodes() {
 		}
 	}
 
-	walk(uint16(len(g.m.Nodes)-1), root)
+	walk(uint32(len(g.m.Nodes)-1), root)
 }
 
 func (g *game) recoverOrphanSubSectorPolysByBSPCoverage() int {
@@ -19306,13 +19305,13 @@ func (g *game) subSectorNodeLeafPoly(targetSS int) ([]worldPt, bool) {
 		{x: g.bounds.minX - pad, y: g.bounds.maxY + pad},
 	}
 
-	var walk func(child uint16, poly []worldPt) ([]worldPt, bool)
-	walk = func(child uint16, poly []worldPt) ([]worldPt, bool) {
+	var walk func(child uint32, poly []worldPt) ([]worldPt, bool)
+	walk = func(child uint32, poly []worldPt) ([]worldPt, bool) {
 		if len(poly) < 3 {
 			return nil, false
 		}
-		if child&0x8000 != 0 {
-			ss := int(child & 0x7fff)
+		if child&mapdata.SubsectorFlag != 0 {
+			ss := int(child & ^mapdata.SubsectorFlag)
 			if ss != targetSS {
 				return nil, false
 			}
@@ -19344,7 +19343,7 @@ func (g *game) subSectorNodeLeafPoly(targetSS int) ([]worldPt, bool) {
 		return nil, false
 	}
 
-	return walk(uint16(len(g.m.Nodes)-1), root)
+	return walk(uint32(len(g.m.Nodes)-1), root)
 }
 
 func (g *game) constrainAmbiguousNodePolysToSectorBounds() {
@@ -21541,4 +21540,22 @@ func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y, sx, sy floa
 		screen.DrawImage(img, op)
 		px += float64(w) * sx
 	}
+}
+
+func segWallLightBias(seg mapdata.Seg, verts []mapdata.Vertex) int {
+	a, b := verts[seg.StartVertex], verts[seg.EndVertex]
+	if a.Y == b.Y {
+		return -1
+	}
+	if a.X == b.X {
+		return 1
+	}
+	return 0
+}
+func (g *game) segRenderAngle(seg mapdata.Seg) uint32 {
+	if !g.m.ExtendedNodes {
+		return uint32(seg.Angle) << 16
+	}
+	a, b := g.m.Vertexes[seg.StartVertex], g.m.Vertexes[seg.EndVertex]
+	return doomPointToAngle2(int64(a.X*65536), int64(a.Y*65536), int64(b.X*65536), int64(b.Y*65536))
 }

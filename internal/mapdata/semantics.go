@@ -141,6 +141,7 @@ type LightInfo struct {
 }
 
 type TeleportInfo struct {
+	Silent      bool
 	UsesTag     bool
 	MonsterOnly bool
 }
@@ -158,8 +159,9 @@ const (
 )
 
 type CeilingInfo struct {
-	Action  CeilingAction
-	UsesTag bool
+	HighestNeighbor *GeneralizedFloorInfo
+	Action          CeilingAction
+	UsesTag         bool
 }
 
 type ComboAction string
@@ -366,6 +368,17 @@ var donutSpecials = map[uint16]LineSpecialInfo{
 }
 
 func LookupLineSpecial(special uint16) LineSpecialInfo {
+	// Initial generalized ceiling subset: highest neighboring ceiling, no changes/crushing.
+	if special >= 0x4000 && special <= 0x5fff && (special-0x4000)&0x1f80 == 0 {
+		v := special - 0x4000
+		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
+		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized ceiling to highest neighbor", Trigger: trigger, Repeat: v&1 != 0, Ceiling: &CeilingInfo{UsesTag: trigger != TriggerManual, HighestNeighbor: &GeneralizedFloorInfo{Speed: uint8(v>>3) & 3, Up: v&64 != 0, Monsters: v&32 != 0}}}
+	}
+
+	if special == 207 || special == 208 {
+		return LineSpecialInfo{Special: special, Name: "Boom silent teleport", Boom: true, Trigger: TriggerWalk, Repeat: special == 208, Teleport: &TeleportInfo{UsesTag: true, Silent: true}}
+	}
+
 	if special >= 0x3c00 && special <= 0x3fff {
 		v := special - 0x3c00
 		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]

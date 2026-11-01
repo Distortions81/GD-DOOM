@@ -116,7 +116,7 @@ func TestVisibleSegIndicesPseudo3D_KeepsLightOnlyPortalSplitter(t *testing.T) {
 				{
 					BBoxR:   [4]int16{64, -64, -64, 64},
 					BBoxL:   [4]int16{64, -64, -64, 64},
-					ChildID: [2]uint16{0x8000, 0x8000},
+					ChildID: [2]uint32{0x80000000, 0x80000000},
 				},
 			},
 		},

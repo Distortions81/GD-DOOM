@@ -46,6 +46,7 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	}
 
 	if g.p.reactionTime > 0 {
+		g.p.reactionTime--
 		g.turnHeld = 0
 		return
 	}
@@ -407,9 +408,6 @@ func (g *game) tickPlayerCounters() {
 		return
 	}
 	g.tickPlayerMobjState()
-	if g.p.reactionTime > 0 {
-		g.p.reactionTime--
-	}
 	if g.inventory.InvulnTics > 0 {
 		g.inventory.InvulnTics--
 	}
@@ -1504,13 +1502,15 @@ func (g *game) pointOnLineSide(x, y int64, line physLine) int {
 	return pointOnLineSide(x, y, line.x1, line.y1, line.dx, line.dy)
 }
 
-func (g *game) slideMove() {
+func (g *game) slideMove() { g.slideMoveUsing(g.tryMove) }
+
+func (g *game) slideMoveUsing(move func(int64, int64) bool) {
 	hitcount := 0
 	for {
 		hitcount++
 		if hitcount == 3 {
-			if !g.tryMove(g.p.x, g.p.y+g.p.momy) {
-				_ = g.tryMove(g.p.x+g.p.momx, g.p.y)
+			if !move(g.p.x, g.p.y+g.p.momy) {
+				_ = move(g.p.x+g.p.momx, g.p.y)
 			}
 			return
 		}
@@ -1543,8 +1543,8 @@ func (g *game) slideMove() {
 
 		if bestLine < 0 {
 			g.debugPlayerMove("slideMove no best line", g.p.x+g.p.momx, g.p.y+g.p.momy)
-			if !g.tryMove(g.p.x, g.p.y+g.p.momy) {
-				_ = g.tryMove(g.p.x+g.p.momx, g.p.y)
+			if !move(g.p.x, g.p.y+g.p.momy) {
+				_ = move(g.p.x+g.p.momx, g.p.y)
 			}
 			return
 		}
@@ -1561,9 +1561,9 @@ func (g *game) slideMove() {
 		if bestFracFixed > 0 {
 			newx := fixedMul(g.p.momx, bestFracFixed)
 			newy := fixedMul(g.p.momy, bestFracFixed)
-			if !g.tryMove(g.p.x+newx, g.p.y+newy) {
-				if !g.tryMove(g.p.x, g.p.y+g.p.momy) {
-					_ = g.tryMove(g.p.x+g.p.momx, g.p.y)
+			if !move(g.p.x+newx, g.p.y+newy) {
+				if !move(g.p.x, g.p.y+g.p.momy) {
+					_ = move(g.p.x+g.p.momx, g.p.y)
 				}
 				return
 			}
@@ -1581,7 +1581,7 @@ func (g *game) slideMove() {
 		tmxmove, tmymove = g.hitSlideLine(g.lines[bestLine], tmxmove, tmymove)
 		g.p.momx = tmxmove
 		g.p.momy = tmymove
-		if g.tryMove(g.p.x+tmxmove, g.p.y+tmymove) {
+		if move(g.p.x+tmxmove, g.p.y+tmymove) {
 			return
 		}
 	}
@@ -1804,10 +1804,10 @@ func (g *game) sectorAt(x, y int64) int {
 		}
 		return 0
 	}
-	child := uint16(len(g.m.Nodes) - 1)
+	child := uint32(len(g.m.Nodes) - 1)
 	for {
-		if child&0x8000 != 0 {
-			ss := int(child & 0x7fff)
+		if child&mapdata.SubsectorFlag != 0 {
+			ss := int(child & ^mapdata.SubsectorFlag)
 			if ss < 0 || ss >= len(g.m.SubSectors) {
 				return -1
 			}

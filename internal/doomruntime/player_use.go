@@ -337,7 +337,8 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		default:
 			floorAllowed := info.Floor != nil && info.Floor.Generalized != nil && info.Floor.Generalized.Monsters
 			doorAllowed := info.Door != nil && info.Door.Generalized != nil && info.Door.Generalized.Monsters
-			if !floorAllowed && !doorAllowed {
+			ceilingAllowed := info.Ceiling != nil && info.Ceiling.HighestNeighbor != nil && info.Ceiling.HighestNeighbor.Monsters
+			if !floorAllowed && !doorAllowed && !ceilingAllowed {
 				return false
 			}
 		}
@@ -427,6 +428,9 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 
 func walkSpecialAllowedForNonPlayer(special uint16) bool {
 	info := mapdata.LookupLineSpecial(special)
+	if info.Ceiling != nil && info.Ceiling.HighestNeighbor != nil {
+		return info.Ceiling.HighestNeighbor.Monsters
+	}
 	if info.Door != nil && info.Door.Generalized != nil {
 		return info.Door.Generalized.Monsters
 	}

@@ -42,7 +42,7 @@ func (g *game) visibleSegIndicesPseudo3D() []int {
 	}
 	px := floatToFixed(g.renderPX)
 	py := floatToFixed(g.renderPY)
-	root := uint16(len(g.m.Nodes) - 1)
+	root := uint32(len(g.m.Nodes) - 1)
 	if cap(g.bspOccBuf) < 64 {
 		g.bspOccBuf = make([]solidSpan, 0, 64)
 	}
@@ -52,9 +52,9 @@ func (g *game) visibleSegIndicesPseudo3D() []int {
 	return g.visibleBuf
 }
 
-func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, tanHalfFOV float64, occ []solidSpan) []solidSpan {
-	if child&0x8000 != 0 {
-		ss := int(child & 0x7fff)
+func (g *game) traverseBSPSegs(child uint32, px, py int64, ca, sa, near, focal, tanHalfFOV float64, occ []solidSpan) []solidSpan {
+	if child&mapdata.SubsectorFlag != 0 {
+		ss := int(child & ^mapdata.SubsectorFlag)
 		if ss < 0 || ss >= len(g.m.SubSectors) {
 			return occ
 		}

@@ -498,7 +498,7 @@ func TestArchVileBlastPreservesLastLinkedFireSubsector(t *testing.T) {
 		Things:     []mapdata.Thing{{Type: 64, X: 64}},
 		Sectors:    []mapdata.Sector{{CeilingHeight: 128}, {CeilingHeight: 128}},
 		SubSectors: []mapdata.SubSector{{}, {}},
-		Nodes:      []mapdata.Node{{DY: 128, ChildID: [2]uint16{0x8000, 0x8001}}},
+		Nodes:      []mapdata.Node{{DY: 128, ChildID: [2]uint32{0x80000000, 0x80000001}}},
 	}, opts: Options{SkillLevel: 4}, thingHP: []int{700}, thingCollected: []bool{false},
 		thingTargetPlayer: []bool{true}, thingTargetIdx: []int{-1},
 		sectorFloor: []int64{0, 0}, sectorCeil: []int64{128 * fracUnit, 128 * fracUnit},
@@ -723,7 +723,7 @@ func TestLongSightInterceptPreservesOriginalFixedPointOverflow(t *testing.T) {
 		Sectors:    []mapdata.Sector{{CeilingHeight: 256}, {CeilingHeight: 128}},
 		Segs:       []mapdata.Seg{{StartVertex: 0, EndVertex: 1, Linedef: 0}},
 		SubSectors: []mapdata.SubSector{{SegCount: 1}},
-		Nodes:      []mapdata.Node{{DX: 1, ChildID: [2]uint16{0x8000, 0x8000}}},
+		Nodes:      []mapdata.Node{{DX: 1, ChildID: [2]uint32{0x80000000, 0x80000000}}},
 	}}
 	g.initPhysics()
 	if g.actorHasLOS(ray.x, ray.y, 0, 56*fracUnit, ray.x+ray.dx, ray.y+ray.dy, 0, playerHeight) {
@@ -1193,7 +1193,7 @@ func TestChainsawRangeAddsOneFixedQuantum(t *testing.T) {
 func TestBSPUsesNodeRoundingAtPartitionBoundary(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Nodes:      []mapdata.Node{{DX: 3, DY: 5, ChildID: [2]uint16{0x8000, 0x8001}}},
+			Nodes:      []mapdata.Node{{DX: 3, DY: 5, ChildID: [2]uint32{0x80000000, 0x80000001}}},
 			SubSectors: []mapdata.SubSector{{}, {}},
 			Sectors:    []mapdata.Sector{{}, {}},
 		},
@@ -1282,7 +1282,7 @@ func TestMissilesDoNotExpireAfterFormerFlightTimeout(t *testing.T) {
 
 func TestMissileCoordinatesWrapBeforeSupportLookup(t *testing.T) {
 	g := &game{m: &mapdata.Map{
-		Nodes:      []mapdata.Node{{DY: 1, ChildID: [2]uint16{0x8000, 0x8001}}},
+		Nodes:      []mapdata.Node{{DY: 1, ChildID: [2]uint32{0x80000000, 0x80000001}}},
 		SubSectors: []mapdata.SubSector{{}, {}},
 		Sectors:    []mapdata.Sector{{CeilingHeight: 256}, {CeilingHeight: 128}},
 	}}

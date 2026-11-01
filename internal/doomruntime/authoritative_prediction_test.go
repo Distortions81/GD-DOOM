@@ -22,7 +22,7 @@ func predictionTestMap() *mapdata.Map {
 	}
 	for i := range 4 {
 		m.Linedefs = append(m.Linedefs, mapdata.Linedef{V1: uint16(i), V2: uint16((i + 1) % 4), Flags: mlBlocking, SideNum: [2]int32{0, -1}})
-		m.Segs = append(m.Segs, mapdata.Seg{StartVertex: uint16(i), EndVertex: uint16((i + 1) % 4), Linedef: uint16(i)})
+		m.Segs = append(m.Segs, mapdata.Seg{StartVertex: uint32(i), EndVertex: uint32((i + 1) % 4), Linedef: uint16(i)})
 	}
 	return m
 }

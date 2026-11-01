@@ -246,8 +246,8 @@ func syntheticParityMap(tc wallTextureParityInput) *mapdata.Map {
 	return &mapdata.Map{
 		Name: "PARITY",
 		Vertexes: []mapdata.Vertex{
-			{X: int16(math.Round(tc.x1)), Y: int16(math.Round(tc.y1))},
-			{X: int16(math.Round(tc.x2)), Y: int16(math.Round(tc.y2))},
+			{X: float64(math.Round(tc.x1)), Y: float64(math.Round(tc.y1))},
+			{X: float64(math.Round(tc.x2)), Y: float64(math.Round(tc.y2))},
 		},
 		Linedefs: []mapdata.Linedef{
 			{Flags: tc.flags, SideNum: sideNums},
@@ -255,7 +255,7 @@ func syntheticParityMap(tc wallTextureParityInput) *mapdata.Map {
 		Sidedefs: sidedefs,
 		Sectors:  sectors,
 		Segs: []mapdata.Seg{
-			{StartVertex: 0, EndVertex: 1, Angle: uint16(radiansToDoomAngle(math.Atan2(tc.y2-tc.y1, tc.x2-tc.x1)) >> 16), Linedef: 0, Direction: uint16(tc.frontSide), Offset: uint16(math.Round(tc.segOffset))},
+			{StartVertex: 0, EndVertex: 1, Angle: uint16(radiansToDoomAngle(math.Atan2(tc.y2-tc.y1, tc.x2-tc.x1)) >> 16), Linedef: 0, Direction: uint16(tc.frontSide), Offset: float64(math.Round(tc.segOffset))},
 		},
 	}
 }

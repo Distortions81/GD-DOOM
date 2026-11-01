@@ -6,6 +6,16 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- XNOD and zlib-compressed ZNOD data in the `NODES` lump, including fractional
+  16.16 split vertices, 32-bit seg/subsector indices and BSP child references.
+  Classic nodes use the same widened traversal. Malformed counts, references,
+  cyclic trees and oversized decompression are rejected.
+- Silent thing teleports (207–208), preserving relative height and rotating
+  angle/momentum. Normal teleport freeze timing follows `P_PlayerThink`.
+- Generalized ceilings targeting the highest neighboring ceiling, without
+  texture/type changes or crushing. Other generalized ceiling targets remain
+  unsupported. Voodoo dolls now use player-style sliding at blocking lines.
+
 - Generalized floors (`0x6000`–`0x7fff`): all eight trigger modes, four speeds,
   up/down targets, crushing, and trigger/numeric model texture/type changes.
   Generalized floors use the floor mover slot independently of ceiling motion.
@@ -89,10 +99,11 @@ not established by it.
 GD-DOOM and DSDA-Doom, and compares every exported reference player position
 (X/Y/Z) and angle exactly, plus the level-exit tic. Reference ghost exports
 start at completed gametic 1; GD labels that completed command gametic 0.
-All three cases are single-player **no-monsters** demos.
+All four cases are single-player **no-monsters** demos.
 
 | Map | Demo | Reference frames matched | Level time | Demo format |
 | --- | --- | ---: | ---: | --- |
+| Ancient Aliens MAP01 | `aa01o023.lmp` | 835 / 835 | 23.89 s | Boom 2.02 / complevel 9 |
 | Sunlust MAP01 | `sl01o016.lmp` | 584 / 584 | 16.71 s | Boom 2.02 / complevel 9 |
 | Sunlust MAP02 | `sunlust02nomo48.lmp` | 1,712 / 1,712 | 48.94 s | Boom 2.02 / complevel 9 |
 | Sunder MAP01 | `su01o048.lmp` | 1,709 / 1,709 | 48.86 s | Doom 1.9 / complevel 2 |
@@ -124,22 +135,31 @@ xvfb-run -a go test -tags integration ./internal/doomruntime \
   -run '^TestBoomConveyorPlaneRendering$' -count=1
 ```
 
+Ancient Aliens MAP01 also rendered at six demo viewpoints (tics 1, 80, 130,
+300, 500 and 800), at 640×400 with Doom lighting. CPU/GPU output matched pixel
+for pixel. These captures verify GD renderer agreement, not DSDA image parity.
+A temporary copy of MAP01 with its XNOD payload zlib-compressed into ZNOD
+also matched all 835 reference frames and exited at tic 836.
+The [XNOD/ZNOD layout](https://github.com/doom-cross-port-collab/udmf/blob/main/formats/bsp.md)
+and [DSDA loader](https://github.com/kraflab/dsda-doom/blob/v0.27.5/prboom2/src/p_setup.c)
+provide the format reference. Decoder tests cover both encodings, fractional
+vertices, indices above 65535, truncated payloads, bad counts and cyclic nodes.
+
 ## Remaining work
 
-Generalized ceilings/lifts/stairs/crushers and locked doors, complete independent
+Other generalized ceilings, lifts/stairs/crushers and locked doors, complete independent
 floor/ceiling slot handling for legacy actions, displacement/accelerative and
-wall scrollers, friction, wind/pushers, silent teleports/crushers, height/light
+wall scrollers, friction, wind/pushers, silent line-to-line teleports/crushers, height/light
 transfers, deep water, translucency, custom `ANIMATED`/`SWITCHES` tables,
-extended nodes, and complete Boom demo/RNG behavior remain outside this scope.
-Ancient Aliens MAP01 was excluded from replay verification because its XNOD
-nodes are unsupported. Maps may load while unsupported actions behave incorrectly.
+GL nodes and complete Boom demo/RNG behavior remain outside this scope.
+Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
 not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-5`. Deploy matching clients and servers. The serialized
+`gd-doom-authority-dev-6`. Deploy matching clients and servers. The serialized
 layouts remain unchanged; new movers and single-player dolls reuse existing
 sector, thing, health and momentum fields. Voodoo-doll conversion is currently
 limited to single-player sessions.

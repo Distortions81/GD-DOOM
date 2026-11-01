@@ -13,7 +13,7 @@ func TestMissileSpawnLinksSubsectorOnlyAfterSuccessfulMove(t *testing.T) {
 			m: &mapdata.Map{
 				Sectors:    []mapdata.Sector{{CeilingHeight: 128}, {CeilingHeight: 128}},
 				SubSectors: []mapdata.SubSector{{}, {}},
-				Nodes:      []mapdata.Node{{DY: 128, ChildID: [2]uint16{0x8001, 0x8000}}},
+				Nodes:      []mapdata.Node{{DY: 128, ChildID: [2]uint32{0x80000001, 0x80000000}}},
 			},
 			subSectorSec: []int{0, 1}, sectorFloor: []int64{0, 0},
 			sectorCeil: []int64{128 * fracUnit, 128 * fracUnit},

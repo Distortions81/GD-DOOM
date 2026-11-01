@@ -10,9 +10,10 @@ type Thing struct {
 	Flags int16
 }
 
+// Vertex coordinates retain the 16.16 split vertices supplied by extended nodes.
 type Vertex struct {
-	X int16
-	Y int16
+	X float64
+	Y float64
 }
 
 type Linedef struct {
@@ -35,18 +36,21 @@ type Sidedef struct {
 }
 
 type Seg struct {
-	StartVertex uint16
-	EndVertex   uint16
+	StartVertex uint32
+	EndVertex   uint32
 	Angle       uint16
 	Linedef     uint16
 	Direction   uint16
-	Offset      uint16
+	Offset      float64
 }
 
 type SubSector struct {
-	SegCount uint16
-	FirstSeg uint16
+	SegCount uint32
+	FirstSeg uint32
 }
+
+// SubsectorFlag is normalized from the classic 16-bit flag when loading.
+const SubsectorFlag uint32 = 0x80000000
 
 type Node struct {
 	X       int16
@@ -55,7 +59,7 @@ type Node struct {
 	DY      int16
 	BBoxR   [4]int16
 	BBoxL   [4]int16
-	ChildID [2]uint16
+	ChildID [2]uint32
 }
 
 type Sector struct {
@@ -83,17 +87,18 @@ type BlockMap struct {
 }
 
 type Map struct {
-	Name         MapName
-	Things       []Thing
-	Vertexes     []Vertex
-	Linedefs     []Linedef
-	Sidedefs     []Sidedef
-	Sectors      []Sector
-	Segs         []Seg
-	SubSectors   []SubSector
-	Nodes        []Node
-	Reject       []byte
-	RejectMatrix *RejectMatrix
-	Blockmap     []int16
-	BlockMap     *BlockMap
+	ExtendedNodes bool `json:",omitempty"`
+	Name          MapName
+	Things        []Thing
+	Vertexes      []Vertex
+	Linedefs      []Linedef
+	Sidedefs      []Sidedef
+	Sectors       []Sector
+	Segs          []Seg
+	SubSectors    []SubSector
+	Nodes         []Node
+	Reject        []byte
+	RejectMatrix  *RejectMatrix
+	Blockmap      []int16
+	BlockMap      *BlockMap
 }

@@ -24,7 +24,7 @@ func Validate(m *Map) error {
 	}
 
 	for i, seg := range m.Segs {
-		if int(seg.StartVertex) >= len(m.Vertexes) || int(seg.EndVertex) >= len(m.Vertexes) {
+		if uint64(seg.StartVertex) >= uint64(len(m.Vertexes)) || uint64(seg.EndVertex) >= uint64(len(m.Vertexes)) {
 			return fmt.Errorf("seg[%d] has out-of-range vertex index (%d,%d)", i, seg.StartVertex, seg.EndVertex)
 		}
 		if int(seg.Linedef) >= len(m.Linedefs) {
@@ -42,8 +42,8 @@ func Validate(m *Map) error {
 
 	for i, n := range m.Nodes {
 		for ci, child := range n.ChildID {
-			if child&0x8000 != 0 {
-				ss := int(child & 0x7fff)
+			if child&SubsectorFlag != 0 {
+				ss := int(child & ^SubsectorFlag)
 				if ss >= len(m.SubSectors) {
 					return fmt.Errorf("node[%d] child %d has out-of-range subsector index %d", i, ci, ss)
 				}
@@ -56,5 +56,8 @@ func Validate(m *Map) error {
 		}
 	}
 
+	if m.ExtendedNodes {
+		return validateExtendedTree(m)
+	}
 	return nil
 }

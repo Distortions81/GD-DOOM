@@ -20,10 +20,12 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "https://dsdarchive.com"
 WADS = {
+    "aaliens": ("/files/wads/doom2/4503/aaliens.zip", "1c9d1e256a44bab531c8017e5a590cdcc51ac4411f154446c694589054ec2884", "aaliens_v1_2.wad"),
     "sunlust": ("/files/wads/doom2/5206/sunlust.zip", "10deec60d92a05892d36122b5d40778ba1210988b0accacae7ff10433fa8a046", "sunlust.wad"),
     "sunder": ("/files/wads/doom2/2726/sunder.zip", "eab6ebbeafb0afe4a2ccd93c1685484f3a517ab0aec200a9c693e29d4ca87839", "sunder.wad"),
 }
 CASES = [
+    ("aa01o023", "aaliens", 1, "/files/demos/aaliens/70094/aa01o023.zip", "ab4f4b0e6bcf04da26d2312c49156d252f672cf091e1d02c34389db4c3901131", "aa01o023.lmp"),
     ("sl01o016", "sunlust", 1, "/files/demos/sunlust/23036/sl01o016.zip", "37e1e8779377e35520506a9f9e791ed2316c15951d676e6f664720ab35d50169", "sl01o016.lmp"),
     ("sl02o048", "sunlust", 2, "/files/demos/sunlust/23051/sl02o048.zip", "6ad00f99ce58869fed0eb90a0e06fe16752f4bca5c9978a5bf734302a64bb3a5", "sunlust02nomo48.lmp"),
     ("su01o048", "sunder", 1, "/files/demos/sunder/22893/su01o048.zip", "f7840130a8cffed99a5bb5c2310ba52a78a17be86b38c3329fd40ac4d3e33215", "su01o048.lmp"),

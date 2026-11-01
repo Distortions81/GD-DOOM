@@ -1516,20 +1516,20 @@ func TestUpdatePlayer_DoesNotTurnWhileTeleportFrozen(t *testing.T) {
 	}
 }
 
-func TestTickPlayerCounters_DecrementsReactionTime(t *testing.T) {
+func TestUpdatePlayer_DecrementsReactionTime(t *testing.T) {
 	g := &game{
 		p: player{reactionTime: 2},
 	}
 
-	g.tickPlayerCounters()
+	g.updatePlayer(moveCmd{})
 	if g.p.reactionTime != 1 {
 		t.Fatalf("reactionTime after first tick=%d want 1", g.p.reactionTime)
 	}
-	g.tickPlayerCounters()
+	g.updatePlayer(moveCmd{})
 	if g.p.reactionTime != 0 {
 		t.Fatalf("reactionTime after second tick=%d want 0", g.p.reactionTime)
 	}
-	g.tickPlayerCounters()
+	g.updatePlayer(moveCmd{})
 	if g.p.reactionTime != 0 {
 		t.Fatalf("reactionTime after third tick=%d want 0", g.p.reactionTime)
 	}
@@ -1552,7 +1552,7 @@ func TestCheckWalkSpecialLines_DoesNotTriggerTeleportOutsidePlayerSubsectors(t *
 				{SegCount: 0, FirstSeg: 0},
 			},
 			Nodes: []mapdata.Node{
-				{ChildID: [2]uint16{0x8000, 0x8001}},
+				{ChildID: [2]uint32{0x80000000, 0x80000001}},
 			},
 		},
 		lineSpecial: []uint16{97},
@@ -1816,5 +1816,28 @@ func TestSetSectorCeilingHeight_AirbornePlayerClipsToNewCeiling(t *testing.T) {
 	}
 	if got := g.p.z; got != 40*fracUnit {
 		t.Fatalf("z=%d want=%d after ceiling clip", got, 40*fracUnit)
+	}
+}
+
+func TestSilentTeleportRotatesMomentumAndPreservesHeight(t *testing.T) {
+	g := &game{m: &mapdata.Map{
+		Vertexes: []mapdata.Vertex{{0, 0}, {0, 64}},
+		Linedefs: []mapdata.Linedef{{V2: 1, Special: 208, Tag: 7}},
+		Things:   []mapdata.Thing{{X: 128, Y: 64, Angle: 90, Type: 14}},
+		Sectors:  []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128, Tag: 7}},
+	}, sectorFloor: []int64{0}, sectorCeil: []int64{128 * fracUnit}, p: player{x: -32 * fracUnit, z: 8 * fracUnit, momx: 3 * fracUnit, momz: fracUnit, viewHeight: playerViewHeight}}
+	angle := g.p.angle
+	rotation := doomPointToAngle2(0, 0, 0, 64*fracUnit) - thingSpawnAngle(90) + doomAng90
+	if !g.activateTeleportLine(0, 0, *mapdata.LookupLineSpecial(208).Teleport, -1, true) {
+		t.Fatal("silent teleport failed")
+	}
+	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit || g.p.z != 8*fracUnit || g.p.momz != fracUnit || g.p.angle != angle+rotation || g.p.reactionTime != 0 {
+		t.Fatalf("silent teleport lost actor state: %+v", g.p)
+	}
+	if g.p.momx != fixedMul(3*fracUnit, doomFineCosine(rotation)) || g.p.momy != fixedMul(3*fracUnit, doomFineSineAtAngle(rotation)) {
+		t.Fatal("silent teleport lost rotated momentum")
+	}
+	if len(g.hitscanPuffs) != 0 {
+		t.Fatal("silent teleport emitted fog")
 	}
 }

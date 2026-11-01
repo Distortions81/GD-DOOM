@@ -29,7 +29,7 @@ func TestTryMove_PlayerStepsOffLedgeThenFalls(t *testing.T) {
 				{SegCount: 1, FirstSeg: 1},
 			},
 			Nodes: []mapdata.Node{
-				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint16{0x8000, 0x8001}},
+				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint32{0x80000000, 0x80000001}},
 			},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},
@@ -143,7 +143,7 @@ func TestTryMove_PlayerStepUpDefersZChangeToZMovement(t *testing.T) {
 				{SegCount: 1, FirstSeg: 1},
 			},
 			Nodes: []mapdata.Node{
-				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint16{0x8000, 0x8001}},
+				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint32{0x80000000, 0x80000001}},
 			},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},
@@ -204,7 +204,7 @@ func TestXYMovement_StepOffLedgePreservesMomentumWhileAirborne(t *testing.T) {
 				{SegCount: 1, FirstSeg: 1},
 			},
 			Nodes: []mapdata.Node{
-				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint16{0x8000, 0x8001}},
+				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint32{0x80000000, 0x80000001}},
 			},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},

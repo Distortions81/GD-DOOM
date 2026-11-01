@@ -1339,6 +1339,36 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			// P_SpawnMapThing quantizes every map Thing angle to a 45-degree
 			// increment before EV_Teleport copies the destination mobj's angle.
 			destAngle := thingSpawnAngle(th.Angle)
+			if info.Silent {
+				a, b := g.m.Vertexes[line.V1], g.m.Vertexes[line.V2]
+				rotation := doomPointToAngle2(0, 0, int64((b.X-a.X)*65536), int64((b.Y-a.Y)*65536)) - destAngle + doomAng90
+				c, s := doomFineCosine(rotation), doomFineSineAtAngle(rotation)
+				rotate := func(x, y int64) (int64, int64) {
+					return fixedMul(x, c) - fixedMul(y, s), fixedMul(y, c) + fixedMul(x, s)
+				}
+				if isPlayer {
+					g.setPlayerPosFixed(tx, ty)
+					g.p.z = tmfloor + actorZ - actorFloorZ
+					g.p.floorz = tmfloor
+					g.p.ceilz = tmceil
+					g.p.angle = actorAngle + rotation
+					g.p.momx, g.p.momy = rotate(g.p.momx, g.p.momy)
+					g.p.teleportedThisTic = true
+					delta := g.p.deltaViewHeight
+					g.p.deltaViewHeight = 0
+					g.tickPlayerViewHeight()
+					g.p.deltaViewHeight = delta
+				} else {
+					x, y, z := g.thingMomX[actorIdx], g.thingMomY[actorIdx], g.thingMomZ[actorIdx]
+					x, y = rotate(x, y)
+					g.setThingPosFixed(actorIdx, tx, ty)
+					g.setThingSupportState(actorIdx, tmfloor+actorZ-actorFloorZ, tmfloor, tmceil)
+					g.setThingWorldAngle(actorIdx, actorAngle+rotation)
+					g.setThingMomentum(actorIdx, x, y, z)
+					g.snapThingRenderState(actorIdx)
+				}
+				return true
+			}
 			destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))
 			destFogY := ty + fixedMul(20*fracUnit, doomFineSineAtAngle(destAngle))
 			if isPlayer {
@@ -1566,6 +1596,34 @@ func fixedToDebugFloat(v int64) float64 {
 }
 
 func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
+	if gen := info.HighestNeighbor; gen != nil {
+		targets := g.taggedSectorsForLine(lineIdx)
+		if !info.UsesTag {
+			sec, ok := g.sectorIndexFromSidedef(g.m.Linedefs[lineIdx].SideNum[1])
+			if !ok {
+				return false
+			}
+			targets = []int{sec}
+		}
+		if g.ceilings == nil {
+			g.ceilings = make(map[int]*ceilingThinker)
+		}
+		active := false
+		for _, sec := range targets {
+			if g.ceilings[sec] != nil || g.doors[sec] != nil {
+				continue
+			}
+			direction := -1
+			if gen.Up {
+				direction = 1
+			}
+			dest := g.findHighestCeilingSurrounding(sec)
+			g.ceilings[sec] = &ceilingThinker{order: g.allocThinkerOrder(), sector: sec, action: mapdata.CeilingRaiseToHighest, direction: direction, speed: fracUnit << gen.Speed, topHeight: dest, bottomHeight: dest}
+			active = true
+		}
+		return active
+	}
+
 	targets := g.taggedSectorsForLine(lineIdx)
 	if len(targets) == 0 {
 		return false

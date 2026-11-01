@@ -2376,6 +2376,12 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 			}
 			continue
 		}
+		if isVoodooDollType(th.Type) {
+			g.slideVoodooDoll(i, th)
+			momx, momy = g.thingMomX[i], g.thingMomY[i]
+			break
+		}
+
 		momx = 0
 		momy = 0
 		break
@@ -4683,7 +4689,7 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 		bottomSlope: bz - sightZStart,
 	}
 	g.validCount++
-	return g.crossBSPLOS(uint16(len(g.m.Nodes)-1), &sight)
+	return g.crossBSPLOS(uint32(len(g.m.Nodes)-1), &sight)
 }
 
 type losTrace struct {
@@ -4814,9 +4820,9 @@ func (g *game) actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheig
 	return true
 }
 
-func (g *game) crossBSPLOS(child uint16, sight *losTrace) bool {
-	if child&0x8000 != 0 {
-		ss := int(child & 0x7fff)
+func (g *game) crossBSPLOS(child uint32, sight *losTrace) bool {
+	if child&mapdata.SubsectorFlag != 0 {
+		ss := int(child & ^mapdata.SubsectorFlag)
 		if ss < 0 || ss >= len(g.m.SubSectors) {
 			return false
 		}
@@ -5748,4 +5754,30 @@ func doomPRandomN(n int) int {
 		return 0
 	}
 	return doomrand.PRandom() % n
+}
+
+// Slide traces share the player-sized collision shape; movement and triggers
+// remain attached to the doll's own mobj rather than the camera body.
+func (g *game) slideVoodooDoll(i int, th mapdata.Thing) {
+	saved := g.p
+	defer func() { g.p = saved }()
+	g.p.x, g.p.y = g.thingPosFixed(i, th)
+	g.p.z, g.p.floorz, g.p.ceilz = g.thingSupportState(i, th)
+	g.p.momx, g.p.momy = g.thingMomX[i], g.thingMomY[i]
+	g.slideMoveUsing(func(x, y int64) bool {
+		floor, ceil, lines, ok := g.tryMoveProbeMonster(i, th.Type, x, y)
+		if !ok {
+			return false
+		}
+		oldX, oldY := g.thingPosFixed(i, th)
+		g.thingMomX[i], g.thingMomY[i] = g.p.momx, g.p.momy
+		g.setThingPosFixed(i, x, y)
+		g.setThingSupportState(i, g.p.z, floor, ceil)
+		g.checkWalkSpecialLinesForActorWithCandidates(oldX, oldY, x, y, i, false, lines)
+		g.p.x, g.p.y = g.thingPosFixed(i, th)
+		g.p.z, g.p.floorz, g.p.ceilz = g.thingSupportState(i, th)
+		g.p.momx, g.p.momy = g.thingMomX[i], g.thingMomY[i]
+		return true
+	})
+	g.thingMomX[i], g.thingMomY[i] = g.p.momx, g.p.momy
 }

@@ -13,7 +13,7 @@ func TestValidateHappyPath(t *testing.T) {
 			SegCount: 1,
 			FirstSeg: 0,
 		}},
-		Nodes: []Node{{ChildID: [2]uint16{0x8000, 0x8000}}},
+		Nodes: []Node{{ChildID: [2]uint32{0x80000000, 0x80000000}}},
 	}
 	if err := Validate(m); err != nil {
 		t.Fatalf("Validate() error = %v", err)

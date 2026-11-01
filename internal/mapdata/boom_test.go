@@ -16,6 +16,10 @@ func TestBoomExtendedActionSemantics(t *testing.T) {
 		{175, TriggerUse, false, func(i LineSpecialInfo) bool { return i.Door != nil && i.Door.Action == DoorClose30ThenOpen }},
 		{164, TriggerUse, false, func(i LineSpecialInfo) bool { return i.Ceiling != nil && i.Ceiling.Action == CeilingFastCrushRaise }},
 		{194, TriggerUse, true, func(i LineSpecialInfo) bool { return i.Light != nil && i.Light.Action == LightTurnTagOff }},
+		{16408, TriggerWalk, false, func(i LineSpecialInfo) bool {
+			return i.Ceiling != nil && i.Ceiling.HighestNeighbor.Speed == 3 && !i.Ceiling.HighestNeighbor.Up
+		}},
+		{208, TriggerWalk, true, func(i LineSpecialInfo) bool { return i.Teleport != nil && i.Teleport.Silent }},
 		{195, TriggerUse, true, func(i LineSpecialInfo) bool { return i.Teleport != nil && !i.Teleport.MonsterOnly }},
 	} {
 		i := LookupLineSpecial(tc.special)
@@ -23,7 +27,7 @@ func TestBoomExtendedActionSemantics(t *testing.T) {
 			t.Fatalf("special %d decoded incorrectly: %+v", tc.special, i)
 		}
 	}
-	for _, special := range []uint16{242, 223, 252, 0x4000} {
+	for _, special := range []uint16{242, 223, 252, 0x4080} {
 		if LookupLineSpecial(special).Trigger != TriggerUnknown {
 			t.Fatalf("unsupported special %d advertised as implemented", special)
 		}

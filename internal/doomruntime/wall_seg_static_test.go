@@ -3,8 +3,8 @@ package doomruntime
 import (
 	"testing"
 
-	"gddoom/internal/render/scene"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/scene"
 )
 
 func TestCachedSegPortalSplit(t *testing.T) {

@@ -512,6 +512,8 @@ The standalone free-game catalog subsequently advances the simulation to
 The initial [Boom subset](boom-support.md) advances this to
 `gd-doom-authority-dev-4`. Generalized floors/doors and conveyors subsequently
 advance it to `gd-doom-authority-dev-5`; these reuse existing snapshot fields.
+Extended BSP geometry, silent thing teleports and corrected teleport freeze
+timing advance this to `gd-doom-authority-dev-6`.
 The binary snapshot schema is unchanged. Deploy matching client and server
 binaries together; the lobby must use the same worker binary and approved
 catalog described in [free games](free-games.md).

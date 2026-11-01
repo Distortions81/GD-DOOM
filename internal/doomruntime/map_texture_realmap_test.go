@@ -612,7 +612,7 @@ type subsectorDiag struct {
 	Stage    string       `json:"stage"`
 	SegCount int          `json:"seg_count"`
 	FirstSeg int          `json:"first_seg"`
-	Segs     [][2]uint16  `json:"segs"`
+	Segs     [][2]uint32  `json:"segs"`
 	Verts    [][2]float64 `json:"verts,omitempty"`
 }
 
@@ -628,14 +628,14 @@ func buildSubsectorDiag(g *game, ss int, stage, reason string, verts []worldPt) 
 	sub := g.m.SubSectors[ss]
 	d.SegCount = int(sub.SegCount)
 	d.FirstSeg = int(sub.FirstSeg)
-	d.Segs = make([][2]uint16, 0, d.SegCount)
+	d.Segs = make([][2]uint32, 0, d.SegCount)
 	for i := 0; i < d.SegCount; i++ {
 		si := d.FirstSeg + i
 		if si < 0 || si >= len(g.m.Segs) {
 			continue
 		}
 		sg := g.m.Segs[si]
-		d.Segs = append(d.Segs, [2]uint16{sg.StartVertex, sg.EndVertex})
+		d.Segs = append(d.Segs, [2]uint32{sg.StartVertex, sg.EndVertex})
 	}
 	if len(verts) > 0 {
 		d.Verts = make([][2]float64, 0, len(verts))
