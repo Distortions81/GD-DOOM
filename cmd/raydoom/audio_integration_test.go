@@ -325,3 +325,59 @@ func TestNativeMusicReconfiguresCompressionFromOriginalScore(t *testing.T) {
 		t.Fatal("invalid score resumed stopped music")
 	}
 }
+
+func TestNativeSectorLoopsAndOriginReplacement(t *testing.T) {
+	if os.Getenv("GD_RAYLIB_AUDIO_INTEGRATION") == "" {
+		t.Skip("requires native audio or ALSA null PCM")
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	rl.SetTraceLogLevel(rl.LogWarning)
+	wf, err := wad.Open("../../DOOM1.WAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := mapdata.LoadMap(wf, "E1M1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := loadAssets(wf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts.NoMonsters = true
+	game := doomruntime.NewNativeMeshGame(m, opts)
+	a := newNativeAudio(wf, .7)
+	if a == nil {
+		t.Fatal("audio device unavailable")
+	}
+	defer a.Close()
+	movement := doomruntime.NativeSound{Name: "DSSTNMOV", Group: "sector:0", LoopTics: 8, Tick: 1, Pitch: 1}
+	a.Play(game, movement)
+	if len(a.voices) != 1 || !a.voices[0].owned || !rl.IsSoundPlaying(a.voices[0].sound) {
+		t.Fatal("finite movement buffer did not play")
+	}
+	a.Play(game, movement)
+	if len(a.voices) != 1 {
+		t.Fatal("duplicate same-tic refresh replaced live channel")
+	}
+	movement.Group = "sector:1"
+	a.Play(game, movement)
+	if len(a.voices) != 2 {
+		t.Fatal("coincident origins from distinct sectors share a channel")
+	}
+	a.Play(game, doomruntime.NativeSound{Name: "DSPSTOP", Group: "sector:0", Pitch: 1})
+	if len(a.voices) != 2 || a.voices[0].event.Group != "sector:1" || a.voices[1].event.Name != "DSPSTOP" || a.voices[1].owned {
+		t.Fatal("stop did not replace only its own sector loop")
+	}
+	movement.Group = "sector:1"
+	movement.Tick = 9
+	a.Play(game, movement)
+	if len(a.voices) != 2 || !a.voices[1].owned || a.voices[1].event.Tick != 9 {
+		t.Fatal("refresh failed to replace owned movement window")
+	}
+	a.Stop()
+	if len(a.voices) != 0 {
+		t.Fatal("stop retained owned audio buffers")
+	}
+}

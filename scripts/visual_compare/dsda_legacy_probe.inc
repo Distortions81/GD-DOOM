@@ -13,7 +13,7 @@ static void GD_LegacyProbe(void)
  fprintf(out,"name,tic,remaining,f0,c0,flat0,type0,flags0,f1,c1,flat1,type1,flags1,f2,c2,flat2,type2,flags2,z,health,factive,cactive,switch,button\n");
  while(fscanf(input,"%127s %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",name,&map,&special,&use,&actor,&activator,&side,&position,&tag,&busy,&target,&tics,&retry,&fs[0],&fs[1],&fs[2],&cs[0],&cs[1],&cs[2],&types[0],&types[1],&types[2])==22){
   int tic,i;thinker_t *th=NULL;player_t *p;mobj_t *imp=NULL,*body;line_t *line;
-  G_InitNew(2,1,map,true);gametic=1;menuactive=false;p=&players[displayplayer];p->cheats=0;line=&lines[2];
+  G_InitNew(2,1,map,true);GD_SectorSoundBegin();gametic=1;menuactive=false;p=&players[displayplayer];p->cheats=0;line=&lines[2];
   while((th=P_NextThinker(th,th_all)))if(th->function==P_MobjThinker&&((mobj_t*)th)->type==MT_TROOP)imp=(mobj_t*)th;
   if(!imp)I_Error("legacy probe requires real imp");
   for(i=0;i<3;++i){sectors[i].floorheight=fs[i];sectors[i].ceilingheight=cs[i];sectors[i].special=types[i];sectors[i].tag=i==target?7:0;P_SpawnCompatibleSectorSpecial(&sectors[i],i);}
@@ -32,6 +32,7 @@ static void GD_LegacyProbe(void)
    if(tic){leveltime=tic-1;th=NULL;while((th=P_NextThinker(th,th_all))){
     if(th->function==(think_t)T_MoveFloor||th->function==(think_t)T_MoveCeiling||th->function==(think_t)T_PlatRaise||th->function==(think_t)T_MoveElevator||th->function==(think_t)T_VerticalDoor)th->function(th);
    }P_UpdateSpecials();}
+   GD_SectorSoundFrame(name,tic);
    fprintf(out,"%s,%d,%d",name,tic,line->special);
    for(i=0;i<3;++i)fprintf(out,",%d,%d,%.8s,%d,%d",sectors[i].floorheight,sectors[i].ceilingheight,W_LumpName(firstflat+sectors[i].floorpic),sectors[i].special,(sectors[i].flags&SECF_SECRET?128:0)|(sectors[i].flags&SECF_FRICTION?256:0)|(sectors[i].flags&SECF_PUSH?512:0));
    {int timer=0;for(i=0;i<MAXBUTTONS;++i)if(buttonlist[i].btimer)timer=buttonlist[i].btimer;

@@ -13,6 +13,7 @@
 #include "dsda_teleport_probe.inc"
 #include "dsda_environment_probe.inc"
 #include "dsda_lock_probe.inc"
+#include "dsda_sector_sound_probe.inc"
 #include "dsda_legacy_probe.inc"
 #include "dsda_generalized_probe.inc"
 #include "dsda_manual_probe.inc"

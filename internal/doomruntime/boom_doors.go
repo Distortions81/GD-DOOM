@@ -20,19 +20,5 @@ func (g *game) activateGeneralizedDoor(line int, info mapdata.LineSpecialInfo, i
 		}
 		targets = filtered
 	}
-	firstOrder := g.nextThinkerOrder
-	activated := g.activateDoorSectorsWithFloorSlot(targets, info.Door.Action, true)
-	for _, sec := range targets {
-		if d := g.activeDoorThinker(sec); d != nil && d.order >= firstOrder {
-			if gen.Kind == 2 {
-				d.typ = doorGenCloseWaitOpen
-			}
-			d.speed = vDoorSpeed << gen.Speed
-			d.topWait = [...]int{1, 4, 9, 30}[gen.Delay] * doomTicsPerSecond
-			if gen.Locked {
-				d.topWait = 150
-			} // Boom locked doors use VDOORWAIT, not the generalized delay table.
-		}
-	}
-	return activated
+	return g.activateDoorSectorsConfigured(targets, info.Door.Action, true, gen)
 }

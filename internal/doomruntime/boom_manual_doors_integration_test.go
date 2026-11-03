@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/wad"
 	"os"
@@ -137,6 +138,7 @@ func TestBoomManualDoorCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	soundTrace := newSectorSoundTrace(t)
 	out := bufio.NewWriter(f)
 	defer out.Flush()
 	fmt.Fprintln(out, "name,tic,line1,line2,f0,c0,f1,c1,f2,c2,fowner,cowner,doors,ceilings,floors,plats,elevators,z,health,lock0,lock1,lock2")
@@ -146,6 +148,12 @@ func TestBoomManualDoorCapture(t *testing.T) {
 			t.Fatal(err)
 		}
 		g := newGame(m, Options{SkillLevel: 3, Headless: true})
+		if strings.HasPrefix(c.Name, "lift_") {
+			doomrand.SetState(0, 0)
+		}
+		if strings.HasPrefix(c.Name, "rng1_lift_") {
+			doomrand.SetState(0, 1)
+		}
 		for i := range m.Sectors {
 			g.sectorFloor[i] = c.Floors[i]
 			g.sectorCeil[i] = c.Ceilings[i]
@@ -241,6 +249,7 @@ func TestBoomManualDoorCapture(t *testing.T) {
 				tickManualProbeMovers(g)
 				g.tickDelayedSwitchReverts()
 			}
+			soundTrace.frame(g, c.Name, tic)
 			fmt.Fprintf(out, "%s,%d,%d,%d", c.Name, tic, g.lineSpecial[2], g.lineSpecial[10])
 			for i := 0; i < 3; i++ {
 				fmt.Fprintf(out, ",%d,%d", g.sectorFloor[i], g.sectorCeil[i])

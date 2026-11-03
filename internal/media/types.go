@@ -219,6 +219,9 @@ type PCMSample struct {
 }
 
 type SoundBank struct {
+	SectorMove          PCMSample
+	PlatStart           PCMSample
+	PlatStop            PCMSample
 	MenuCursor          PCMSample
 	DoorOpen            PCMSample
 	DoorClose           PCMSample

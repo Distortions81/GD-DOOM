@@ -34,6 +34,28 @@ def run(command, log, env=None, cwd=ROOT):
                        stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=300)
 
 
+def install_sector_sound_probe(target):
+    """Observe requests after the silent-sector guard; leave mover code intact."""
+    shutil.copy(ROOT / "scripts/visual_compare/dsda_sector_sound_probe.inc", target / "src")
+    path = target / "src/s_sound.c"
+    data = path.read_text()
+    replacements = [
+        ("void S_StartSectorSound(sector_t *sector, int sfx_id)",
+         "void GD_CaptureSectorSound(sector_t *, int, int);\nvoid S_StartSectorSound(sector_t *sector, int sfx_id)"),
+        ("  S_StartSound((mobj_t *) &sector->soundorg, sfx_id);",
+         "  GD_CaptureSectorSound(sector, sfx_id, 0);\n  S_StartSound((mobj_t *) &sector->soundorg, sfx_id);"),
+        ("  S_LoopSound((mobj_t *) &sector->soundorg, sfx_id, timeout);",
+         "  GD_CaptureSectorSound(sector, sfx_id, timeout);\n  S_LoopSound((mobj_t *) &sector->soundorg, sfx_id, timeout);"),
+    ]
+    if "GD_CaptureSectorSound" in data:
+        raise ValueError("sound probe requires pristine s_sound.c")
+    for before, after in replacements:
+        if data.count(before) != 1:
+            raise ValueError(f"expected one sector sound hook: {before}")
+        data = data.replace(before, after)
+    path.write_text(data)
+
+
 def build_reference(source, out, cmake_args):
     source = source.resolve()
     if (source / "prboom2").is_dir():
@@ -50,6 +72,7 @@ def build_reference(source, out, cmake_args):
     shutil.copy(ROOT / "scripts/visual_compare/dsda_legacy_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_generalized_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_manual_probe.inc", target / "src")
+    install_sector_sound_probe(target)
     messenger = target / "src/dsda/messenger.c"
     messenger.write_text(messenger.read_text() + '\n#include "dsda_lock_messages.inc"\n')
     replace_once(target / "src/d_main.c", "void D_DoomMain(void)",

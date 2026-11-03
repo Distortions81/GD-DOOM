@@ -42,6 +42,7 @@ func TestBoomGeneralizedMoverCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	soundTrace := newSectorSoundTrace(t)
 	out := bufio.NewWriter(f)
 	defer out.Flush()
 	fmt.Fprint(out, "name,tic,remaining")
@@ -177,6 +178,7 @@ func TestBoomGeneralizedMoverCapture(t *testing.T) {
 				}
 				g.tickDelayedSwitchReverts()
 			}
+			soundTrace.frame(g, c.Name, tic)
 			fmt.Fprintf(out, "%s,%d,%d", c.Name, tic, g.lineSpecial[2])
 			for i := 0; i < 3; i++ {
 				st := boomStairState{Prev: -1, Next: -1}

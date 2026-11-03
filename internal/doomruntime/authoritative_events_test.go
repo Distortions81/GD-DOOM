@@ -118,7 +118,9 @@ func TestAuthorityEventsAudienceOriginAndValidation(t *testing.T) {
 	for _, mutate := range []func(*authorityReplica){
 		func(r *authorityReplica) { r.Sounds[0].ID = 0 },
 		func(r *authorityReplica) { r.Sounds[0].Tick = r.Tic + 1 },
-		func(r *authorityReplica) { r.Sounds[0].Kind = soundEventMonsterRaise + 1 },
+		func(r *authorityReplica) { r.Sounds[0].Kind = soundEventCount },
+		func(r *authorityReplica) { r.Sounds[0].SectorPlusOne = -1 },
+		func(r *authorityReplica) { r.Sounds[0].SectorPlusOne = len(a.g.m.Sectors) + 1 },
 		func(r *authorityReplica) { r.Sounds[0].Audience = 1 },
 		func(r *authorityReplica) { r.Sounds[0].X = 1 << 40 },
 	} {

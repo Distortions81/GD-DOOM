@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-var authorityBinarySchemaFingerprint = [16]byte{0xc1, 0xa1, 0xe3, 0xab, 0x37, 0xa1, 0x01, 0x17, 0xa6, 0x6e, 0x98, 0xe9, 0x9f, 0x1f, 0x23, 0x1b}
+var authorityBinarySchemaFingerprint = [16]byte{0x2d, 0xdd, 0x22, 0x5c, 0x46, 0x3b, 0xfb, 0x9e, 0x1e, 0x3d, 0xf8, 0xe8, 0x56, 0xdc, 0x69, 0x73}
 
 func (w *authorityBinaryWriter) writedoomruntime_AuthorityRules(v *AuthorityRules) {
 	if w.err != nil {
@@ -280,7 +280,7 @@ func (r *authorityBinaryReader) readdoomruntime_authorityReplica(v *authorityRep
 		}
 	}
 	v.SoundCursor = uint64(r.unsigned(64))
-	tmp39, tmp40 := r.collection(7, authorityBinarySizeOf[authoritySoundEvent]())
+	tmp39, tmp40 := r.collection(8, authorityBinarySizeOf[authoritySoundEvent]())
 	if r.err != nil {
 		return
 	}
@@ -529,6 +529,7 @@ func (w *authorityBinaryWriter) writedoomruntime_authoritySoundEvent(v *authorit
 	if w.err != nil {
 		return
 	}
+	w.signed(int64(v.SectorPlusOne))
 	w.unsigned(uint64(v.ID))
 	w.unsigned(uint64(v.Tick))
 	w.signed(int64(v.Kind))
@@ -541,6 +542,7 @@ func (r *authorityBinaryReader) readdoomruntime_authoritySoundEvent(v *authority
 	if r.err != nil {
 		return
 	}
+	v.SectorPlusOne = int(r.signed(strconv.IntSize))
 	v.ID = uint64(r.unsigned(64))
 	v.Tick = uint32(r.unsigned(32))
 	v.Kind = soundEvent(r.signed(strconv.IntSize))

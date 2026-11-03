@@ -30,7 +30,7 @@ static void GD_ManualProbe(void)
  fprintf(out,"name,tic,line1,line2,f0,c0,f1,c1,f2,c2,fowner,cowner,doors,ceilings,floors,plats,elevators,z,health,lock0,lock1,lock2\n");
  while(fscanf(input,"%127s %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",name,&special,&second,&kind,&age,&actor,&activator,&side,&secret,&keys,&tics,&at2,&at3,&late,&fs[0],&fs[1],&fs[2],&cs[0],&cs[1],&cs[2])==20){
   player_t *p;mobj_t *imp=NULL,*body;thinker_t *th=NULL;int i,tic,old;line_t *line;
-  G_InitNew(2,1,1,true);gametic=1;menuactive=false;p=&players[displayplayer];p->cheats=0;GD_ManualCount=0;line=&lines[2];
+  G_InitNew(2,1,1,true);GD_SectorSoundBegin();GD_SectorSoundSeed(name);gametic=1;menuactive=false;p=&players[displayplayer];p->cheats=0;GD_ManualCount=0;line=&lines[2];
   while((th=P_NextThinker(th,th_all)))if(th->function==P_MobjThinker&&((mobj_t*)th)->type==MT_TROOP)imp=(mobj_t*)th;
   if(!imp)I_Error("manual probe needs actual imp");
   for(i=0;i<3;++i){sectors[i].floorheight=fs[i];sectors[i].ceilingheight=cs[i];sectors[i].floorpic=R_FlatNumForName("FLOOR0_1");sectors[i].tag=i==1?7:0;}
@@ -55,6 +55,7 @@ static void GD_ManualProbe(void)
    if(tic==0&&(!(!activator&&p->health<=0)))P_UseSpecialLine(activator?imp:p->mo,line,side,false);
    if((tic==at2||tic==at3)&&lines[10].special&&(activator||p->health>0))P_UseSpecialLine(activator?imp:p->mo,&lines[10],side,false);
    if(tic){leveltime=age+tic-1;GD_ManualTick();}
+   GD_SectorSoundFrame(name,tic);
    fprintf(out,"%s,%d,%d,%d",name,tic,line->special,lines[10].special);for(i=0;i<3;++i)fprintf(out,",%d,%d",sectors[i].floorheight,sectors[i].ceilingheight);
    fprintf(out,",%d,%d",sectors[1].floordata?GD_ManualKind((thinker_t*)sectors[1].floordata):0,sectors[1].ceilingdata?GD_ManualKind((thinker_t*)sectors[1].ceilingdata):0);
    for(i=1;i<=5;++i){th=NULL;fputc(',',out);while((th=P_NextThinker(th,th_all))){int k=GD_ManualKind(th);if(k!=i)continue;

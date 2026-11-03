@@ -186,6 +186,7 @@ func (g *game) activateGeneralizedLift(line int, info mapdata.PlatInfo) bool {
 		pt.finishSpecial = 0
 		pt.skipOrderedTic = false
 		g.plats[sec] = pt
+		g.emitSectorSound(sec, soundEventPlatStart)
 		active = true
 		if g.platTickedThisTic && !g.orderedWorldThinkersActive {
 			g.tickPlat(sec, pt)

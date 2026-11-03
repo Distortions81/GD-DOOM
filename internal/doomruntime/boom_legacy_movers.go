@@ -144,7 +144,9 @@ func (g *game) tickElevator(sec int, ft *floorThinker) {
 	if result != boomPlaneBlocked {
 		g.moveElevatorPlane(sec, !firstCeiling, ft.speed, second, ft.direction)
 	}
+	g.emitSectorMoveLoop(sec)
 	if result == boomPlanePast {
+		g.emitSectorSound(sec, soundEventPlatStop)
 		g.clearTrackedCeilingSlot(sec)
 		delete(g.floors, sec)
 	}

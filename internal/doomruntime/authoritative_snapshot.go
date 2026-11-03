@@ -231,7 +231,7 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 	}
 	var lastSoundID uint64
 	for _, event := range r.Sounds {
-		if event.ID <= lastSoundID || event.ID > r.SoundCursor || event.Tick > r.Tic || event.Kind < soundEventDoorOpen || event.Kind > soundEventMonsterRaise || event.LocalPlayer > 4 || event.Audience > 4 || event.Audience != 0 && event.Audience != r.Viewer || event.X < math.MinInt32 || event.X > math.MaxInt32 || event.Y < math.MinInt32 || event.Y > math.MaxInt32 {
+		if event.ID <= lastSoundID || event.ID > r.SoundCursor || event.Tick > r.Tic || event.Kind < soundEventDoorOpen || event.Kind >= soundEventCount || event.SectorPlusOne < 0 || event.SectorPlusOne > sectors || event.LocalPlayer > 4 || event.Audience > 4 || event.Audience != 0 && event.Audience != r.Viewer || event.X < math.MinInt32 || event.X > math.MaxInt32 || event.Y < math.MinInt32 || event.Y > math.MaxInt32 {
 			return fmt.Errorf("authority baseline sound event invalid")
 		}
 		lastSoundID = event.ID

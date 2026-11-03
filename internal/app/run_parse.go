@@ -3729,6 +3729,7 @@ func buildRuntimeSoundBank(r sound.DigitalImportReport, sourcePortMode, prepare 
 		}
 	}
 	bank := media.SoundBank{
+		SectorMove: sample("DSSTNMOV"), PlatStart: sample("DSPSTART"), PlatStop: sample("DSPSTOP"),
 		MenuCursor:          firstSample(sample("DSPSTOP"), firstSample(sample("DSSTNMOV"), sample("DSSWTCHN"))),
 		DoorOpen:            firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
 		DoorClose:           firstSample(sample("DSDORCLS"), sample("DSBDCLS")),

@@ -769,7 +769,9 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 				}
 				d.direction = -1
 			}
-			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			if !g.boomMomentumDropoff {
+				g.emitDoorSectorSound(sec, doorThinkerMoveEvent(d, d.direction))
+			}
 			g.debugDoorActivate("line=%d sec=%d special=%d retoggle dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 			return true
 		}
@@ -828,7 +830,7 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		return false
 	}
 	g.installDoorThinker(sec, d)
-	g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+	g.emitDoorSectorSound(sec, doorThinkerMoveEvent(d, d.direction))
 	g.debugDoorActivate("line=%d sec=%d special=%d spawn dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 	return true
 }
@@ -850,6 +852,10 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 }
 
 func (g *game) activateDoorSectorsWithFloorSlot(targets []int, action mapdata.DoorAction, independentFloor bool) bool {
+	return g.activateDoorSectorsConfigured(targets, action, independentFloor, nil)
+}
+
+func (g *game) activateDoorSectorsConfigured(targets []int, action mapdata.DoorAction, independentFloor bool, gen *mapdata.GeneralizedDoorInfo) bool {
 	if len(targets) == 0 {
 		return false
 	}
@@ -908,8 +914,20 @@ func (g *game) activateDoorSectorsWithFloorSlot(targets []int, action mapdata.Do
 		default:
 			continue
 		}
+		if gen != nil {
+			if gen.Kind == 2 {
+				d.typ = doorGenCloseWaitOpen
+			}
+			d.speed = vDoorSpeed << gen.Speed
+			d.topWait = [...]int{1, 4, 9, 30}[gen.Delay] * doomTicsPerSecond
+			if gen.Locked {
+				d.topWait = 150
+			}
+		}
 		g.installDoorThinker(sec, d)
-		g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+		if d.direction < 0 || d.topHeight != g.sectorCeil[sec] || gen != nil && gen.Locked {
+			g.emitDoorSectorSound(sec, doorThinkerMoveEvent(d, d.direction))
+		}
 		g.debugDoorActivate("tagged sec=%d action=%v spawn dir=%d typ=%d", sec, action, d.direction, d.typ)
 		activated = true
 	}

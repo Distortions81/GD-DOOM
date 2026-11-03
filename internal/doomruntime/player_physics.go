@@ -546,10 +546,10 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			switch d.typ {
 			case doorBlazeRaise, doorNormal:
 				d.direction = -1
-				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+				g.emitDoorSectorSound(sec, doorThinkerMoveEvent(d, d.direction))
 			case doorClose30ThenOpen, doorGenCloseWaitOpen:
 				d.direction = 1
-				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+				g.emitDoorSectorSound(sec, doorThinkerMoveEvent(d, d.direction))
 			}
 		}
 	case 2:
@@ -557,7 +557,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 		if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
 			d.direction = 1
 			d.typ = doorNormal
-			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			g.emitDoorSectorSound(sec, doorThinkerMoveEvent(d, d.direction))
 		}
 	case -1:
 		oldCeil := g.sectorCeil[sec]
@@ -595,7 +595,13 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 				// advance through blocking actors.
 			default:
 				d.direction = 1
-				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+				event := doorThinkerMoveEvent(d, d.direction)
+				// T_VerticalDoor's default obstruction branch uses DOROPN,
+				// including fast generalized close/wait/open doors.
+				if d.typ == doorGenCloseWaitOpen {
+					event = soundEventDoorOpen
+				}
+				g.emitDoorSectorSound(sec, event)
 			}
 			return
 		}

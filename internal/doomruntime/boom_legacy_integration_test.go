@@ -44,6 +44,7 @@ func TestBoomLegacyMoverCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	soundTrace := newSectorSoundTrace(t)
 	out := bufio.NewWriter(f)
 	defer out.Flush()
 	fmt.Fprintln(out, "name,tic,remaining,f0,c0,flat0,type0,flags0,f1,c1,flat1,type1,flags1,f2,c2,flat2,type2,flags2,z,health,factive,cactive,switch,button")
@@ -157,6 +158,7 @@ func TestBoomLegacyMoverCapture(t *testing.T) {
 				}
 				g.tickDelayedSwitchReverts()
 			}
+			soundTrace.frame(g, c.Name, tic)
 			fmt.Fprintf(out, "%s,%d,%d", c.Name, tic, g.lineSpecial[2])
 			for i := range m.Sectors {
 				fmt.Fprintf(out, ",%d,%d,%s,%d,%d", g.sectorFloor[i], g.sectorCeil[i], m.Sectors[i].FloorPic, m.Sectors[i].Special, m.Sectors[i].Special&0x380)

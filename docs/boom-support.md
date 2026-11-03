@@ -96,6 +96,12 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   reject an occupied ceiling slot. One-shot legacy doors retain displaced
   thinkers and reproduce actual slot replacement/clearing rather than deleting
   the older controller. Overlapping controllers survive saves and replication.
+- Moving-sector sounds: eight-tic movement-loop refreshes, floor/elevator
+  completion sounds, platform start/stop/reversal sounds, legacy silent-crusher
+  endpoint sounds and fully silent generalized crushers/toggle platforms. Sector
+  identity and bounding-box sound origins survive sound-event replication.
+  Generalized doors select their opening/closing sound using their final speed,
+  destination and retrigger/obstruction path.
 - Voodoo dolls slide using their own collision shape while collision checks
   retain the real player's position.
 
@@ -825,10 +831,63 @@ state extension. The existing generalized, legacy and lock matrices still match
 **495,456**, **208,202**, and **262,144** rows respectively. All five no-monsters
 demos still match **5,772 frames** and exit tics, and the full Go suite passes.
 
+## Moving-sector sound verification
+
+The sector sound verifier compares **1,340,462/1,340,462 frames** across
+**6,062 cases**, containing **72,904 ordered sector sound requests**, against
+DSDA-Doom 0.27.5 at complevel 9. It reuses the legacy, generalized and manual-door
+matrices and adds 266 sound cases on a fixture translated by `(37, -19)` map
+units. Both engines run real activation dispatchers and ordered mover ticks.
+Every captured frame includes the ordered sound lump, sector identity, exact
+16.16 origin and loop timeout, including frames with no requests. Existing
+manual cases aggregate their setup/aging requests into frame zero; the added
+sound matrix has no aging stage and captures each subsequent tic separately.
+
+Coverage includes floor/stair/ceiling/elevator movement loops and completion,
+platform activation, endpoint waits, blocked reversals and retriggers, crusher
+stasis/resume, legacy silent-crusher endpoint sounds, generalized crusher and
+toggle-platform silence, and all generalized door speeds. The extra matrix
+uses stationary players and real imps as blockers; actor AI is not stepped.
+Initial random choices for perpetual generalized lifts are seeded to exercise
+both starting directions. This checks their sound timing without claiming Boom
+RNG stream parity.
+
+Only the private reference's `S_StartSectorSound` and `S_LoopSectorSound`
+entry points gain observation hooks, after their silent-sector guards. Its
+mover/dispatcher sources remain byte-identical to pristine DSDA-Doom. `-nosound`
+disables device output while these hooks capture the engine's requests. The
+comparison therefore establishes sound selection, request ordering, timing,
+spatial origins and silence, rather than equality of mixed audio waveforms.
+
+The PCM backends convert loop refreshes into finite eight-tic windows, retaining
+sample phase across consecutive refreshes and letting unrefreshed loops expire.
+One-shots replace the movement channel for their sector. Distinct sectors retain
+separate channels even when their bounding-box centers coincide. Unit tests check
+phase continuity, duplicate refreshes, expiry, cancellation, pitch-adjusted window
+lengths and authority sound-event identity/validation. Native Raylib integration
+checks run against ALSA null PCM and verify real sound-buffer creation, refresh,
+origin-specific replacement and cleanup; this is not a listening check. Existing
+PC-speaker effect policy and mixer-wide pitch/channel limits retain their prior
+behavior.
+
+```sh
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_sector_sounds.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-sector-sounds
+```
+
+An already instrumented reference can be supplied with `--reference`. Each suite
+retains its movement and sound CSVs, manifests/WAD, logs, hashes and results;
+aggregate results are in `results.json`. The legacy/generalized/manual movement
+matrices and all **262,144** key-lock rows still match. All five existing demos
+still match **5,772 frames** and exit tics. The full Go suite and native audio
+integration checks pass. No live listening or mixed-waveform comparison was
+performed.
+
 ## Remaining work
 
-Moving-sector sound fidelity, GL nodes, unusual interactions beyond the fixtures,
-and complete Boom demo/RNG behavior remain outside this verified scope.
+GL nodes, unusual interactions beyond the fixtures, complete Boom demo/RNG
+behavior, and mixer-wide sound parity remain outside this verified scope.
 Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
@@ -836,8 +895,8 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-15`. Deploy matching clients and servers. Explicit ceiling
-ownership and retained doors extend the authoritative schema; displaced ceilings
+`gd-doom-authority-dev-16`. Deploy matching clients and servers. Sector identities
+extend the sound-event schema. Explicit ceiling ownership and retained doors extend the mover schema; displaced ceilings
 remain in the ordered mover state. Save version 35 reads versions 32–34;
 keyframe version 22 reads versions 19–21. Older formats cannot preserve the
 previously unsupported overlapping manual-door state. Generalized mover,

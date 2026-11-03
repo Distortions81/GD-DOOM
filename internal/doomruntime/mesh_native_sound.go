@@ -20,10 +20,11 @@ func (n *NativeMeshGame) SetPCSpeakerSound(bank map[string][]sound.PCSpeakerTone
 // NativeSound describes a sound selected by the original Doom sound queue.
 // Coordinates are map units; Pitch is a playback multiplier (1 = normal).
 type NativeSound struct {
-	Name, Group string
-	X, Y        float64
-	Positioned  bool
-	Pitch       float32
+	Name, Group    string
+	LoopTics, Tick int
+	X, Y           float64
+	Positioned     bool
+	Pitch          float32
 }
 
 func (n *NativeMeshGame) SetSoundSink(sink func(NativeSound)) {
@@ -50,7 +51,7 @@ func (n *NativeMeshGame) SetSoundSink(sink func(NativeSound)) {
 				return
 			}
 		}
-		sink(NativeSound{Name: name, Group: singularSoundGroup(ev), X: float64(origin.x) / fracUnit, Y: float64(origin.y) / fracUnit, Positioned: origin.positioned, Pitch: float32(doomPitchStep(pitch)) / 65536})
+		sink(NativeSound{Name: name, Group: soundOriginGroup(ev, origin), LoopTics: soundEventLoopTics(ev), Tick: origin.tick, X: float64(origin.x) / fracUnit, Y: float64(origin.y) / fracUnit, Positioned: origin.positioned, Pitch: float32(doomPitchStep(pitch)) / 65536})
 	}
 }
 

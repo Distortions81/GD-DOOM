@@ -585,10 +585,10 @@ type game struct {
 	snd                     *soundSystem
 	soundQueue              []soundEvent
 	soundQueueOrigin        []queuedSoundOrigin
-	wasmSoundSeen           [soundEventIntermissionDone + 1]bool
-	wasmSoundBestIdx        [soundEventIntermissionDone + 1]int
-	wasmSoundBestStrength   [soundEventIntermissionDone + 1]int
-	wasmSoundOrder          [soundEventIntermissionDone + 1]soundEvent
+	wasmSoundSeen           [soundEventCount]bool
+	wasmSoundBestIdx        [soundEventCount]int
+	wasmSoundBestStrength   [soundEventCount]int
+	wasmSoundOrder          [soundEventCount]soundEvent
 	wasmSoundOrderCount     int
 	delayedSfx              []delayedSoundEvent
 	delayedSwitchReverts    []delayedSwitchTexture
@@ -1041,9 +1041,11 @@ type delayedSoundEvent struct {
 }
 
 type queuedSoundOrigin struct {
-	x          int64
-	y          int64
-	positioned bool
+	sectorPlusOne int
+	tick          int
+	x             int64
+	y             int64
+	positioned    bool
 }
 
 type delayedSwitchTexture struct {
@@ -4688,20 +4690,14 @@ func (g *game) emitMonsterDeathSoundDelayedAt(typ int16, tics int, x, y int64) {
 	})
 }
 
-func (g *game) emitDoorSectorSound(sec int, ev soundEvent) {
-	if x, y, ok := g.sectorSoundOrigin(sec); ok {
-		g.emitSoundEventAt(ev, x, y)
-		return
-	}
-	g.emitSoundEvent(ev)
-}
+func (g *game) emitDoorSectorSound(sec int, ev soundEvent) { g.emitSectorSound(sec, ev) }
 
 func (g *game) sectorSoundOrigin(sec int) (int64, int64, bool) {
 	if g == nil || sec < 0 || sec >= len(g.sectorBBox) {
 		return 0, 0, false
 	}
 	sb := g.sectorBBox[sec]
-	if sb.maxX <= sb.minX || sb.maxY <= sb.minY {
+	if !isFinite(sb.minX) || !isFinite(sb.maxX) || !isFinite(sb.minY) || !isFinite(sb.maxY) || sb.maxX < sb.minX || sb.maxY < sb.minY {
 		return 0, 0, false
 	}
 	x := (sb.minX + sb.maxX) * 0.5

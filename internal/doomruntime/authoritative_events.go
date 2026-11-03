@@ -13,12 +13,13 @@ const (
 // the epoch; a replacement world/predictor starts a fresh ring and cursor.
 // Visual impacts already belong to the baseline and are not replayed here.
 type authoritySoundEvent struct {
-	ID          uint64
-	Tick        uint32
-	Kind        soundEvent
-	X, Y        int64
-	LocalPlayer byte // unpositioned player sound; other listeners hear its origin
-	Audience    byte // zero is spatially audible to anyone; otherwise private feedback
+	SectorPlusOne int
+	ID            uint64
+	Tick          uint32
+	Kind          soundEvent
+	X, Y          int64
+	LocalPlayer   byte // unpositioned player sound; other listeners hear its origin
+	Audience      byte // zero is spatially audible to anyone; otherwise private feedback
 }
 type authorityEventLog struct {
 	lastID       uint64
@@ -106,7 +107,7 @@ func (p *ClientPrediction) applyAuthoritySounds(r authorityReplica, hadBaseline 
 }
 
 func authoritySoundOrigin(event authoritySoundEvent, viewer byte) queuedSoundOrigin {
-	return queuedSoundOrigin{x: event.X, y: event.Y, positioned: event.LocalPlayer != viewer}
+	return queuedSoundOrigin{x: event.X, y: event.Y, positioned: event.LocalPlayer != viewer, sectorPlusOne: event.SectorPlusOne, tick: int(event.Tick)}
 }
 
 func (g *game) playAuthoritySound(event authoritySoundEvent, epoch uint64, viewer byte) {

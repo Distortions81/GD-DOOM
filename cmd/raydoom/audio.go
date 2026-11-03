@@ -6,6 +6,7 @@ import (
 	"gddoom/internal/app"
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomruntime"
+	"gddoom/internal/media"
 	"gddoom/internal/sessionaudio"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
@@ -14,11 +15,14 @@ import (
 )
 
 type soundVoice struct {
+	owned bool
 	sound rl.Sound
 	event doomruntime.NativeSound
 }
 
 type nativeAudio struct {
+	rawSamples     map[string]media.PCMSample
+	sectorLoops    audiofx.LoopSequencer
 	sources        map[string]rl.Sound
 	voices         []soundVoice
 	volume         float32
@@ -42,7 +46,7 @@ func newNativeAudioWithOutput(wf *wad.File, volume float32, output audiofx.PCSpe
 	if !rl.IsAudioDeviceReady() {
 		return nil
 	}
-	a := &nativeAudio{sources: make(map[string]rl.Sound), volume: volume}
+	a := &nativeAudio{sources: make(map[string]rl.Sound), rawSamples: make(map[string]media.PCMSample), volume: volume}
 	a.pcBank = sound.BuildPCSpeakerBank(sound.ImportPCSpeakerSounds(wf))
 	a.speaker, a.speakerBackend, a.speakerError = newNativeSpeakerOutput(output, 1, audiofx.PCSpeakerVariantSmallSpeaker, os.Stderr)
 	report := sound.ImportDigitalSounds(wf)
@@ -53,6 +57,7 @@ func newNativeAudioWithOutput(wf *wad.File, volume float32, output audiofx.PCSpe
 		}
 		// Preserve the main game's vanilla base-pitch semantics: DMX headers
 		// can carry other rates, but Doom's SFX mixer uses 11025 Hz.
+		a.rawSamples[s.Name] = media.PCMSample{SampleRate: 11025, Data: s.Samples}
 		wave := rl.NewWave(uint32(len(s.Samples)), 11025, 8, 1, s.Samples)
 		source := rl.LoadSoundFromWave(wave)
 		// The Wave borrows Go bytes; only the copied Raylib Sound is owned.
@@ -80,6 +85,16 @@ func (a *nativeAudio) Play(game *doomruntime.NativeMeshGame, event doomruntime.N
 	if !ok {
 		return
 	}
+	var chunk media.PCMSample
+	if event.LoopTics > 0 {
+		var start bool
+		chunk, event.Pitch, start = a.sectorLoops.Chunk(event.Group, event.LoopTics, event.Tick, a.rawSamples[event.Name], event.Pitch)
+		if !start {
+			return
+		}
+	} else {
+		a.sectorLoops.Chunk(event.Group, 0, event.Tick, media.PCMSample{}, 1)
+	}
 	if event.Group != "" {
 		for _, v := range a.voices {
 			if v.event.Group == event.Group {
@@ -90,16 +105,22 @@ func (a *nativeAudio) Play(game *doomruntime.NativeMeshGame, event doomruntime.N
 	a.Update(game)
 	if len(a.voices) >= 32 {
 		rl.StopSound(a.voices[0].sound)
-		rl.UnloadSoundAlias(a.voices[0].sound)
+		a.voices[0].unload()
 		a.voices = a.voices[1:]
 	}
-	voice := rl.LoadSoundAlias(source)
+	voice := rl.Sound{}
+	owned := event.LoopTics > 0 && len(chunk.Data) > 0
+	if owned {
+		voice = rl.LoadSoundFromWave(rl.NewWave(uint32(len(chunk.Data)), uint32(chunk.SampleRate), 8, 1, chunk.Data))
+	} else {
+		voice = rl.LoadSoundAlias(source)
+	}
 	vol, pan := game.SoundParams(event)
 	rl.SetSoundVolume(voice, vol*a.volume)
 	rl.SetSoundPan(voice, pan)
 	rl.SetSoundPitch(voice, event.Pitch)
 	rl.PlaySound(voice)
-	a.voices = append(a.voices, soundVoice{voice, event})
+	a.voices = append(a.voices, soundVoice{sound: voice, event: event, owned: owned})
 }
 
 func (a *nativeAudio) SetPaused(paused bool) {
@@ -122,7 +143,7 @@ func (a *nativeAudio) Update(game *doomruntime.NativeMeshGame) {
 	active := a.voices[:0]
 	for _, v := range a.voices {
 		if !rl.IsSoundPlaying(v.sound) {
-			rl.UnloadSoundAlias(v.sound)
+			v.unload()
 			continue
 		}
 		vol, pan := game.SoundParams(v.event)
@@ -134,12 +155,15 @@ func (a *nativeAudio) Update(game *doomruntime.NativeMeshGame) {
 }
 
 func (a *nativeAudio) Stop() {
+	if a != nil {
+		a.sectorLoops.Clear()
+	}
 	if a == nil {
 		return
 	}
 	for _, v := range a.voices {
 		rl.StopSound(v.sound)
-		rl.UnloadSoundAlias(v.sound)
+		v.unload()
 	}
 	a.voices = a.voices[:0]
 	if a.speaker != nil {
@@ -228,5 +252,13 @@ func (a *nativeAudio) PlayQuit(game *doomruntime.NativeMeshGame, commercial bool
 	}
 	if name != "" {
 		a.Play(game, doomruntime.NativeSound{Name: name, Pitch: 1})
+	}
+}
+
+func (v soundVoice) unload() {
+	if v.owned {
+		rl.UnloadSound(v.sound)
+	} else {
+		rl.UnloadSoundAlias(v.sound)
 	}
 }

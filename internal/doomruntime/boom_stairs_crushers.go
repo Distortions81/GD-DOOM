@@ -173,6 +173,9 @@ func (g *game) tickGeneralizedCrusher(sec int, ct *ceilingThinker) {
 		if blocked {
 			g.setSectorCeilingHeightWithCrush(sec, cur, ct.direction < 0)
 		}
+		if ct.action != mapdata.CeilingGenSilentCrusher {
+			g.emitSectorMoveLoop(sec)
+		}
 		if ct.direction < 0 {
 			if ct.oldSpeed < 3*fracUnit {
 				ct.speed = ct.oldSpeed
@@ -181,7 +184,12 @@ func (g *game) tickGeneralizedCrusher(sec int, ct *ceilingThinker) {
 		} else {
 			ct.direction = -1
 		}
-	} else if blocked && ct.direction < 0 && ct.oldSpeed < 3*fracUnit {
-		ct.speed = fracUnit / 8
+	} else {
+		if ct.action != mapdata.CeilingGenSilentCrusher {
+			g.emitSectorMoveLoop(sec)
+		}
+		if blocked && ct.direction < 0 && ct.oldSpeed < 3*fracUnit {
+			ct.speed = fracUnit / 8
+		}
 	}
 }

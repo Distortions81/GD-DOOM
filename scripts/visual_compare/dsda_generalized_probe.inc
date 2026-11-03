@@ -14,7 +14,7 @@ static void GD_GeneralizedProbe(void)
  fprintf(out,",z,health,switch,button\n");
  while(fscanf(input,"%127s %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %15s %15s %15s",name,&special,&actor,&activator,&side,&tag,&busy,&secret,&position,&target,&tics,&retry,&late,&stop,&resume,&retag,&fs[0],&fs[1],&fs[2],&cs[0],&cs[1],&cs[2],flats[0],flats[1],flats[2])==25){
   player_t *p;mobj_t *imp=NULL,*body;thinker_t *th=NULL;line_t *line;int tic,i;
-  G_InitNew(2,1,1,true);gametic=1;menuactive=false;p=&players[displayplayer];p->cheats=0;line=&lines[2];
+  G_InitNew(2,1,1,true);GD_SectorSoundBegin();gametic=1;menuactive=false;p=&players[displayplayer];p->cheats=0;line=&lines[2];
   while((th=P_NextThinker(th,th_all)))if(th->function==P_MobjThinker&&((mobj_t*)th)->type==MT_TROOP)imp=(mobj_t*)th;
   if(!imp)I_Error("generalized probe requires actual imp");
   for(i=0;i<3;++i){sectors[i].floorheight=fs[i];sectors[i].ceilingheight=cs[i];sectors[i].floorpic=R_FlatNumForName(flats[i]);sectors[i].special=0;sectors[i].tag=i==target?7:0;}
@@ -36,6 +36,7 @@ static void GD_GeneralizedProbe(void)
     else if(activator||p->health>0)P_UseSpecialLine(activator?imp:p->mo,line,side,false);
    }}
    if(tic){leveltime=tic-1;th=NULL;while((th=P_NextThinker(th,th_all)))if(th->function==(think_t)T_MoveFloor||th->function==(think_t)T_MoveCeiling||th->function==(think_t)T_PlatRaise||th->function==(think_t)T_MoveElevator)th->function(th);P_UpdateSpecials();}
+   GD_SectorSoundFrame(name,tic);
    fprintf(out,"%s,%d,%d",name,tic,line->special);
    for(i=0;i<3;++i){floormove_t *f=NULL;ceiling_t *c=NULL;
     if(sectors[i].floordata&&((thinker_t*)sectors[i].floordata)->function==(think_t)T_MoveFloor)f=sectors[i].floordata;

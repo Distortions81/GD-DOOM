@@ -1138,6 +1138,11 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			continue
 		}
 		g.plats[sec] = pt
+		if pt.typ == platTypeRaiseAndChange || pt.typ == platTypeRaiseToNearestAndChange {
+			g.emitSectorSound(sec, soundEventSectorMoveStart)
+		} else if pt.typ != platTypeToggle {
+			g.emitSectorSound(sec, soundEventPlatStart)
+		}
 		if want := runtimeDebugEnv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
 			var wantSec int
 			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
@@ -1904,6 +1909,7 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 	if blocked && (done || ft.direction < 0 && !g.boomMomentumDropoff || ft.direction > 0 && (!ft.crush || g.boomMomentumDropoff)) {
 		g.setSectorFloorHeightWithCrush(sec, cur, ft.crush)
 	}
+	g.emitSectorMoveLoop(sec)
 	if !done {
 		return
 	}
@@ -1914,6 +1920,7 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 		}
 		g.markDynamicSectorPlaneCacheDirty(sec)
 	}
+	g.emitSectorSound(sec, soundEventPlatStop)
 	delete(g.floors, sec)
 	g.finishBoomStair(sec)
 }
@@ -1942,6 +1949,9 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 	}
 	switch pt.status {
 	case platStatusUp:
+		if pt.typ == platTypeRaiseAndChange || pt.typ == platTypeRaiseToNearestAndChange {
+			g.emitSectorMoveLoop(sec)
+		}
 		high := pt.high
 		if g.boomMomentumDropoff {
 			high = min64(high, g.sectorCeil[sec])
@@ -1953,6 +1963,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 			if g.setSectorFloorHeightWithCrush(sec, next, false) {
 				g.setSectorFloorHeight(sec, cur)
 			}
+			g.emitSectorSound(sec, soundEventPlatStop)
 			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeRaiseAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
 				// T_PlatRaise only removes the thinker here. Texture changes
 				// happen in EV_DoPlat, and lifts retain their sector special.
@@ -1969,6 +1980,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 			g.setSectorFloorHeight(sec, cur)
 			pt.count = pt.wait
 			pt.status = platStatusDown
+			g.emitSectorSound(sec, soundEventPlatStart)
 		}
 	case platStatusDown:
 		cur := g.sectorFloor[sec]
@@ -1980,6 +1992,11 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 			}
 			pt.status = platStatusWaiting
 			pt.count = pt.wait
+			g.emitSectorSound(sec, soundEventPlatStop)
+			if g.boomMomentumDropoff && (pt.typ == platTypeRaiseAndChange || pt.typ == platTypeRaiseToNearestAndChange) {
+				delete(g.plats, sec)
+				g.freePlatThinker(pt)
+			}
 			return
 		}
 		if g.setSectorFloorHeightWithCrush(sec, next, false) {
@@ -1997,6 +2014,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 		} else {
 			pt.status = platStatusDown
 		}
+		g.emitSectorSound(sec, soundEventPlatStart)
 	case platStatusInStasis:
 		return
 	}
@@ -2032,9 +2050,15 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 			if g.setSectorCeilingHeightWithCrush(sec, next, ct.crush) {
 				g.setSectorCeilingHeightWithCrush(sec, cur, ct.crush)
 			}
+			if ct.action != mapdata.CeilingSilentCrushRaise {
+				g.emitSectorMoveLoop(sec)
+			}
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
 				if ct.action != mapdata.CeilingFastCrushRaise {
 					ct.speed = ceilingMoveSpeed
+				}
+				if ct.action == mapdata.CeilingSilentCrushRaise {
+					g.emitSectorSound(sec, soundEventPlatStop)
 				}
 				ct.direction = 1
 			} else {
@@ -2052,6 +2076,9 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 				ct.speed = ceilingMoveSpeed / 8
 			}
 		}
+		if ct.action != mapdata.CeilingSilentCrushRaise {
+			g.emitSectorMoveLoop(sec)
+		}
 	case 1:
 		next := cur + ct.speed
 		if next > ct.topHeight {
@@ -2059,7 +2086,13 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 			if g.setSectorCeilingHeightWithCrush(sec, next, ct.crush) {
 				g.setSectorCeilingHeightWithCrush(sec, cur, ct.crush)
 			}
+			if ct.action != mapdata.CeilingSilentCrushRaise {
+				g.emitSectorMoveLoop(sec)
+			}
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
+				if ct.action == mapdata.CeilingSilentCrushRaise {
+					g.emitSectorSound(sec, soundEventPlatStop)
+				}
 				ct.direction = -1
 			} else {
 				g.finishCeiling(sec, ct)
@@ -2067,6 +2100,9 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 			return
 		}
 		g.setSectorCeilingHeight(sec, next)
+		if ct.action != mapdata.CeilingSilentCrushRaise {
+			g.emitSectorMoveLoop(sec)
+		}
 	case 0:
 		return
 	}

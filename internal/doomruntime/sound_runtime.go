@@ -111,9 +111,15 @@ const (
 	soundEventKeenPain
 	soundEventKeenDeath
 	soundEventMonsterRaise
+	soundEventSectorMove
+	soundEventSectorMoveStart
+	soundEventPlatStart
+	soundEventPlatStop
+	soundEventCount
 )
 
 type soundSystem struct {
+	sectorLoops   audiofx.LoopSequencer
 	bank          SoundBank
 	player        *audiofx.SpatialPlayer
 	pcSpeaker     audiofx.PCSpeaker
@@ -239,7 +245,13 @@ func (s *soundSystem) playEventSpatialPitch(ev soundEvent, origin queuedSoundOri
 		return
 	}
 	sample = applyVanillaPitch(sample, pitch)
-	s.player.PlaySampleSpatialDelayedGrouped(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev), singularSoundGroup(ev))
+	group := soundOriginGroup(ev, origin)
+	var start bool
+	sample, _, start = s.sectorLoops.Chunk(group, soundEventLoopTics(ev), origin.tick, sample, 1)
+	if !start {
+		return
+	}
+	s.player.PlaySampleSpatialDelayedGrouped(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev), group)
 }
 
 func singularSoundGroup(ev soundEvent) string {
@@ -374,6 +386,14 @@ func debugLogVanillaPitch(ev soundEvent, mode string) {
 
 func soundEventDebugName(ev soundEvent) string {
 	switch ev {
+	case soundEventSectorMove:
+		return "SectorMove"
+	case soundEventSectorMoveStart:
+		return "SectorMoveStart"
+	case soundEventPlatStart:
+		return "PlatStart"
+	case soundEventPlatStop:
+		return "PlatStop"
 	case soundEventItemUp:
 		return "ItemUp"
 	case soundEventTink:
@@ -486,6 +506,12 @@ func isMonsterVocalSound(ev soundEvent) bool {
 // the pc-speaker bank (keyed by DS name) can be looked up.
 func soundEventDSName(ev soundEvent) (string, bool) {
 	switch ev {
+	case soundEventSectorMove, soundEventSectorMoveStart:
+		return "DSSTNMOV", true
+	case soundEventPlatStart:
+		return "DSPSTART", true
+	case soundEventPlatStop:
+		return "DSPSTOP", true
 	case soundEventDoorOpen:
 		return "DSDOROPN", true
 	case soundEventDoorClose:
@@ -676,6 +702,12 @@ func soundEventDSName(ev soundEvent) (string, bool) {
 
 func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 	switch ev {
+	case soundEventSectorMove, soundEventSectorMoveStart:
+		return s.bank.SectorMove, true
+	case soundEventPlatStart:
+		return s.bank.PlatStart, true
+	case soundEventPlatStop:
+		return s.bank.PlatStop, true
 	case soundEventDoorOpen:
 		return s.bank.DoorOpen, true
 	case soundEventDoorClose:
@@ -1234,6 +1266,9 @@ func (s *soundSystem) tick() {
 }
 
 func (s *soundSystem) stopAll() {
+	if s != nil {
+		s.sectorLoops.Clear()
+	}
 	if s != nil && s.player != nil {
 		s.player.StopAll()
 	}
