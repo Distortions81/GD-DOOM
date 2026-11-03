@@ -62,6 +62,7 @@ type player struct {
 	reactionTime      int
 	justAttacked      bool
 	teleportedThisTic bool
+	viewGroundState   int // -1 airborne, +1 grounded, 0 before the first P_MovePlayer.
 	viewHeight        int64
 	deltaViewHeight   int64
 }

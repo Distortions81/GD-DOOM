@@ -140,3 +140,6 @@ func Restore(s Snapshot)                        { global.Restore(s) }
 func ConfigureBoom(seed uint32, insurance bool) { global.ConfigureBoom(seed, insurance) }
 func AdvanceLogicTic()                          { global.logicTic++ }
 func SetLogicTic(tic uint32)                    { global.logicTic = tic }
+
+// LogicTic is the completed-world-tic phase, preserved across maps and saves.
+func LogicTic() uint32 { return global.logicTic }

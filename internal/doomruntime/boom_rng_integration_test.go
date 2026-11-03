@@ -90,13 +90,32 @@ func TestBoomRNGDemoCapture(t *testing.T) {
 		if err := g.advanceDemoTic(); err != nil {
 			t.Fatal(err)
 		}
+		if tic == 0 && os.Getenv("GD_RNG_CRUSHED_CORPSE") != "" {
+			// Controlled crushed-corpse setup; subsequent resurrection is
+			// performed exclusively by the live arch-vile thinker.
+			for i, th := range g.m.Things {
+				if th.Type == 9 {
+					g.damageMonster(i, 200)
+					g.thingGibbed[i] = true
+					g.thingMomX[i], g.thingMomY[i] = 0, 0
+					g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i] = monsterStateGibs, 0, -1
+				}
+			}
+		}
 		s := doomrand.Capture()
 		fmt.Fprintf(out, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,", tic, g.p.x, g.p.y, g.p.z, g.p.angle, g.p.momx, g.p.momy, g.p.momz, g.stats.Health, g.stats.Armor, g.stats.Bullets, g.playerViewZ, s.PlayIndex)
 		for _, m := range g.demoTraceMobjs() {
+			if os.Getenv("GD_RNG_COMBAT_ONLY") != "" && (m.Kind == "thing" || m.Kind == "pickup" || m.Kind == "barrel") {
+				continue
+			}
 			if m.Player != 0 || m.Flags&1 != 0 {
 				continue
 			}
-			fmt.Fprintf(out, "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d;", m.Type, m.X, m.Y, m.Z, m.Angle, m.MomX, m.MomY, m.MomZ, m.Health, m.Tics, m.State)
+			fmt.Fprintf(out, "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d", m.Type, m.X, m.Y, m.Z, m.Angle, m.MomX, m.MomY, m.MomZ, m.Health, m.Tics, m.State)
+			if os.Getenv("GD_RNG_COMBAT_ONLY") != "" {
+				fmt.Fprintf(out, ":%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d", m.Target, m.TargetType, m.Tracer, m.TracerType, m.Movedir, m.Movecount, m.ReactionTime, m.Threshold, m.LastLook, m.Radius, m.Height, m.FloorZ, m.CeilingZ)
+			}
+			fmt.Fprint(out, ";")
 		}
 		fmt.Fprint(out, ",")
 		for cls, seed := range s.Seeds {

@@ -40,6 +40,7 @@ const (
 func (g *game) beginWorldTic() {
 	g.prunePendingDoors()
 	g.worldTic++
+	g.worldTicking = true
 	doomrand.SetDebugTic(g.worldTic)
 	g.ticDisplayText = formatTicDisplay(g.worldTic, g.ticRateDisplay)
 }
@@ -47,6 +48,7 @@ func (g *game) beginWorldTic() {
 func (g *game) finishWorldTic() {
 	g.refreshSectorPlaneCacheLighting()
 	doomrand.AdvanceLogicTic()
+	g.worldTicking = false
 }
 
 func (g *game) initSectorLightEffects() {
@@ -305,9 +307,17 @@ func (g *game) tickPlayerViewHeight() {
 		}
 		g.p.deltaViewHeight = 0
 	}
-	if g.p.z > g.p.floorz {
-		// Original P_CalcHeight returns before bob and ceiling clipping here.
+	airborne := g.p.z > g.p.floorz
+	if g.boomMomentumDropoff && g.p.viewGroundState != 0 {
+		airborne = g.p.viewGroundState < 0
+	}
+	if airborne {
 		g.playerViewZ = g.p.z + g.p.viewHeight
+		if g.boomMomentumDropoff {
+			// Boom uses nominal eye height even after landing squat, then
+			// clips the airborne eye against the ceiling.
+			g.playerViewZ = min(g.p.z+playerViewHeight, g.p.ceilz-4*fracUnit)
+		}
 		g.recordCameraBob(0, false)
 		return
 	}
@@ -339,7 +349,11 @@ func (g *game) tickPlayerViewHeight() {
 		if g.opts.BoomGameOptions != nil && !g.opts.BoomGameOptions.PlayerBobbing {
 			bob = 0
 		}
-		angle := (playerBobPhaseStep * g.worldTic) & doomFineMask
+		tic := g.worldTic
+		if g.boomMomentumDropoff && g.worldTicking {
+			tic-- // P_CalcHeight in a silent teleport still uses this tic's leveltime.
+		}
+		angle := (playerBobPhaseStep * tic) & doomFineMask
 		bobAmplitude = bob / 2
 		bobOffset = fixedMul(bobAmplitude, doomFineSine[angle])
 	}

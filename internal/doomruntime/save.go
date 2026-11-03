@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 36
+	saveGameVersion     = 37
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 23
+	keyframeVersion     = 24
 	saveGameDirName     = "saves"
 )
 
@@ -232,6 +232,7 @@ type sessionSaveState struct {
 }
 
 type playerSaveState struct {
+	ViewGroundState int
 	CorpseGibbed    bool
 	Friction        int64
 	MoveFactor      int64
@@ -1602,6 +1603,7 @@ func capturePlayerSaveState(p player) playerSaveState {
 		MomZ:            p.momz,
 		ReactionTime:    p.reactionTime,
 		JustAttacked:    p.justAttacked,
+		ViewGroundState: p.viewGroundState,
 		ViewHeight:      p.viewHeight,
 		DeltaViewHeight: p.deltaViewHeight,
 	}
@@ -1623,6 +1625,7 @@ func restorePlayerSaveState(s playerSaveState) player {
 		momz:            s.MomZ,
 		reactionTime:    s.ReactionTime,
 		justAttacked:    s.JustAttacked,
+		viewGroundState: s.ViewGroundState,
 		viewHeight:      s.ViewHeight,
 		deltaViewHeight: s.DeltaViewHeight,
 	}

@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-var authorityBinarySchemaFingerprint = [16]byte{0x39, 0xec, 0x0c, 0x4e, 0xae, 0xc8, 0x7f, 0xc3, 0x82, 0x10, 0x58, 0x27, 0x42, 0xe4, 0xa1, 0x75}
+var authorityBinarySchemaFingerprint = [16]byte{0x6a, 0x1a, 0x9e, 0xcf, 0xe3, 0xb1, 0x1e, 0xf1, 0x16, 0x08, 0x40, 0x26, 0x39, 0x24, 0xf3, 0xcb}
 
 func (w *authorityBinaryWriter) writedoomruntime_AuthorityRules(v *AuthorityRules) {
 	if w.err != nil {
@@ -165,7 +165,7 @@ func (r *authorityBinaryReader) readdoomruntime_authorityReplica(v *authorityRep
 	v.Viewer = uint8(r.byte())
 	v.Tic = uint32(r.unsigned(32))
 	r.readdoomruntime_gameSaveState(&v.Game)
-	tmp12, tmp13 := r.collection(121, authorityBinarySizeOf[authorityReplicaPlayer]())
+	tmp12, tmp13 := r.collection(122, authorityBinarySizeOf[authorityReplicaPlayer]())
 	if r.err != nil {
 		return
 	}
@@ -2746,6 +2746,7 @@ func (w *authorityBinaryWriter) writedoomruntime_playerSaveState(v *playerSaveSt
 	if w.err != nil {
 		return
 	}
+	w.signed(int64(v.ViewGroundState))
 	w.boolean(bool(v.CorpseGibbed))
 	w.signed(int64(v.Friction))
 	w.signed(int64(v.MoveFactor))
@@ -2769,6 +2770,7 @@ func (r *authorityBinaryReader) readdoomruntime_playerSaveState(v *playerSaveSta
 	if r.err != nil {
 		return
 	}
+	v.ViewGroundState = int(r.signed(strconv.IntSize))
 	v.CorpseGibbed = bool(r.boolean())
 	v.Friction = int64(r.signed(64))
 	v.MoveFactor = int64(r.signed(64))

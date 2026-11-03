@@ -748,6 +748,7 @@ type game struct {
 	weaponFuzzGamma                               int
 	stats                                         playerStats
 	worldTic                                      int
+	worldTicking                                  bool // True only while the ordered world thinkers are running.
 	levelKillsTotal                               int
 	levelItemsTotal                               int
 	playerKillCount                               int

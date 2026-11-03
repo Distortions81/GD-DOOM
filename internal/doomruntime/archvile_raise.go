@@ -74,10 +74,14 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 			return true
 		}
 		// PIT_VileCheck stops corpse thrust before testing its position. The
-		// check uses the corpse's existing flags/radius, including zero-sized
-		// crusher gibs. P_CheckPosition does not test vertical clearance.
+		// Boom tests the restored body's radius; vanilla tests the old corpse
+		// bounds, including zero-sized crusher gibs. Neither checks headroom.
 		g.thingMomX[i], g.thingMomY[i] = 0, 0
-		_, _, _, fits := g.checkPositionForActor(cx, cy, g.thingCurrentRadius(i, th), true, i, true)
+		radius := g.thingCurrentRadius(i, th)
+		if g.boomMomentumDropoff {
+			radius = thingTypeRadius(th.Type)
+		}
+		_, _, _, fits := g.checkPositionForActor(cx, cy, radius, true, i, true)
 		if !fits {
 			return true
 		}
@@ -124,6 +128,9 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 func (g *game) startMonsterRaise(i int) {
 	seq := monsterRaiseFrames(g.m.Things[i].Type)
 	g.thingDead[i], g.thingXDeath[i] = false, false
+	if g.boomMomentumDropoff {
+		g.thingGibbed[i] = false
+	}
 	g.thingHP[i] = monsterSpawnHealth(g.m.Things[i].Type)
 	g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i] = monsterStateRaise, 0, seq.tics[0]
 	g.thingDoomState[i] = noDoomMonsterState
@@ -135,8 +142,8 @@ func (g *game) startMonsterRaise(i int) {
 		g.thingTargetPlayerSlot[i] = 0
 	}
 	// Original flags and full corpse height are restored without relinking or
-	// resetting reactiontime, threshold, movedir, or movecount. A crushed corpse
-	// keeps its zero height/radius: multiplying its height by four still gives 0.
+	// resetting reactiontime, threshold, movedir, or movecount. Vanilla keeps
+	// crushed ghost bounds; Boom restores the original dimensions.
 }
 
 func (g *game) tickMonsterRaiseOrHeal(i int, th mapdata.Thing) {

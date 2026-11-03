@@ -789,7 +789,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		g.tickMonsterRaiseOrHeal(i, th)
 		return
 	}
-	if !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
+	if !g.boomMomentumDropoff && !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
 		// P_MobjThinker still executes P_XY/P_ZMovement for an exact-state
 		// monster whose player target has died. In particular, a floating
 		// cacodemon continues its vertical adjustment toward the corpse.
@@ -3513,15 +3513,15 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 3003:
 		if phase >= 0 && phase <= 2 {
-			return 538 + phase, true
+			return 537 + phase, true
 		}
 	case 69:
 		if phase >= 0 && phase <= 2 {
-			return 567 + phase, true
+			return 566 + phase, true
 		}
 	case 64:
 		if phase >= 0 && phase <= 10 {
-			return 256 + phase, true
+			return 255 + phase, true
 		}
 	case 66:
 		if phase >= 0 && phase <= 2 {
@@ -3544,7 +3544,7 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 16:
 		if phase >= 0 && phase <= 5 {
-			return 685 + phase, true
+			return 684 + phase, true
 		}
 	case 7:
 		if phase >= 0 && phase <= 3 {

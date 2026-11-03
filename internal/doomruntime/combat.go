@@ -1194,7 +1194,8 @@ func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, sl
 				if z > g.sectorCeil[front] {
 					return lineAttackOutcome{}
 				}
-				if back >= 0 && back < len(g.m.Sectors) && isSkyFlatName(g.m.Sectors[back].CeilingPic) {
+				if back >= 0 && back < len(g.m.Sectors) && isSkyFlatName(g.m.Sectors[back].CeilingPic) &&
+					(!g.boomMomentumDropoff || g.sectorCeil[back] < z) {
 					return lineAttackOutcome{}
 				}
 			}

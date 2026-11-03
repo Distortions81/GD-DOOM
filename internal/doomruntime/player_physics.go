@@ -41,6 +41,10 @@ func (g *game) tickDeadPlayerTurnTowardAttacker() {
 
 func (g *game) updatePlayer(cmd moveCmd) {
 	if g.isDead {
+		g.p.viewGroundState = 1
+		if g.p.z > g.p.floorz {
+			g.p.viewGroundState = -1
+		}
 		g.tickDeadPlayerTurnTowardAttacker()
 		return
 	}
@@ -51,6 +55,12 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		return
 	}
 
+	// P_MovePlayer refreshes onground; teleport reactiontime skips it and
+	// P_CalcHeight retains the last value until movement resumes.
+	g.p.viewGroundState = 1
+	if g.p.z > g.p.floorz {
+		g.p.viewGroundState = -1
+	}
 	if cmd.turnRaw != 0 {
 		g.p.angle += uint32(cmd.turnRaw)
 	}

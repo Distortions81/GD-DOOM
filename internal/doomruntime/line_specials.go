@@ -366,6 +366,9 @@ func (g *game) heightClipAroundSectorWithCrush(sec int, oldPlayerFloor int64, cr
 	damagePulse := crush && (max(g.worldTic-1, 0)&3) == 0
 	clipThing := func(i int) {
 		th := g.m.Things[i]
+		if g.boomMomentumDropoff && !g.thingTouchesSector(sec, i, th) {
+			return
+		}
 		if g.heightClipThing(i, th) {
 			return
 		}
@@ -401,6 +404,9 @@ func (g *game) heightClipAroundSectorWithCrush(sec int, oldPlayerFloor int64, cr
 		playerTouches = g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius)
 	}
 	clipPlayer := func() {
+		if g.boomMomentumDropoff && !g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius) {
+			return
+		}
 		floor := oldPlayerFloor
 		if g.authorityPlayers != nil {
 			// Each player's cached floor belongs to its own pre-move body.

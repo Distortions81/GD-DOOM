@@ -1631,9 +1631,9 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 	if p.kind != projectileTracer {
 		return
 	}
-	// A_Tracer tests Doom's gametic. worldTic is incremented before thinker
-	// execution, while demoTick-1 is the gametic represented by this trace tic.
-	if (g.demoTick-1)&3 != 0 {
+	// DSDA uses gametic minus basetic, including across maps and saves.
+	// The demo command cursor is absent in live play and includes paused tics.
+	if doomrand.LogicTic()&3 != 0 {
 		return
 	}
 	g.spawnTracerSmokeTrail(p.x, p.y, p.z, p.vx, p.vy)

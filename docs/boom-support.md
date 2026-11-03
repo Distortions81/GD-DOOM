@@ -1009,6 +1009,78 @@ simulation ID to **`gd-doom-authority-dev-18`**. Matching clients/servers are
 required. The auto-switch suppression latch belongs to local input, not replicated
 simulation or demo playback.
 
+## Revenant and arch-vile combat comparisons
+
+Revenant tracers now use the saved world/RNG phase for their four-tic homing
+cadence, including live games without a demo cursor. Boom resurrection checks
+use the restored corpse radius, reject blocked bodies, and restore full bounds
+to crushed corpses. Vanilla ghost resurrection remains available in vanilla
+compatibility. Idle Boom actors continue their momentum and state countdowns
+after the player dies.
+
+The Ancient Aliens combat comparison also exposed related Boom differences:
+bullet puffs below two sky ceilings, support refreshes for actors outside a
+moving sector's touching set, airborne eye height and ceiling clipping, the
+cached onground decision during teleport reactiontime, and silent-teleport bob
+phase. These now follow the reference behavior. Combat traces also use corrected
+canonical state numbers and terminal corpse countdowns.
+
+Run the reproducible comparison with an owned Doom II IWAD:
+
+```sh
+python3 scripts/verify_boom_combat.py \
+  --iwad wads/DOOM2.WAD \
+  --reference-source /path/to/pristine/dsda-doom-0.27.5/prboom2 \
+  --out /tmp/gddoom-combat
+```
+
+A prebuilt reference with the repository's current observation probe can instead
+be passed with `--reference`. `--aaliens` accepts an existing Ancient Aliens WAD;
+otherwise the existing verifier's pinned archive is downloaded. Inputs, observer,
+reference core, verifier, Go sources and CSV outputs have SHA-256 provenance in
+`results.json`. The local evidence is `/tmp/gddoom-combat-final/results.json`.
+
+| Comparison | Matching tics |
+| --- | ---: |
+| 16 revenant/vile demos varying seed, RNG insurance and held attack | 5,600 / 5,600 |
+| 11 focused live combat scenes | 11,000 / 11,000 |
+| Ancient Aliens MAP01 opening combat encounter | 500 / 500 |
+| Total | **17,100 / 17,100** |
+
+The focused scenes cover close melee; horizontal/vertical homing, smoke and a
+moving target; natural zombie resurrection; restored crushed-shotgunner bounds
+and pillar rejection; revenant/baron mutual retaliation; vile retaliation after
+missile damage; the lack of retaliation against an arch-vile's blast; and
+occluded sight. Coverage assertions reject a comparison that never reaches its
+named behavior. The crushed-corpse fixtures prepare a stationary initial corpse
+with damage and the reference gib state/bounds; normal live monster thinkers
+perform every subsequent search, position check, heal and raise. They do not
+establish every crusher/resurrection interaction.
+
+The Ancient Aliens LMP uses the first 500 commands of the pinned `aa01o023`
+movement route with monsters enabled and attack held. It includes awake monsters,
+a cyberdemon firing rockets, monster damage/death and player death. This is an
+opening-encounter combat demo, not a completed-map combat run or a verification
+of death/rebirth transitions.
+
+Each tic compares player position, angle, momentum, health, armor, bullets and
+eye height; ordered monster, missile and effect states, countdowns and physics;
+target/tracer presence and type, chase fields and body/support bounds; the shared
+random-table index and every gameplay RNG seed. Static decorations, player and
+pickup animation, cosmetic misc RNG and identity among same-type targets are
+outside this comparison. The reference gameplay implementations are unchanged;
+its added hooks observe completed tics and prepare the explicitly labeled corpse
+fixtures.
+
+Existing regressions also pass: 163,840 RNG vectors, 36,936 lift rows, 10,350
+option/combat demo frames, 622,080 weapon frames, 1,340,462 mover/sound frames
+with 72,904 sound requests, and all 5,772 frames of the five no-monsters routes.
+The full Go suite and native raylib runtime tests pass, including binary save,
+keyframe and authority-codec round trips. The multiplayer simulation ID is now
+`gd-doom-authority-dev-19`; saves are version 37 and keyframes version 24 to
+retain the teleport camera's cached onground state. The previous Boom formats
+retain their RNG streams when loaded and default the new camera cache.
+
 ## Remaining work
 
 GL nodes, unusual interactions beyond the fixtures, custom weapon preferences,
@@ -1021,10 +1093,10 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-18`. Deploy matching clients and servers. Sector identities
+`gd-doom-authority-dev-19`. Deploy matching clients and servers. Sector identities
 extend the sound-event schema. Explicit ceiling ownership and retained doors extend the mover schema; displaced ceilings
-remain in the ordered mover state. Save version 36 reads versions 33–35;
-keyframe version 23 reads versions 20–22. Older formats cannot preserve the
+remain in the ordered mover state. Save version 37 reads versions 34–36;
+keyframe version 24 reads versions 21–23. Older formats cannot preserve the
 previously unsupported overlapping manual-door state. Generalized mover,
 elevator, card-key and actor friction extensions retain their older layouts.
 Older snapshots initialize previously unsupported friction state to defaults.

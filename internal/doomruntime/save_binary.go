@@ -874,7 +874,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 36 && v.Version <= saveGameVersion) || (v.Version >= 23 && v.Version <= keyframeVersion) {
 		state := v.RNG.Extended
 		if err := w.bool(state.Boom); err != nil {
 			return err
@@ -897,6 +897,12 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 		if err := w.bytesWithLen(v.BoomOptions); err != nil {
+			return err
+		}
+	}
+
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if err := w.int(v.Game.Player.ViewGroundState); err != nil {
 			return err
 		}
 	}
@@ -1908,7 +1914,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 36 && v.Version <= saveGameVersion) || (v.Version >= 23 && v.Version <= keyframeVersion) {
 		state := &v.RNG.Extended
 		state.MenuIndex = v.RNG.MenuIndex
 		state.PlayIndex = v.RNG.PlayIndex
@@ -1940,6 +1946,15 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 		}
 		if len(v.BoomOptions) != 0 && len(v.BoomOptions) != 64 {
 			return v, fmt.Errorf("invalid Boom game options")
+		}
+	}
+
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if v.Game.Player.ViewGroundState, err = r.int(); err != nil {
+			return v, err
+		}
+		if v.Game.Player.ViewGroundState < -1 || v.Game.Player.ViewGroundState > 1 {
+			return v, fmt.Errorf("invalid player view ground state")
 		}
 	}
 
