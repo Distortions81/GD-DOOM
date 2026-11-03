@@ -19,6 +19,7 @@
 #include "dsda_generalized_probe.inc"
 #include "dsda_manual_probe.inc"
 #include "dsda_rng_lifts.inc"
+#include "dsda_weapons_probe.inc"
 
 static void GD_VisualProbe(void)
 {
@@ -31,6 +32,7 @@ static void GD_VisualProbe(void)
     unsigned angle;
  unsigned long long usemask;
     const byte *palette;
+    GD_WeaponsProbe();
     GD_RNGVectors();
     GD_RNGLifts();
     GD_ManualProbe();

@@ -81,6 +81,7 @@ def build_reference(source, out, cmake_args):
     shutil.copy(ROOT / "scripts/visual_compare/dsda_legacy_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_generalized_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_manual_probe.inc", target / "src")
+    shutil.copy(ROOT / "scripts/visual_compare/dsda_weapons_probe.inc", target / "src")
     install_rng_probe(target)
     install_sector_sound_probe(target)
     messenger = target / "src/dsda/messenger.c"

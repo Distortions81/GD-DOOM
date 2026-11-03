@@ -6,6 +6,11 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Boom weapon commands and ammo-exhaustion timing: fallback selection belongs
+  to live command generation; playback honors recorded weapon choices exactly,
+  including direct fist/shotgun/SSG codes. Default fallback thresholds and
+  lowering/raising/refire flags follow DSDA. Vanilla demos keep their immediate
+  simulation-side fallback selection. BFG flashes retain their original phase.
 - Boom 2.01/2.02 demo game options: seeded random streams, demo-insurance
   class separation/tic shuffle, monster memory, friction/pusher gates, weapon
   recoil and player bobbing, plus respawn/fast/no-monsters settings. Vanilla
@@ -908,7 +913,7 @@ class/cosmetic draws and resume another 128 draws/tics after loading. Older
 snapshots restore their original table indices instead of inventing missing
 seeded history. Failed authority map setup restores the complete RNG state.
 Authority snapshots also retain enemy memory; the simulation ID is now
-`gd-doom-authority-dev-17`.
+`gd-doom-authority-dev-18`.
 
 `scripts/verify_boom_rng.py` retains manifests, generated WADs/LMPs, raw CSVs,
 logs and source/reference hashes. Current DSDA comparisons pass:
@@ -917,12 +922,12 @@ logs and source/reference hashes. Current DSDA comparisons pass:
 | --- | ---: |
 | RNG vectors: five seeds, both insurance settings, four logic phases, fixed and mixed classes | 163,840 / 163,840 |
 | 72 perpetual-lift cases: generalized and legacy, prior draws, stop/resume, no forced directions | 36,936 / 36,936 |
-| 18 generated option/combat demos, including a 2,200-tic respawn run | 8,150 / 8,150 |
+| 19 generated option/combat demos, including respawn and continuous-fire exhaustion runs | 10,350 / 10,350 |
 
 The combat fixtures contain actual imps, zombiemen and demons, with full player,
 monster, projectile and damage stepping. The 12 basic combat demos vary seed and
 insurance mode; six option demos cover recoil, disabled bobbing, fast monsters,
-respawn, no-monsters and disabled enemy memory. Seventeen contain monsters;
+respawn, no-monsters and disabled enemy memory. Eighteen contain monsters;
 one specifically verifies the no-monsters option. Each completed tic compares
 player position/angle/momentum, health, armor, bullets and physical view height,
 all non-player/non-pickup actor positions, health, state/tics and momentum,
@@ -944,19 +949,71 @@ GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_rng.py \
 ```
 
 This verifies the listed generated demos, not arbitrary existing combat demos.
-One retained diagnostic holds fire until the starting pistol ammo is exhausted:
-GD consumes an extra fist attack at tic **748** (three gameplay draws) compared
-with DSDA, despite matching the preceding tics. Automatic weapon-switch/refire
-behavior needs a separate follow-up. The respawn test releases fire after tic
-200 so it exercises normal corpse respawning independently of that difference.
-Run the known-failing diagnostic separately with
-`--case diagnostic_ammo_exhaustion --out /tmp/gddoom-rng-exhaustion`.
+The former ammo-exhaustion diagnostic is now included in the default regression
+set and matches all **2,200 tics**, including the previous divergence at tic 748.
+It remains individually selectable as `--case diagnostic_ammo_exhaustion`.
+
+## Ammo-exhaustion and weapon timing verification
+
+Boom moved automatic fallback selection from `P_CheckAmmo` into input command
+construction. An empty Boom weapon therefore waits for an actual change command
+when replaying a demo or receiving multiplayer input. Local input selects the
+default preferred usable fallback and records that choice. Vanilla demo playback
+retains its original immediate fallback behavior. A failed ammo check returns
+before starting an attack; switching does not clear held-attack/refire flags
+outside their normal psprite actions. Rocket/BFG weapons therefore still require
+release/repress when raised while attack is already held.
+
+Boom commands use four weapon bits, with direct fist, shotgun, chainsaw and SSG
+identities. Numeric key toggles are resolved while sampling local input. The
+network validator accepts the nine valid weapon codes and rejects undefined
+codes or weapon bits without a change command. Boom fallback accepts exactly two
+SSG shells or 40 BFG cells; old Doom fallback retains its three-shell/41-cell
+thresholds. Custom weapon preference ordering is outside this slice.
+
+The new DSDA matrix matches **622,080/622,080 frames across 2,592 cases**. It
+covers all nine weapons, twelve ownership/ammo profiles, initially empty and
+last-shot states, held attack, release, repress, and explicit mid-attack changes.
+It compares old Doom playback, Boom recorded commands, and generated Boom
+fallback commands. Unowned switch requests and shared-ammo thresholds are
+included. Every frame compares command bytes, ready/pending weapons, attackdown,
+nonzero refire, all four ammo counts, canonical weapon and flash state IDs/tics,
+weapon Y, fallback selection, gameplay table index and all seeded gameplay
+streams. Cosmetic RNG is excluded; the runtime models refire as a boolean.
+
+The private reference calls real `P_PlayerThink`/`P_Ticker` and psprite functions
+with monsters disabled for this matrix. Its input controller uses the source
+`G_BuildTiccmd` policy with real `P_CheckAmmo`/`P_SwitchWeapon` and explicit default
+preferences; this does not test keyboard/device sampling. No reference weapon,
+player, RNG, or mover implementation is changed. Separate generated combat demos
+run through normal DSDA `G_Ticker` with actual monster AI and damage.
+
+The matrix also caught a BFG flash restarting at projectile launch. The flash now
+starts only from its original gun-flash action, preserving its phase through
+`A_FireBFG`. All **10,350** combat/option demo frames, **163,840** RNG vectors and
+**36,936** lift frames still match, as do the existing five demos (**5,772 frames**
+and exit tics). The full Go suite and native Raylib package checks pass.
+
+```sh
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_weapons.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-weapons
+```
+
+Manifests, original fixture WAD, both CSVs, logs and input/source/reference hashes
+are retained with `results.json`. Focused tests cover exact command decoding,
+empty Boom weapons, command generation after release, pending-switch suppression,
+fallback boundaries and network validation. Save/keyframe layouts remain **36/23**;
+this behavior and command interpretation change advances the multiplayer
+simulation ID to **`gd-doom-authority-dev-18`**. Matching clients/servers are
+required. The auto-switch suppression latch belongs to local input, not replicated
+simulation or demo playback.
 
 ## Remaining work
 
-GL nodes, unusual interactions beyond the fixtures, automatic weapon-switch/
-refire compatibility, broader combat-demo parity, and mixer-wide sound parity
-remain outside this verified scope.
+GL nodes, unusual interactions beyond the fixtures, custom weapon preferences,
+broader combat-demo parity, and mixer-wide sound parity remain outside this
+verified scope.
 Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
@@ -964,7 +1021,7 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-17`. Deploy matching clients and servers. Sector identities
+`gd-doom-authority-dev-18`. Deploy matching clients and servers. Sector identities
 extend the sound-event schema. Explicit ceiling ownership and retained doors extend the mover schema; displaced ceilings
 remain in the ordered mover state. Save version 36 reads versions 33–35;
 keyframe version 23 reads versions 20–22. Older formats cannot preserve the

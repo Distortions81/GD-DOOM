@@ -387,7 +387,7 @@ func (g *game) runPlayerTic(cmd moveCmd, usePressed, fireHeld bool) {
 	g.tickPlayerViewHeight()
 	g.tickPlayerSpecialSector()
 	if cmd.weaponSlot != 0 {
-		g.selectWeaponSlot(cmd.weaponSlot)
+		g.selectCommandWeapon(cmd.weaponSlot)
 	}
 	if usePressed {
 		if !g.useButtonDown {

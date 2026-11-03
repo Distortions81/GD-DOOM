@@ -470,11 +470,7 @@ func (g *game) fireWeaponStateSequence() {
 	g.ensureWeaponDefaults()
 	if !g.canFireSelectedWeapon() {
 		g.ensureWeaponHasAmmo()
-		if !g.canFireSelectedWeapon() {
-			g.setHUDMessage("No ammo", 20)
-			g.useFlash = max(g.useFlash, 20)
-			return
-		}
+		return
 	}
 	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
 	g.clearPlayerPainState()
@@ -610,7 +606,6 @@ func (g *game) firePlasma() bool {
 func (g *game) fireBFG() bool {
 	g.clearPlayerPainState()
 	g.stats.Cells -= 40
-	g.startWeaponFlashState(weaponStateBFGFlash1)
 	return g.spawnPlayerBFG()
 }
 
@@ -2191,8 +2186,6 @@ func (g *game) applyPendingWeapon() bool {
 		g.inventory.PendingWeapon = 0
 		return false
 	}
-	g.weaponRefire = false
-	g.weaponAttackDown = false
 	g.clearWeaponOverlay()
 	g.inventory.ReadyWeapon = next
 	g.bringUpWeapon()
@@ -2200,53 +2193,18 @@ func (g *game) applyPendingWeapon() bool {
 }
 
 func (g *game) ensureWeaponHasAmmo() {
-	if g.canFireSelectedWeapon() {
+	if g.boomMomentumDropoff || g.canFireSelectedWeapon() {
 		return
 	}
-	switchTo := func(id weaponID) bool {
-		queued := g.queueWeaponSwitch(id)
-		if !queued {
-			return false
-		}
-		if g.weaponState == weaponStateNone {
-			return g.applyPendingWeapon()
-		}
-		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
-		return true
-	}
-	if g.weaponOwned(weaponPlasma) && weaponAmmoCount(g.stats, ammoKindCells) >= 1 {
-		switchTo(weaponPlasma)
+	next := g.fallbackWeapon(false)
+	if !g.queueWeaponSwitch(next) {
 		return
 	}
-	if g.weaponOwned(weaponSuperShotgun) && weaponAmmoCount(g.stats, ammoKindShells) > 2 {
-		switchTo(weaponSuperShotgun)
+	if g.weaponState == weaponStateNone {
+		g.applyPendingWeapon()
 		return
 	}
-	if g.weaponOwned(weaponChaingun) && weaponAmmoCount(g.stats, ammoKindBullets) >= 1 {
-		switchTo(weaponChaingun)
-		return
-	}
-	if g.weaponOwned(weaponShotgun) && weaponAmmoCount(g.stats, ammoKindShells) >= 1 {
-		switchTo(weaponShotgun)
-		return
-	}
-	if weaponAmmoCount(g.stats, ammoKindBullets) >= 1 {
-		switchTo(weaponPistol)
-		return
-	}
-	if g.weaponOwned(weaponChainsaw) {
-		switchTo(weaponChainsaw)
-		return
-	}
-	if g.weaponOwned(weaponRocketLauncher) && weaponAmmoCount(g.stats, ammoKindRockets) >= 1 {
-		switchTo(weaponRocketLauncher)
-		return
-	}
-	if g.weaponOwned(weaponBFG) && weaponAmmoCount(g.stats, ammoKindCells) > 40 {
-		switchTo(weaponBFG)
-		return
-	}
-	switchTo(weaponFist)
+	g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
 }
 
 func (g *game) canFireSelectedWeapon() bool {
@@ -2358,7 +2316,7 @@ func (g *game) cycleWeapon(step int) {
 		}
 		if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
 			slot := demoTraceWeaponID(next) + 1
-			if next == weaponSuperShotgun {
+			if next == weaponSuperShotgun && !g.boomMomentumDropoff {
 				slot = 3
 			}
 			g.demoWeaponSlot = slot

@@ -45,7 +45,7 @@ func (g *game) buildOutgoingDemoTic(cmd moveCmd, usePressed, fireHeld bool) demo
 	if fireHeld {
 		buttons |= demoButtonAttack
 	}
-	if slot := g.demoWeaponSlot; slot != 0 {
+	if slot := g.localWeaponCommand(g.demoWeaponSlot, fireHeld); slot != 0 {
 		buttons |= demoButtonChange | byte((slot-1)<<demoButtonWeaponShift)
 		g.demoWeaponSlot = 0
 	}

@@ -95,17 +95,20 @@ func NewInputBuffer(config InputBufferConfig) (*InputBuffer, error) {
 // ValidateInputCommand restricts untrusted intent to movement achievable by
 // normal controls and gameplay buttons. Demo special commands (including pause
 // and save) are not legal multiplayer intent. Weapon bits require Change; all
-// eight demo weapon codes are valid (the last code directly selects chainsaw).
+// nine Boom weapon codes are valid, including direct chainsaw and SSG.
 func ValidateInputCommand(command demo.Tic) error {
 	if command.Forward < -MaxForwardMove || command.Forward > MaxForwardMove ||
 		command.Side < -MaxSideMove || command.Side > MaxSideMove {
 		return fmt.Errorf("%w: movement out of range", ErrInvalidInput)
 	}
-	const allowedButtons = demo.ButtonAttack | demo.ButtonUse | demo.ButtonChange | demo.ButtonWeaponMask
+	const allowedButtons = demo.ButtonAttack | demo.ButtonUse | demo.ButtonChange | demo.ButtonWeaponMaskBoom
 	if command.Buttons & ^byte(allowedButtons) != 0 {
 		return fmt.Errorf("%w: unknown or special buttons", ErrInvalidInput)
 	}
-	weapon := command.Buttons & demo.ButtonWeaponMask
+	weapon := command.Buttons & demo.ButtonWeaponMaskBoom
+	if weapon>>demo.ButtonWeaponShift > 8 {
+		return fmt.Errorf("%w: unknown weapon code", ErrInvalidInput)
+	}
 	if weapon != 0 && command.Buttons&demo.ButtonChange == 0 {
 		return fmt.Errorf("%w: weapon bits without change button", ErrInvalidInput)
 	}

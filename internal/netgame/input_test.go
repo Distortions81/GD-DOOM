@@ -245,3 +245,14 @@ func TestInputConfigurationBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestInputDirectSuperShotgunCommand(t *testing.T) {
+	if err := ValidateInputCommand(demo.Tic{Buttons: demo.ButtonChange | byte(8<<demo.ButtonWeaponShift)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, buttons := range []byte{byte(8 << demo.ButtonWeaponShift), demo.ButtonChange | byte(9<<demo.ButtonWeaponShift), demo.ButtonChange | byte(15<<demo.ButtonWeaponShift)} {
+		if ValidateInputCommand(demo.Tic{Buttons: buttons}) == nil {
+			t.Fatalf("accepted invalid weapon command %#x", buttons)
+		}
+	}
+}

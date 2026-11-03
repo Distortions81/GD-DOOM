@@ -23,7 +23,7 @@ func demoButtonWeaponSlot(buttons byte) int {
 	if buttons&demoButtonChange == 0 {
 		return 0
 	}
-	return int((buttons&demoButtonWeaponMask)>>demoButtonWeaponShift) + 1
+	return int((buttons&demo.ButtonWeaponMaskBoom)>>demoButtonWeaponShift) + 1
 }
 
 func (g *game) applyRecordedDemoPause(tc DemoTic) {
@@ -79,8 +79,13 @@ func BuildRecordedDemo(mapName mapdata.MapName, opts Options, tics []DemoTic) (*
 // quantization, so live recordings and network commands replay exactly.
 func (g *game) runLocalGameplayTic(cmd moveCmd, use, fire bool) {
 	if strings.TrimSpace(g.opts.RecordDemoPath) == "" && g.opts.LiveTicSink == nil {
+		slot := g.demoWeaponSlot
+		if slot == 0 {
+			slot = cmd.weaponSlot
+		}
+		cmd.weaponSlot = g.localWeaponCommand(slot, fire)
+		g.demoWeaponSlot = 0
 		g.runGameplayTic(cmd, use, fire)
-		g.recordDemoTic(cmd, use, fire)
 		return
 	}
 	tc := g.buildOutgoingDemoTic(cmd, use, fire)

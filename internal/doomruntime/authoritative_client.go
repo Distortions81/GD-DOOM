@@ -322,7 +322,7 @@ func (g *game) captureAuthoritativeWeaponInput() {
 		w := order[index]
 		if w != g.inventory.ReadyWeapon && g.weaponOwned(w) {
 			g.demoWeaponSlot = demoTraceWeaponID(w) + 1
-			if w == weaponSuperShotgun {
+			if w == weaponSuperShotgun && !g.boomMomentumDropoff {
 				g.demoWeaponSlot = 3
 			}
 			return

@@ -65,7 +65,7 @@ def main():
         if not results['lifts']['passed']:print(json.dumps(results['lifts']['failures'][:1],indent=2),flush=True)
     scenes=[(f'monster_{typ}_i{insurance}_s{seed}',typ,seed,insurance,{}) for typ in [3001,3004,3002] for insurance in [0,1] for seed in [0,1993]]
     scenes += [('option_'+name,3001,1993,1,settings) for name,settings in [('recoil',dict(recoil=True)),('nobob',dict(bob=False,forward=25)),('fast',dict(fast=True)),('respawn',dict(respawn=True,tics=2200,attack_tics=200)),('nomonsters',dict(nomonsters=True)),('forget',dict(remember=False))]]
-    if args.case and 'diagnostic_ammo_exhaustion' in args.case:scenes.append(('diagnostic_ammo_exhaustion',3001,1993,1,dict(respawn=True,tics=2200)))
+    scenes.append(('diagnostic_ammo_exhaustion',3001,1993,1,dict(respawn=True,tics=2200)))
     for name,typ,seed,insurance,settings in scenes:
         if args.case and name not in args.case:continue
         folder=out/name;folder.mkdir(exist_ok=True);pwad=folder/'combat.wad';fixture(pwad,typ);merged=folder/'merged.wad';merge_wads([args.iwad.resolve(),pwad],merged)

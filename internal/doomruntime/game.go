@@ -441,6 +441,7 @@ type game struct {
 	thingFriction, thingMoveFactor     []int64
 	boomTeleportExits                  map[uint16][]int
 	boomLastEnemy                      []int
+	boomAutoSwitchDone                 bool
 	boomMomentumDropoff                bool
 	textureAnimCachePeriod             int
 	boomCarries                        []boomCarryThinker
