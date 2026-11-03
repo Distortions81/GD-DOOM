@@ -283,6 +283,26 @@ func doomLockedDoorMessage(info mapdata.LineSpecialInfo) string {
 	if info.Door == nil {
 		return ""
 	}
+	if gen := info.Door.Generalized; gen != nil && gen.Locked {
+		if gen.LockKey == 0 {
+			return "Any key will open this door"
+		}
+		if gen.LockKey == 7 {
+			if gen.SkullIsCard {
+				return "You need all three keys to open this door"
+			}
+			return "You need all six keys to open this door"
+		}
+		color := [...]string{"red", "blue", "yellow"}[(gen.LockKey-1)%3]
+		kind := "card"
+		if gen.LockKey > 3 {
+			kind = "skull"
+		}
+		if gen.SkullIsCard {
+			kind = "key"
+		}
+		return "You need a " + color + " " + kind + " to open this door"
+	}
 	switch info.Door.Key {
 	case mapdata.KeyAny:
 		return "You need a key to open this door"
@@ -590,6 +610,9 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 				return false
 			}
 			if playerActor && !info.Door.CanActivate(g.inventory.keys()) {
+				if info.Door.Generalized != nil && info.Door.Generalized.Locked {
+					g.rejectGeneralizedLock(info)
+				}
 				return false
 			}
 			activated := g.activateDoorLine(ld.idx, info, playerActor)
@@ -1030,4 +1053,10 @@ var defaultSwitchPairs = [][2]string{
 	{"SW1TEK", "SW2TEK"},
 	{"SW1MARB", "SW2MARB"},
 	{"SW1SKULL", "SW2SKULL"},
+}
+
+func (g *game) rejectGeneralizedLock(info mapdata.LineSpecialInfo) {
+	g.useText = doomLockedDoorMessage(info)
+	g.useFlash = 35
+	g.emitSoundEvent(soundEventOof)
 }

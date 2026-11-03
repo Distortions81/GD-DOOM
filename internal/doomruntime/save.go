@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 31
+	saveGameVersion     = 32
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 18
+	keyframeVersion     = 19
 	saveGameDirName     = "saves"
 )
 
@@ -246,6 +246,7 @@ type playerSaveState struct {
 }
 
 type playerInventorySaveState struct {
+	CardKeys      [3]bool // Blue, yellow, red.
 	SkullKeys     [3]bool // Blue, yellow, red; independent of door-access colors.
 	BlueKey       bool
 	RedKey        bool
@@ -1176,6 +1177,12 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	if file.Version == 26 || file.Version == 27 || file.Version == 13 || file.Version == 14 {
 		g.inventory.SkullKeys = g.collectedSkullKeys()
 	}
+	if file.Version != saveGameVersion && file.Version != keyframeVersion {
+		g.inventory.CardKeys = g.collectedCardKeys()
+		inferred := g.inventory.cardKeys()
+		g.inventory.CardKeys = inferred
+	}
+
 	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
 
 	sg.transition.Clear()
@@ -1589,6 +1596,7 @@ func restorePlayerSaveState(s playerSaveState) player {
 
 func capturePlayerInventorySaveState(inv playerInventory) playerInventorySaveState {
 	return playerInventorySaveState{
+		CardKeys:      inv.CardKeys,
 		SkullKeys:     inv.SkullKeys,
 		BlueKey:       inv.BlueKey,
 		RedKey:        inv.RedKey,
@@ -1609,6 +1617,7 @@ func capturePlayerInventorySaveState(inv playerInventory) playerInventorySaveSta
 
 func restorePlayerInventorySaveState(s playerInventorySaveState) playerInventory {
 	return playerInventory{
+		CardKeys:      s.CardKeys,
 		SkullKeys:     s.SkullKeys,
 		BlueKey:       s.BlueKey,
 		RedKey:        s.RedKey,

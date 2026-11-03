@@ -802,7 +802,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 31 && v.Version <= saveGameVersion) || (v.Version >= 18 && v.Version <= keyframeVersion) {
 		for _, value := range []int64{v.Game.Player.Friction, v.Game.Player.MoveFactor} {
 			if err := w.i64(value); err != nil {
 				return err
@@ -813,6 +813,13 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 		}
 		if err := w.i64Slice(v.Game.ThingMoveFactor); err != nil {
 			return err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, b := range v.Game.Inventory.CardKeys {
+			if err := w.bool(b); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1735,7 +1742,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			return v, err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 31 && v.Version <= saveGameVersion) || (v.Version >= 18 && v.Version <= keyframeVersion) {
 		if v.Game.Player.Friction, err = r.i64(); err != nil {
 			return v, err
 		}
@@ -1747,6 +1754,13 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 		}
 		if v.Game.ThingMoveFactor, err = readSlice(r, r.i64); err != nil {
 			return v, err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for i := range v.Game.Inventory.CardKeys {
+			if v.Game.Inventory.CardKeys[i], err = r.bool(); err != nil {
+				return v, err
+			}
 		}
 	}
 	return v, nil

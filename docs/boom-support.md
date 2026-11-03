@@ -74,9 +74,10 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 - Generalized lifts (`0x3400`–`0x37ff`): all triggers, speeds, waits and targets,
   including perpetual motion, stop/resume and independent floor/ceiling slots.
   Manual lifts retain the activating line's tag when stopped and restored.
-- Generalized locked doors accepting either card/skull of a required color,
-  any key, or all three colors. Distinct card/skull and all-six-key locks remain
-  unsupported. Generalized doors use an independent ceiling slot.
+- All generalized locked doors (`0x3800`–`0x3bff`): separate cards/skulls,
+  either variant of a color, any key, all three colors, and all six keys.
+  All eight triggers, four speeds and raise/open variants are supported.
+  Generalized doors use an independent ceiling slot.
 - Voodoo dolls slide using their own collision shape while collision checks
   retain the real player's position.
 
@@ -621,9 +622,49 @@ GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_environment.py \
 existing demos still match **5,772 frames** and their level exit tics. The full
 Go suite and targeted save/authority checks pass.
 
+## Distinct card/skull lock verification
+
+`scripts/verify_boom_locks.py` compares **262,144/262,144 matching rows** with
+DSDA-Doom 0.27.5 at complevel 9: every one of the 1,024 generalized locked-door
+specials, all 64 six-key combinations, the player and an actual map imp, and
+two consecutive trigger attempts. It checks the unlock predicate, door creation,
+one-shot consumption, repeat/busy rejection, speed, top height, direction,
+raise/open kind, wait time and rejection message. Locked doors use Boom's
+150-tic `VDOORWAIT`, rather than the 140-tic generalized-door delay selection.
+
+The fixture invokes the real use, walk-crossing and gun dispatchers in each
+engine. It does not simulate approach movement, aiming, or monster AI for this
+matrix. The reference's lock predicate, trigger dispatchers and movers remain
+unchanged; a private messenger accessor exposes the rejection text. GD's
+`USE:` debug status is excluded from the message comparison.
+
+Independent card ownership survives pickup order, IDKFA, deathmatch grants,
+co-op sharing/respawn, saves, keyframes and authority snapshots. Tests cover
+all pickup masks and snapshot variants, co-op merging of separately acquired
+cards/skulls, old-format loading and preservation of the previous friction
+extension. Older saves reconstruct card ownership from collected pickups and
+aggregate color flags, ignoring pickups excluded by session spawn settings.
+If an older save acquired both variants through a cheat or another player,
+without a recorded card pickup, its original aggregate flags cannot identify
+that card; this ambiguity cannot be recovered exactly.
+
+```sh
+python3 scripts/make_boom_locks_wad.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_locks.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-locks
+```
+
+The verifier retains both CSVs, input WAD, hashes and `results.json`.
+The full Go suite passes. The five existing Ancient Aliens, Sunlust and Sunder
+no-monsters demos still match **5,772 frames** and all five exit tics.
+The map audit now reports 16 unknown linedefs in Ancient Aliens (previously 21)
+and five in Sunlust (previously 12), with no unknown sector specials in either.
+This removes all five and seven distinct-lock gaps respectively.
+
 ## Remaining work
 
-Generalized stairs/crushers and distinct card/skull locked doors, complete independent
+Generalized stairs/crushers, complete independent
 floor/ceiling slot handling for legacy actions, remaining legacy mover variants,
 GL nodes and complete Boom demo/RNG behavior remain outside this scope.
 Maps may load while unsupported actions behave incorrectly.
@@ -633,8 +674,10 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-11`. Deploy matching clients and servers. Stored actor friction and movement factors extend the authoritative schema.
-Save version 31 reads versions 28–30; keyframe version 18 reads versions 15–17.
+`gd-doom-authority-dev-12`. Deploy matching clients and servers. Independent card
+ownership extends the authoritative schema alongside stored actor friction and
+movement factors. Save version 32 reads versions 29–31; keyframe version 19
+reads versions 16–18.
 Older snapshots initialize previously unsupported friction state to defaults.
 Scroller data from version 30/keyframe 17 remains readable; earlier snapshots
 cannot reconstruct the preceding acceleration history of unsupported scrollers.

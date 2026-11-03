@@ -43,6 +43,7 @@ type authorityRulesState struct {
 	EndReason     string
 	WinnerID      byte
 	TeamKeys      mapdata.KeyRing
+	TeamCardKeys  [3]bool
 	TeamSkullKeys [3]bool
 }
 
@@ -170,10 +171,13 @@ func (a *Authority) finishAuthoritativeRulesTic() {
 
 func (a *Authority) shareAuthoritativeCoopKeys() {
 	keys := &a.g.authorityRules.TeamKeys
+	cards := &a.g.authorityRules.TeamCardKeys
 	skulls := &a.g.authorityRules.TeamSkullKeys
 	for _, p := range a.players {
 		if p != nil {
+			ownedCards := p.inventory.cardKeys()
 			for i := range skulls {
+				cards[i] = cards[i] || ownedCards[i]
 				skulls[i] = skulls[i] || p.inventory.SkullKeys[i]
 			}
 			keys.Blue = keys.Blue || p.inventory.BlueKey
@@ -183,6 +187,7 @@ func (a *Authority) shareAuthoritativeCoopKeys() {
 	}
 	for _, p := range a.players {
 		if p != nil {
+			p.inventory.CardKeys = *cards
 			p.inventory.SkullKeys = *skulls
 			p.inventory.BlueKey, p.inventory.RedKey, p.inventory.YellowKey = keys.Blue, keys.Red, keys.Yellow
 		}

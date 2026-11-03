@@ -27,7 +27,7 @@ func TestBoomExtendedActionSemantics(t *testing.T) {
 			t.Fatalf("special %d decoded incorrectly: %+v", tc.special, i)
 		}
 	}
-	for _, special := range []uint16{242, 223, 252, 0x3840} {
+	for _, special := range []uint16{242, 223, 252} {
 		if LookupLineSpecial(special).Trigger != TriggerUnknown {
 			t.Fatalf("unsupported special %d advertised as implemented", special)
 		}
@@ -104,11 +104,6 @@ func TestBoomGeneralizedEquivalentKeyLocks(t *testing.T) {
 			if d.CanActivate(keys) != want {
 				t.Fatalf("lock %d keys %d allowed=%t", key, mask, d.CanActivate(keys))
 			}
-		}
-	}
-	for _, special := range []uint16{0x3840, 0x3980, 0x39c0} {
-		if LookupLineSpecial(special).Door != nil {
-			t.Fatalf("distinct-card lock %x incorrectly advertised", special)
 		}
 	}
 }

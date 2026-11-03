@@ -139,6 +139,9 @@ func (g *game) activateShootLineSpecial(lineIdx int, info mapdata.LineSpecialInf
 	if info.Door != nil {
 		if info.Door.Generalized != nil {
 			if !info.Door.CanActivate(g.inventory.keys()) {
+				if info.Door.Generalized.Locked {
+					g.rejectGeneralizedLock(info)
+				}
 				return false
 			}
 			return g.activateGeneralizedDoor(lineIdx, info, true)

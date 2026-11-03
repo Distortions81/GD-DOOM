@@ -65,6 +65,8 @@ type GeneralizedDoorInfo struct {
 	Speed, Delay, Kind uint8
 	Monsters           bool
 	Locked             bool
+	LockKey            uint8
+	SkullIsCard        bool
 }
 
 type FloorAction string
@@ -184,9 +186,10 @@ const (
 )
 
 type KeyRing struct {
-	Blue   bool
-	Red    bool
-	Yellow bool
+	Cards, Skulls [3]bool // Blue, yellow, red.
+	Blue          bool
+	Red           bool
+	Yellow        bool
 }
 
 type DoorStats struct {
@@ -408,12 +411,10 @@ func LookupLineSpecial(special uint16) LineSpecialInfo {
 		return LineSpecialInfo{Special: special, Name: "Boom silent teleport", Boom: true, Trigger: trigger, Repeat: repeat, Teleport: &TeleportInfo{UsesTag: true, Silent: true, LineToLine: lineToLine, Reverse: reverse, MonsterOnly: special >= 264}}
 	}
 
-	// Without distinct card inventory, advertise only locks accepting either key
-	// of a color, plus AnyKey (which is independent of the equivalence bit).
-	if special >= 0x3800 && special <= 0x3bff && (special&512 != 0 || special&448 == 0) {
+	if special >= 0x3800 && special <= 0x3bff {
 		v := special - 0x3800
 		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]
-		gen := &GeneralizedDoorInfo{Speed: uint8(v>>3) & 3, Delay: 1, Kind: uint8(v>>5) & 1, Locked: true}
+		gen := &GeneralizedDoorInfo{Speed: uint8(v>>3) & 3, Delay: 1, Kind: uint8(v>>5) & 1, Locked: true, LockKey: uint8(v>>6) & 7, SkullIsCard: v&512 != 0}
 		key := [...]KeyType{KeyAny, KeyRed, KeyBlue, KeyYellow, KeyRed, KeyBlue, KeyYellow, KeyAll}[(v>>6)&7]
 		action := DoorRaise
 		if gen.Kind == 1 {
@@ -527,6 +528,28 @@ func (m *Map) DoorStats() DoorStats {
 }
 
 func (d DoorInfo) CanActivate(keys KeyRing) bool {
+	if gen := d.Generalized; gen != nil && gen.Locked {
+		colors := [3]bool{keys.Blue || keys.Cards[0] || keys.Skulls[0], keys.Yellow || keys.Cards[1] || keys.Skulls[1], keys.Red || keys.Cards[2] || keys.Skulls[2]}
+		switch gen.LockKey {
+		case 0:
+			return colors[0] || colors[1] || colors[2]
+		case 7:
+			if gen.SkullIsCard {
+				return colors[0] && colors[1] && colors[2]
+			}
+			return keys.Cards[0] && keys.Cards[1] && keys.Cards[2] && keys.Skulls[0] && keys.Skulls[1] && keys.Skulls[2]
+		default:
+			color := [...]int{2, 0, 1}[(gen.LockKey-1)%3]
+			if gen.SkullIsCard {
+				return colors[color]
+			}
+			if gen.LockKey <= 3 {
+				return keys.Cards[color]
+			}
+			return keys.Skulls[color]
+		}
+	}
+
 	switch d.Key {
 	case KeyAny:
 		return keys.Blue || keys.Red || keys.Yellow

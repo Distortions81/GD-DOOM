@@ -77,6 +77,7 @@ func (g *game) grantIDFA() {
 }
 
 func (g *game) grantIDKFA() {
+	g.inventory.CardKeys = [3]bool{true, true, true}
 	g.inventory.SkullKeys = [3]bool{true, true, true}
 	g.grantIDFA()
 	g.inventory.BlueKey = true

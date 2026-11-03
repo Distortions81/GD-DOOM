@@ -255,7 +255,7 @@ func TestBoomGeneralizedLockedDoorGatesTriggers(t *testing.T) {
 			t.Fatalf("keyed trigger %d did not activate", trigger)
 		}
 		d := g.activeDoorThinker(1)
-		if d == nil || d.speed != 8*fracUnit || d.topWait != 140 {
+		if d == nil || d.speed != 8*fracUnit || d.topWait != 150 {
 			t.Fatalf("locked door speed/wait: %+v", d)
 		}
 		direction := d.direction

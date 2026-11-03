@@ -635,3 +635,27 @@ func (g *game) collectedSkullKeys() [3]bool {
 	}
 	return skull
 }
+
+func (g *game) collectedCardKeys() [3]bool {
+	var cards [3]bool
+	if g.m == nil {
+		return cards
+	}
+	for i, th := range g.m.Things {
+		if i >= len(g.thingCollected) || !g.thingCollected[i] || !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters) {
+			continue
+		}
+		switch th.Type {
+		case 5:
+			cards[0] = true
+		case 6:
+			cards[1] = true
+		case 13:
+			cards[2] = true
+		}
+	}
+	for i, owned := range [3]bool{g.inventory.BlueKey, g.inventory.YellowKey, g.inventory.RedKey} {
+		cards[i] = cards[i] && owned
+	}
+	return cards
+}

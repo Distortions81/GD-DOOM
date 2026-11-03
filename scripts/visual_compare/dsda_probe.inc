@@ -12,6 +12,7 @@
 
 #include "dsda_teleport_probe.inc"
 #include "dsda_environment_probe.inc"
+#include "dsda_lock_probe.inc"
 
 static void GD_VisualProbe(void)
 {
@@ -24,6 +25,7 @@ static void GD_VisualProbe(void)
     unsigned angle;
  unsigned long long usemask;
     const byte *palette;
+    GD_LockProbe();
     GD_EnvironmentProbe();
     GD_TeleportProbe();
     if (!manifest) return;

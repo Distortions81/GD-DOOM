@@ -8,6 +8,7 @@ import (
 )
 
 type playerInventory struct {
+	CardKeys      [3]bool // Blue, yellow, red.
 	SkullKeys     [3]bool // Blue, yellow, red; independent of door-access colors.
 	BlueKey       bool
 	RedKey        bool
@@ -104,6 +105,7 @@ func (g *game) finishLevelForCarryover() {
 	if g == nil {
 		return
 	}
+	g.inventory.CardKeys = [3]bool{}
 	g.inventory.SkullKeys = [3]bool{}
 	g.inventory.BlueKey = false
 	g.inventory.RedKey = false
@@ -141,8 +143,19 @@ func (g *game) syncPlayerMobjHealth() {
 	g.playerMobjHealth = g.stats.Health
 }
 
+// Color flags retain legacy door/HUD semantics. Aggregate-only states from older
+// saves and callers imply a card only when no skull of that color is owned.
+func (pi playerInventory) cardKeys() [3]bool {
+	cards := pi.CardKeys
+	for i, owned := range [3]bool{pi.BlueKey, pi.YellowKey, pi.RedKey} {
+		cards[i] = cards[i] || owned && !pi.SkullKeys[i]
+	}
+	return cards
+}
+
 func (pi playerInventory) keys() mapdata.KeyRing {
 	return mapdata.KeyRing{
+		Cards: pi.cardKeys(), Skulls: pi.SkullKeys,
 		Blue:   pi.BlueKey,
 		Red:    pi.RedKey,
 		Yellow: pi.YellowKey,
@@ -273,25 +286,31 @@ func isPickupType(typ int16) bool {
 func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	switch typ {
 	case 5, 40:
+		g.inventory.CardKeys = g.inventory.cardKeys()
 		g.inventory.BlueKey = true
 		if typ == 40 {
 			g.inventory.SkullKeys[0] = true
 			return "Picked up a blue skull key.", soundEventItemUp, true
 		}
+		g.inventory.CardKeys[0] = true
 		return "Picked up a blue keycard.", soundEventItemUp, true
 	case 13, 38:
+		g.inventory.CardKeys = g.inventory.cardKeys()
 		g.inventory.RedKey = true
 		if typ == 38 {
 			g.inventory.SkullKeys[2] = true
 			return "Picked up a red skull key.", soundEventItemUp, true
 		}
+		g.inventory.CardKeys[2] = true
 		return "Picked up a red keycard.", soundEventItemUp, true
 	case 6, 39:
+		g.inventory.CardKeys = g.inventory.cardKeys()
 		g.inventory.YellowKey = true
 		if typ == 39 {
 			g.inventory.SkullKeys[1] = true
 			return "Picked up a yellow skull key.", soundEventItemUp, true
 		}
+		g.inventory.CardKeys[1] = true
 		return "Picked up a yellow keycard.", soundEventItemUp, true
 	case 2011:
 		return g.gainHealth(10, 100, "Picked up a stimpack")

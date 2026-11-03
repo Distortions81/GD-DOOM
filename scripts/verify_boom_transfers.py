@@ -45,6 +45,10 @@ def build_reference(source, out, cmake_args):
     shutil.copy(ROOT / "scripts/visual_compare/dsda_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_teleport_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_environment_probe.inc", target / "src")
+    shutil.copy(ROOT / "scripts/visual_compare/dsda_lock_probe.inc", target / "src")
+    shutil.copy(ROOT / "scripts/visual_compare/dsda_lock_messages.inc", target / "src/dsda")
+    messenger = target / "src/dsda/messenger.c"
+    messenger.write_text(messenger.read_text() + '\n#include "dsda_lock_messages.inc"\n')
     replace_once(target / "src/d_main.c", "void D_DoomMain(void)",
                  '#include "dsda_probe.inc"\n\nvoid D_DoomMain(void)')
     replace_once(target / "src/d_main.c", "  D_DoomMainSetup(); // CPhipps - setup out of main execution stack",
