@@ -177,7 +177,7 @@ func (g *game) activateGeneralizedLift(line int, info mapdata.PlatInfo) bool {
 			pt.typ = platTypePerpetualRaise
 			pt.low = min(current, g.findLowestFloorSurrounding(sec))
 			pt.high = max64(current, g.findHighestFloorSurrounding(sec))
-			pt.status = platStatus(doomrand.PRandom() & 1)
+			pt.status = platStatus(doomrand.PRandom(doomrand.Genlift) & 1)
 		}
 		pt.speed = 2 * fracUnit << gen.Speed
 		pt.wait = [...]int{35, 105, 175, 350}[gen.Delay]

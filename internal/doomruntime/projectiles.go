@@ -231,7 +231,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	}
 	_ = height
 	kind := monsterProjectileKind(typ)
-	lastLook := doomrand.PRandom() & 3
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
 	aimAngle := g.monsterAimAngleToTarget(thingIdx, sx, sy)
 
 	dx := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineCosine(aimAngle))
@@ -538,7 +538,7 @@ func projectileDamage(p projectile) int {
 	if base <= 0 {
 		return 0
 	}
-	return base * (1 + doomPRandomN(8))
+	return base * (1 + doomPRandomN(8, doomrand.Damage))
 }
 
 func projectileSplashDamage(kind projectileKind) int {
@@ -639,7 +639,7 @@ func (g *game) spawnPlayerRocket() bool {
 	sx := g.p.x
 	sy := g.p.y
 	sz := g.p.z + 32*fracUnit
-	lastLook := doomrand.PRandom() & 3
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
 	p := projectile{
 		x:                      sx,
 		y:                      sy,
@@ -717,7 +717,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	sx := g.p.x
 	sy := g.p.y
 	sz := g.p.z + 32*fracUnit
-	lastLook := doomrand.PRandom() & 3
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
 	p := projectile{
 		x:                      sx,
 		y:                      sy,
@@ -862,7 +862,7 @@ func (g *game) applyBFGSpray(center uint32) {
 		g.spawnBFGExtra(tx, ty, tz+height/4)
 		damage := 0
 		for j := 0; j < 15; j++ {
-			damage += (doomrand.PRandom() & 7) + 1
+			damage += (doomrand.PRandom(doomrand.Bfg) & 7) + 1
 		}
 		if target.kind == lineAttackTargetPlayer {
 			sx, sy := g.p.x, g.p.y
@@ -1180,7 +1180,7 @@ func randomizedStateTics(base int) int {
 	if base <= 1 {
 		return 1
 	}
-	tics := base - (doomrand.PRandom() & 3)
+	tics := base - (doomrand.PRandom(doomrand.Explode) & 3)
 	if tics < 1 {
 		return 1
 	}
@@ -1191,7 +1191,7 @@ func randomizedMissileSpawnTics(base int) int {
 	if base < 1 {
 		base = 1
 	}
-	tics := base - (doomrand.PRandom() & 3)
+	tics := base - (doomrand.PRandom(doomrand.Missile) & 3)
 	if tics < 1 {
 		return 1
 	}

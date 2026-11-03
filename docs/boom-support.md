@@ -6,6 +6,12 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
 
 ## Implemented
 
+- Boom 2.01/2.02 demo game options: seeded random streams, demo-insurance
+  class separation/tic shuffle, monster memory, friction/pusher gates, weapon
+  recoil and player bobbing, plus respawn/fast/no-monsters settings. Vanilla
+  demos keep their original table RNG. Full seeded state and options survive
+  saves/keyframes; demo and authority map transitions continue their streams.
+
 - Boom variable friction (223, sector bit 256): controller-derived mud/ice
   friction, inertia, speed-dependent mud acceleration, overlapping-floor
   selection, one-tic friction thinker state and icy wall bounces. Normal maps
@@ -848,9 +854,8 @@ platform activation, endpoint waits, blocked reversals and retriggers, crusher
 stasis/resume, legacy silent-crusher endpoint sounds, generalized crusher and
 toggle-platform silence, and all generalized door speeds. The extra matrix
 uses stationary players and real imps as blockers; actor AI is not stepped.
-Initial random choices for perpetual generalized lifts are seeded to exercise
-both starting directions. This checks their sound timing without claiming Boom
-RNG stream parity.
+Perpetual lifts now use the normal seeded RNG and map setup without forcing
+their starting direction. Both starting directions remain covered.
 
 Only the private reference's `S_StartSectorSound` and `S_LoopSectorSound`
 entry points gain observation hooks, after their silent-sector guards. Its
@@ -884,10 +889,74 @@ still match **5,772 frames** and exit tics. The full Go suite and native audio
 integration checks pass. No live listening or mixed-waveform comparison was
 performed.
 
+## Boom demo options and RNG verification
+
+The Boom option block now decodes its original flags and big-endian 32-bit seed.
+Gameplay random calls carry DSDA's stable class identities. Seed initialization,
+32-bit multiply/add wraparound, shared gameplay streams without insurance,
+isolated classes with insurance, the logic-tic shuffle, and the separate cosmetic
+stream follow DSDA-Doom 0.27.5's `M_ClearRandom`/`P_Random`. Normal Boom maps start
+with seed 1993; demo playback uses the recorded seed, including zero. Both
+legacy compatibility indices still advance, and vanilla sessions retain their
+original table values and call order. The reserved MBF-era class numbers are
+preserved without enabling MBF demo formats or option semantics.
+
+Save version **36** and keyframe version **23** retain the RNG mode, initial
+seed, insurance setting, all 65 stream seeds, both compatibility indices, logic
+tic phase, decoded game options and remembered enemies. Tests save after mixed
+class/cosmetic draws and resume another 128 draws/tics after loading. Older
+snapshots restore their original table indices instead of inventing missing
+seeded history. Failed authority map setup restores the complete RNG state.
+Authority snapshots also retain enemy memory; the simulation ID is now
+`gd-doom-authority-dev-17`.
+
+`scripts/verify_boom_rng.py` retains manifests, generated WADs/LMPs, raw CSVs,
+logs and source/reference hashes. Current DSDA comparisons pass:
+
+| Comparison | Matching rows |
+| --- | ---: |
+| RNG vectors: five seeds, both insurance settings, four logic phases, fixed and mixed classes | 163,840 / 163,840 |
+| 72 perpetual-lift cases: generalized and legacy, prior draws, stop/resume, no forced directions | 36,936 / 36,936 |
+| 18 generated option/combat demos, including a 2,200-tic respawn run | 8,150 / 8,150 |
+
+The combat fixtures contain actual imps, zombiemen and demons, with full player,
+monster, projectile and damage stepping. The 12 basic combat demos vary seed and
+insurance mode; six option demos cover recoil, disabled bobbing, fast monsters,
+respawn, no-monsters and disabled enemy memory. Seventeen contain monsters;
+one specifically verifies the no-monsters option. Each completed tic compares
+player position/angle/momentum, health, armor, bullets and physical view height,
+all non-player/non-pickup actor positions, health, state/tics and momentum,
+and every gameplay RNG seed. Cosmetic misc RNG, player-body animation states and
+pickup animation states are outside this comparison. Monster memory and disabled
+friction/pusher flags also have focused state/continuation tests.
+
+The reference runs real Boom demo playback through `G_Ticker`; the only added
+hook observes completed tics. Its RNG, monster, damage, weapon and mover
+implementations remain unchanged. Vector and lift probes exercise those same
+reference functions directly. The existing five no-monsters demos still match
+**5,772 frames** and exit tics, and all **1,340,462** mover/sound regression frames
+still match. The full Go suite passes.
+
+```sh
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_rng.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-rng
+```
+
+This verifies the listed generated demos, not arbitrary existing combat demos.
+One retained diagnostic holds fire until the starting pistol ammo is exhausted:
+GD consumes an extra fist attack at tic **748** (three gameplay draws) compared
+with DSDA, despite matching the preceding tics. Automatic weapon-switch/refire
+behavior needs a separate follow-up. The respawn test releases fire after tic
+200 so it exercises normal corpse respawning independently of that difference.
+Run the known-failing diagnostic separately with
+`--case diagnostic_ammo_exhaustion --out /tmp/gddoom-rng-exhaustion`.
+
 ## Remaining work
 
-GL nodes, unusual interactions beyond the fixtures, complete Boom demo/RNG
-behavior, and mixer-wide sound parity remain outside this verified scope.
+GL nodes, unusual interactions beyond the fixtures, automatic weapon-switch/
+refire compatibility, broader combat-demo parity, and mixer-wide sound parity
+remain outside this verified scope.
 Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
@@ -895,10 +964,10 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-16`. Deploy matching clients and servers. Sector identities
+`gd-doom-authority-dev-17`. Deploy matching clients and servers. Sector identities
 extend the sound-event schema. Explicit ceiling ownership and retained doors extend the mover schema; displaced ceilings
-remain in the ordered mover state. Save version 35 reads versions 32–34;
-keyframe version 22 reads versions 19–21. Older formats cannot preserve the
+remain in the ordered mover state. Save version 36 reads versions 33–35;
+keyframe version 23 reads versions 20–22. Older formats cannot preserve the
 previously unsupported overlapping manual-door state. Generalized mover,
 elevator, card-key and actor friction extensions retain their older layouts.
 Older snapshots initialize previously unsupported friction state to defaults.

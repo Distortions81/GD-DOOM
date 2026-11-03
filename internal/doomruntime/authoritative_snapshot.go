@@ -156,6 +156,9 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 		return fmt.Errorf("authority baseline has invalid session rules")
 	}
 	n, sectors := len(s.Things), len(g.m.Sectors)
+	if !validBoomEnemyMemory(s.BoomLastEnemy, n) {
+		return fmt.Errorf("invalid Boom enemy memory")
+	}
 	base := g.restartTemplate
 	if base == nil {
 		base = g.m

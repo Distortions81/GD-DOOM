@@ -84,7 +84,7 @@ func (g *game) thingCurrentRadius(i int, th mapdata.Thing) int64 {
 }
 
 func barrelRandomizedDeathStartTics() int {
-	tics := 5 - (doomrand.PRandom() & 3)
+	tics := 5 - (doomrand.PRandom(doomrand.Killtics) & 3)
 	if tics < 1 {
 		tics = 1
 	}
@@ -267,7 +267,7 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if g.thingHP[thingIdx] > 0 {
-		_ = doomrand.PRandom()
+		_ = doomrand.PRandom(doomrand.Painchance)
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 			g.thingReactionTics[thingIdx] = 0
 		}

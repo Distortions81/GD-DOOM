@@ -7,6 +7,12 @@ func PrepareDemoPlaybackOptions(opts Options, script *demo.Script) Options {
 		return opts
 	}
 
+	opts.BoomGameOptions = nil
+	if settings, ok := script.Header.GameOptions(); ok {
+		opts.BoomGameOptions = &settings
+		opts.DisableCameraBob = !settings.PlayerBobbing
+		opts.DisableWeaponBob = !settings.PlayerBobbing
+	}
 	opts.SkillLevel = int(script.Header.Skill) + 1
 	opts.FastMonsters = script.Header.Fast
 	opts.RespawnMonsters = script.Header.Respawn

@@ -26,11 +26,3 @@ static void GD_SectorSoundFrame(const char *name,int tic)
  if(GD_SectorSoundOut)fprintf(GD_SectorSoundOut,"%s,%d,%s\n",name,tic,GD_SectorSoundEvents);
  GD_SectorSoundLength=0;GD_SectorSoundEvents[0]=0;
 }
-
-/* Match the initial random lift choice, without claiming RNG stream parity.
- * No later mover/dispatcher code or RNG draw is replaced. */
-static void GD_SectorSoundSeed(const char *name)
-{
- int up=!strncmp(name,"rng1_lift_",10);
- if(!strncmp(name,"lift_",5)||up){rng.seed[pr_genlift]=rng.seed[pr_all_in_one]=up?1<<20:0;boom_basetic=1;}
-}

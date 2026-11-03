@@ -1129,7 +1129,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 				pt.high = g.sectorFloor[sec]
 			}
 			pt.wait = platWaitTics
-			if doomrand.PRandom()&1 == 0 {
+			if doomrand.PRandom(doomrand.Plats)&1 == 0 {
 				pt.status = platStatusUp
 			} else {
 				pt.status = platStatusDown

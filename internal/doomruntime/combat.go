@@ -91,7 +91,7 @@ func (g *game) initThingCombatState() {
 			// Doom spawns the active player inline during map thing iteration,
 			// and P_SpawnMobj consumes one P_Random() for its lastlook field.
 			if slot == g.localSlot {
-				_ = doomrand.PRandom() & 3
+				_ = doomrand.PRandom(doomrand.Lastlook) & 3
 			}
 			continue
 		}
@@ -108,14 +108,14 @@ func (g *game) initThingCombatState() {
 				g.thingReactionTics[i] = info.reaction
 			}
 			if i >= 0 && i < len(g.thingLastLook) {
-				g.thingLastLook[i] = doomrand.PRandom() & 3
+				g.thingLastLook[i] = doomrand.PRandom(doomrand.Lastlook) & 3
 			}
 			if info.spawnTics > 0 {
 				spawnTics := info.spawnTics
 				// Doom P_SpawnMapThing randomizes the initial countdown of any
 				// positive-tic spawn state after P_SpawnMobj sets the baseline.
 				if spawnTics > 0 {
-					spawnTics = 1 + (doomrand.PRandom() % spawnTics)
+					spawnTics = 1 + (doomrand.PRandom(doomrand.Spawnthing) % spawnTics)
 				}
 				if i >= 0 && i < len(g.thingThinkWait) {
 					g.thingThinkWait[i] = max(spawnTics-1, 0)
@@ -133,7 +133,7 @@ func (g *game) initThingCombatState() {
 			}
 		} else {
 			if i >= 0 && i < len(g.thingLastLook) {
-				g.thingLastLook[i] = doomrand.PRandom() & 3
+				g.thingLastLook[i] = doomrand.PRandom(doomrand.Lastlook) & 3
 			}
 			if i >= 0 && i < len(g.thingReactionTics) {
 				g.thingReactionTics[i] = demoTraceSpawnReactionTime(th.Type)
@@ -484,11 +484,11 @@ func (g *game) fireWeaponStateSequence() {
 
 func (g *game) fireFist() bool {
 	g.clearPlayerPainState()
-	damage := 2 * (1 + (doomrand.PRandom() % 10))
+	damage := 2 * (1 + (doomrand.PRandom(doomrand.Punch) % 10))
 	if g.inventory.Strength {
 		damage *= 10
 	}
-	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
+	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift, doomrand.Punchangle)
 	hit, targetX, targetY := g.fireMeleeAtAngle(angle, 64*fracUnit, damage)
 	if hit {
 		g.emitSoundEvent(soundEventPunch)
@@ -499,8 +499,8 @@ func (g *game) fireFist() bool {
 
 func (g *game) fireChainsaw() bool {
 	g.clearPlayerPainState()
-	damage := 2 * (1 + (doomrand.PRandom() % 10))
-	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
+	damage := 2 * (1 + (doomrand.PRandom(doomrand.Saw) % 10))
+	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift, doomrand.Saw)
 	// Original MELEERANGE+1 adds one fixed-point quantum, not a map unit.
 	hit, targetX, targetY := g.fireMeleeAtAngle(angle, 64*fracUnit+1, damage)
 	if !hit {
@@ -558,9 +558,9 @@ func (g *game) fireSuperShotgun() bool {
 	slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
 	hit := false
 	for i := 0; i < 20; i++ {
-		damage := doomGunShotDamage()
-		angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift+1)
-		pelletSlope := slope + int64((doomrand.PRandom()-doomrand.PRandom())<<5)
+		damage := 5 * (1 + doomrand.PRandom(doomrand.Shotgun)%3)
+		angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift+1, doomrand.Shotgun)
+		pelletSlope := slope + int64((doomrand.PRandom(doomrand.Shotgun)-doomrand.PRandom(doomrand.Shotgun))<<5)
 		outcome := g.lineAttackTrace(g.playerLineAttackActor(), angle, shotgunRange, pelletSlope, true)
 		if g.applyLineAttackOutcome(g.playerLineAttackActor(), outcome, damage) {
 			hit = true
@@ -599,7 +599,7 @@ func (g *game) firePlasma() bool {
 	g.clearPlayerPainState()
 	g.stats.Cells--
 	flash := weaponStatePlasmaFlash1
-	if doomrand.PRandom()&1 != 0 {
+	if doomrand.PRandom(doomrand.Plasma)&1 != 0 {
 		flash = weaponStatePlasmaFlash2
 	}
 	g.startWeaponFlashState(flash)
@@ -1351,12 +1351,16 @@ func (g *game) aimSlopeAtAngle(angle uint32, rng int64) (float64, bool) {
 }
 
 func doomGunShotDamage() int {
-	return 5 * (1 + (doomrand.PRandom() % 3))
+	return 5 * (1 + (doomrand.PRandom(doomrand.Gunshot) % 3))
 }
 
-func addDoomAngleSpread(base uint32, shift uint) uint32 {
+func addDoomAngleSpread(base uint32, shift uint, classes ...doomrand.Class) uint32 {
+	class := doomrand.Misfire
+	if len(classes) > 0 {
+		class = classes[0]
+	}
 	// Doom-style spread: (P_Random - P_Random) << shift.
-	delta := (doomrand.PRandom() - doomrand.PRandom()) << shift
+	delta := (doomrand.PRandom(class) - doomrand.PRandom(class)) << shift
 	return base + uint32(int32(delta))
 }
 
@@ -1528,7 +1532,7 @@ func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourceP
 			}
 			g.thingDeathTics[thingIdx] = deathTics
 			if thingIdx >= 0 && thingIdx < len(g.thingStateTics) && firstFrameTics > 0 {
-				shorten := doomrand.PRandom() & 3
+				shorten := doomrand.PRandom(doomrand.Killtics) & 3
 				deathTics -= shorten
 				firstFrameTics -= shorten
 				if deathTics < 1 {
@@ -1579,7 +1583,7 @@ func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourceP
 		if isMonster(thingType) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 {
-				roll := doomrand.PRandom()
+				roll := doomrand.PRandom(doomrand.Painchance)
 				// Doom evaluates P_Random before testing MF_SKULLFLY, so a
 				// charging Lost Soul consumes the pain roll but cannot enter
 				// its pain state.
@@ -1686,7 +1690,7 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	// skull path depends on the overflowed (negative) value.
 	thrustNumerator := int32(damage) * int32(fracUnit>>3) * 100
 	thrust := int64(thrustNumerator / int32(mass))
-	if damage < 40 && damage > hpBefore && tz-iz > 64*fracUnit && doomrand.PRandom()&1 != 0 {
+	if damage < 40 && damage > hpBefore && tz-iz > 64*fracUnit && doomrand.PRandom(doomrand.Damagemobj)&1 != 0 {
 		angle += degToAngle(180)
 		thrust *= 4
 	}
@@ -1815,6 +1819,7 @@ func (g *game) maybeRetargetMonsterAfterDamage(thingIdx int, thingType int16, so
 	}
 	retargeted := false
 	if sourcePlayer {
+		g.rememberBoomEnemy(thingIdx)
 		g.setMonsterTargetPlayer(thingIdx)
 		g.thingThreshold[thingIdx] = monsterBaseThreshold
 		retargeted = true
@@ -1825,6 +1830,7 @@ func (g *game) maybeRetargetMonsterAfterDamage(thingIdx int, thingType int16, so
 		if g.m.Things[sourceThing].Type == 64 {
 			return
 		}
+		g.rememberBoomEnemy(thingIdx)
 		g.setMonsterTargetThing(thingIdx, sourceThing)
 		g.thingThreshold[thingIdx] = monsterBaseThreshold
 		retargeted = true
@@ -1949,6 +1955,9 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	}
 	g.thingSpawnPoint = append(g.thingSpawnPoint, mapdata.Thing{})
 	g.m.Things = append(g.m.Things, th)
+	if len(g.boomLastEnemy) > 0 {
+		g.boomLastEnemy = append(g.boomLastEnemy, 0)
+	}
 	g.thingCollected = append(g.thingCollected, false)
 	g.thingDropped = append(g.thingDropped, dropped)
 	g.thingThinkerOrder = append(g.thingThinkerOrder, g.allocThinkerOrder())
@@ -1980,7 +1989,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 		g.thingReactionTics[len(g.thingReactionTics)-1] = 0
 	}
 	g.thingWakeTics = append(g.thingWakeTics, 0)
-	g.thingLastLook = append(g.thingLastLook, doomrand.PRandom()&3)
+	g.thingLastLook = append(g.thingLastLook, doomrand.PRandom(doomrand.Lastlook)&3)
 	g.thingDead = append(g.thingDead, false)
 	// Runtime spawns need the same crusher bookkeeping as map spawns.
 	// Fill any missing older entries too, preserving already-crushed bodies.
@@ -2112,7 +2121,7 @@ func monsterDeathSoundEvent(typ int16) soundEvent {
 func monsterDeathSoundEventVariant(typ int16) soundEvent {
 	switch typ {
 	case 3004, 9, 65:
-		switch doomrand.PRandom() % 3 {
+		switch doomrand.PRandom(doomrand.Scream) % 3 {
 		case 1:
 			return soundEventDeathPodth2
 		case 2:
@@ -2121,7 +2130,7 @@ func monsterDeathSoundEventVariant(typ int16) soundEvent {
 			return soundEventDeathPodth1
 		}
 	case 3001:
-		if doomrand.PRandom()%2 != 0 {
+		if doomrand.PRandom(doomrand.Scream)%2 != 0 {
 			return soundEventDeathBgdth2
 		}
 		return soundEventDeathBgdth1

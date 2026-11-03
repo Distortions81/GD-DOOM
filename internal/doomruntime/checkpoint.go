@@ -31,6 +31,21 @@ func (g *game) SimChecksum() uint32 {
 	h = fnv32Mix(h, uint32(rndIdx))
 	h = fnv32Mix(h, uint32(prndIdx))
 
+	if state := doomrand.Capture(); state.Boom {
+		h = fnv32Mix(h, state.InitialSeed)
+		h = fnv32Mix(h, state.LogicTic)
+		if state.Insurance {
+			h = fnv32Mix(h, 1)
+		}
+		for _, seed := range state.Seeds {
+			h = fnv32Mix(h, seed)
+		}
+	}
+
+	for _, ref := range g.boomLastEnemy {
+		h = fnv32Mix(h, uint32(ref))
+	}
+
 	// Local player.
 	h = fnv32Mix(h, uint32(g.p.x>>fracBits))
 	h = fnv32Mix(h, uint32(g.p.y>>fracBits))

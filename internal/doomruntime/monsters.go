@@ -1719,7 +1719,7 @@ func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
-	roll := doomrand.PRandom()
+	roll := doomrand.PRandom(doomrand.See)
 	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -1743,7 +1743,7 @@ func shouldEmitMonsterActiveSound(r int) bool {
 func monsterSeeSoundEvent(typ int16) (soundEvent, bool) {
 	switch typ {
 	case 3004, 9, 65:
-		switch doomrand.PRandom() % 3 {
+		switch doomrand.PRandom(doomrand.See) % 3 {
 		case 1:
 			return soundEventMonsterSeePosit2, false
 		case 2:
@@ -1752,7 +1752,7 @@ func monsterSeeSoundEvent(typ int16) (soundEvent, bool) {
 			return soundEventMonsterSeePosit1, false
 		}
 	case 3001:
-		if doomrand.PRandom()%2 != 0 {
+		if doomrand.PRandom(doomrand.See)%2 != 0 {
 			return soundEventMonsterSeeImp2, false
 		}
 		return soundEventMonsterSeeImp1, false
@@ -1811,7 +1811,7 @@ func (g *game) tickNightmareRespawn(i int, th mapdata.Thing) {
 		return
 	}
 	g.thingMoveCount[i]++
-	if g.thingMoveCount[i] < 12*doomTicsPerSecond || (max(g.worldTic-1, 0)&31) != 0 || doomrand.PRandom() > 4 {
+	if g.thingMoveCount[i] < 12*doomTicsPerSecond || (max(g.worldTic-1, 0)&31) != 0 || doomrand.PRandom(doomrand.Respawn) > 4 {
 		return
 	}
 	spawn := th
@@ -2603,7 +2603,7 @@ func (g *game) resetLostSoulCharge(i int, typ int16) {
 func (g *game) hitSkullFlyTarget(i int, typ int16, target lineAttackTarget) {
 	g.movementProbeThing = i
 	x, y := g.thingPosFixed(i, g.m.Things[i])
-	damage := 3 * (1 + doomPRandomN(8))
+	damage := 3 * (1 + doomPRandomN(8, doomrand.Skullfly))
 	switch target.kind {
 	case lineAttackTargetPlayer:
 		if len(g.authorityPlayers) > 0 {
@@ -3460,7 +3460,7 @@ func (g *game) resetMonsterPostAttackState(i int, typ int16) {
 }
 
 func (g *game) chaingunnerRefireKeepsAttack(i int, typ int16, tx, ty int64) bool {
-	if doomrand.PRandom() < 40 {
+	if doomrand.PRandom(doomrand.Cposrefire) < 40 {
 		return true
 	}
 	if !g.monsterHasTarget(i) {
@@ -3472,7 +3472,7 @@ func (g *game) chaingunnerRefireKeepsAttack(i int, typ int16, tx, ty int64) bool
 func (g *game) spiderRefireKeepsAttack(i int, typ int16, tx, ty int64) bool {
 	// Doom A_SpidRefire keeps attacking on low rolls and only leaves the
 	// attack loop when the roll fails and the target is gone or out of sight.
-	if doomrand.PRandom() < 10 {
+	if doomrand.PRandom(doomrand.Spidrefire) < 10 {
 		return true
 	}
 	if !g.monsterHasTarget(i) {
@@ -3710,7 +3710,7 @@ func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py i
 	if typ == 16 && d > 160 {
 		d = 160
 	}
-	r := doomrand.PRandom()
+	r := doomrand.PRandom(doomrand.Missrange)
 	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -3764,7 +3764,7 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		}
 	}
 
-	swapRoll := doomrand.PRandom()
+	swapRoll := doomrand.PRandom(doomrand.Newchase)
 	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -3809,7 +3809,7 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		return
 	}
 
-	scanRoll := doomrand.PRandom()
+	scanRoll := doomrand.PRandom(doomrand.Newchasedir)
 	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -3867,7 +3867,7 @@ func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
 		return false
 	}
 	if i >= 0 && i < len(g.thingMoveCount) {
-		g.thingMoveCount[i] = doomrand.PRandom() & 15
+		g.thingMoveCount[i] = doomrand.PRandom(doomrand.Trywalk) & 15
 		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -4261,7 +4261,7 @@ func (g *game) monsterHeadAttack(i int, sx, sy int64) bool {
 		return false
 	}
 	if g.monsterHasLOSTarget(i, 3005, sx, sy) && doomApproxDistance(tx-sx, ty-sy) < monsterMeleeRange-20*fracUnit+radius {
-		damage := 10 * (1 + doomPRandomN(6))
+		damage := 10 * (1 + doomPRandomN(6, doomrand.Headattack))
 		g.damageMonsterTarget(i, damage, "Monster hit you", sx, sy)
 		return true
 	}
@@ -4298,7 +4298,7 @@ func (g *game) monsterAimAngleToTarget(i int, sx, sy int64) uint32 {
 	}
 	angle := angleToThing(sx, sy, tx, ty)
 	if g.monsterTargetHasShadow(i) {
-		angle += uint32(int32(doomrand.PRandom()-doomrand.PRandom()) << 20)
+		angle += uint32(int32(doomrand.PRandom(doomrand.Shadow)-doomrand.PRandom(doomrand.Shadow)) << 20)
 	}
 	return angle
 }
@@ -4462,6 +4462,13 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 	if pellets <= 0 {
 		return
 	}
+	class := doomrand.Posattack
+	if typ == 9 {
+		class = doomrand.Sposattack
+	}
+	if typ == 65 || typ == 84 || typ == 7 {
+		class = doomrand.Cposattack
+	}
 	baseAngle := g.thingWorldAngle(i, g.m.Things[i])
 	actor := g.monsterLineAttackActor(i, typ)
 	slope, ok := g.aimLineAttack(actor, baseAngle, monsterAttackRange)
@@ -4469,8 +4476,8 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 		slope = 0
 	}
 	for pellet := 0; pellet < pellets; pellet++ {
-		angle := addDoomAngleSpread(baseAngle, doomMonsterSpreadShift)
-		damage := 3 * (1 + doomrand.PRandom()%5)
+		angle := addDoomAngleSpread(baseAngle, doomMonsterSpreadShift, class)
+		damage := 3 * (1 + doomrand.PRandom(class)%5)
 		if want := runtimeDebugEnv("GD_DEBUG_LINE_ATTACK"); want != "" {
 			var wantTic, wantIdx, wantPellet int
 			if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantIdx, &wantPellet); err == nil {
@@ -4625,15 +4632,15 @@ func monsterHasMeleeAttack(typ int16) bool {
 func monsterMeleeDamage(typ int16) int {
 	switch typ {
 	case 3002, 58: // demon/spectre
-		return 4 * (1 + doomPRandomN(10))
+		return 4 * (1 + doomPRandomN(10, doomrand.Sargattack))
 	case 3001: // imp
-		return 3 * (1 + doomPRandomN(8))
+		return 3 * (1 + doomPRandomN(8, doomrand.Troopattack))
 	case 3003, 69: // baron/hell knight
-		return 10 * (1 + doomPRandomN(8))
+		return 10 * (1 + doomPRandomN(8, doomrand.Bruisattack))
 	case 66: // revenant
-		return 6 * (1 + doomPRandomN(10))
+		return 6 * (1 + doomPRandomN(10, doomrand.Skelfist))
 	default:
-		return 3 * (1 + doomPRandomN(8))
+		return 3 * (1 + doomPRandomN(8, doomrand.Troopattack))
 	}
 }
 
@@ -5103,7 +5110,7 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 		return g.authoritativeMonsterLookForPlayer(i, allAround, tx, ty)
 	}
 	if g.isDead {
-		return false
+		return g.recallBoomEnemy(i)
 	}
 	look := 0
 	if i >= 0 && i < len(g.thingLastLook) {
@@ -5115,11 +5122,15 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 	for {
 		if g.monsterPlayerSlotActive(look) {
 			count++
-			if count > 2 || look == stop {
+			limit := 2
+			if g.boomRememberEnabled() {
+				limit = 4
+			}
+			if count > limit || look == stop {
 				if i >= 0 && i < len(g.thingLastLook) {
 					g.thingLastLook[i] = look
 				}
-				return false
+				return g.recallBoomEnemy(i)
 			}
 			if !g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty) {
 				if want := runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"); want != "" {
@@ -5326,7 +5337,7 @@ func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
 	}
 	angle := doomPointToAngle2(fromX, fromY, toX, toY)
 	if g.monsterTargetHasShadow(i) {
-		angle += uint32(int32(doomrand.PRandom()-doomrand.PRandom()) << 21)
+		angle += uint32(int32(doomrand.PRandom(doomrand.Facetarget)-doomrand.PRandom(doomrand.Facetarget)) << 21)
 	}
 	g.debugMonsterAngle(i, "face-target", angle)
 	g.setThingWorldAngle(i, angle)
@@ -5771,11 +5782,11 @@ func doomApproxDistance(dx, dy int64) int64 {
 	return dx + dy/2
 }
 
-func doomPRandomN(n int) int {
+func doomPRandomN(n int, classes ...doomrand.Class) int {
 	if n <= 0 {
 		return 0
 	}
-	return doomrand.PRandom() % n
+	return doomrand.PRandom(classes...) % n
 }
 
 // Slide traces share the player-sized collision shape; movement and triggers

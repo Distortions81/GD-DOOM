@@ -95,7 +95,7 @@ func storedBoomFriction(f int64) int64 {
 }
 
 func (g *game) boomPlayerMoveFactor() int64 {
-	if len(g.boomFrictions) == 0 || g.noClip {
+	if len(g.boomFrictions) == 0 || g.noClip || g.opts.BoomGameOptions != nil && !g.opts.BoomGameOptions.VariableFriction {
 		return boomMoveFactor
 	}
 	f := storedBoomFriction(g.p.friction)
@@ -119,7 +119,7 @@ func (g *game) boomPlayerMoveFactor() int64 {
 }
 
 func (g *game) tickBoomFriction(f boomFrictionThinker) {
-	if g.m.Sectors[f.sector].Special&0x100 == 0 {
+	if g.opts.BoomGameOptions != nil && !g.opts.BoomGameOptions.VariableFriction || g.m.Sectors[f.sector].Special&0x100 == 0 {
 		return
 	}
 	floor := g.sectorFloor[f.sector]
@@ -149,6 +149,9 @@ func (g *game) tickBoomFriction(f boomFrictionThinker) {
 }
 
 func (g *game) tickBoomPusher(p boomPusherThinker) {
+	if g.opts.BoomGameOptions != nil && !g.opts.BoomGameOptions.AllowPushers {
+		return
+	}
 	if g.m.Sectors[p.sector].Special&0x200 == 0 {
 		return
 	}

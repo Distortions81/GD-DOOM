@@ -308,6 +308,22 @@ func (g *game) startWeaponOverlayFire(id weaponID) {
 
 func (g *game) startWeaponFlashState(state weaponPspriteState) {
 	g.setWeaponPSpriteState(state, true)
+	if settings := g.opts.BoomGameOptions; settings != nil && settings.WeaponRecoil && !g.noClip {
+		value := int64(0)
+		switch g.inventory.ReadyWeapon {
+		case weaponPistol, weaponChaingun:
+			value = 10
+		case weaponShotgun:
+			value = 30
+		case weaponSuperShotgun:
+			value = 80
+		case weaponRocketLauncher, weaponBFG:
+			value = 100
+		case weaponPlasma:
+			value = 20
+		}
+		g.thrust(g.p.angle+doomAng180, 2048*value)
+	}
 }
 
 func (g *game) bringUpWeapon() {
@@ -566,6 +582,9 @@ func (g *game) weaponBob() (float64, float64) {
 }
 
 func (g *game) weaponBobFixed() (int64, int64) {
+	if g.opts.BoomGameOptions != nil && !g.opts.BoomGameOptions.PlayerBobbing {
+		return 0, 0
+	}
 	bob := int64(int32(fixedMul(g.p.momx, g.p.momx)+fixedMul(g.p.momy, g.p.momy))) >> 2
 	bob = min(bob, playerMaxBob)
 	idx := (128 * g.worldTic) & doomFineMask

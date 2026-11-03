@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"gddoom/internal/doomrand"
+	"gddoom/internal/demo"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/wad"
 	"os"
@@ -147,13 +147,12 @@ func TestBoomManualDoorCapture(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		g := newGame(m, Options{SkillLevel: 3, Headless: true})
-		if strings.HasPrefix(c.Name, "lift_") {
-			doomrand.SetState(0, 0)
-		}
+		opts := Options{SkillLevel: 3, Headless: true}
 		if strings.HasPrefix(c.Name, "rng1_lift_") {
-			doomrand.SetState(0, 1)
+			settings := demo.GameOptions{Seed: 1, MonstersRemember: true, VariableFriction: true, AllowPushers: true, PlayerBobbing: true}
+			opts.BoomGameOptions = &settings
 		}
+		g := newGame(m, opts)
 		for i := range m.Sectors {
 			g.sectorFloor[i] = c.Floors[i]
 			g.sectorCeil[i] = c.Ceilings[i]

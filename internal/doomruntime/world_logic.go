@@ -46,6 +46,7 @@ func (g *game) beginWorldTic() {
 
 func (g *game) finishWorldTic() {
 	g.refreshSectorPlaneCacheLighting()
+	doomrand.AdvanceLogicTic()
 }
 
 func (g *game) initSectorLightEffects() {
@@ -116,7 +117,7 @@ func (g *game) spawnSectorLightFlash(sec int) {
 		maxLight: maxLight,
 		minTime:  7,
 		maxTime:  64,
-		count:    (doomrand.PRandom() & 64) + 1,
+		count:    (doomrand.PRandom(doomrand.Lights) & 64) + 1,
 	}
 }
 
@@ -131,7 +132,7 @@ func (g *game) spawnSectorStrobeFlash(sec int, darkTime int, inSync bool) {
 	}
 	count := 1
 	if !inSync {
-		count = (doomrand.PRandom() & 7) + 1
+		count = (doomrand.PRandom(doomrand.Lights) & 7) + 1
 	}
 	g.sectorLightFx[sec] = sectorLightEffect{
 		order:      g.allocThinkerOrder(),
@@ -178,7 +179,7 @@ func (g *game) tickSectorLightEffect(sec int) {
 		if fx.count != 0 {
 			return
 		}
-		roll := doomrand.PRandom()
+		roll := doomrand.PRandom(doomrand.Lights)
 		if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -203,7 +204,7 @@ func (g *game) tickSectorLightEffect(sec int) {
 		}
 		if g.m.Sectors[sec].Light == fx.maxLight {
 			g.m.Sectors[sec].Light = fx.minLight
-			roll := doomrand.PRandom()
+			roll := doomrand.PRandom(doomrand.Lights)
 			if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 				var wantTic int
 				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -217,7 +218,7 @@ func (g *game) tickSectorLightEffect(sec int) {
 			fx.count = (roll & fx.minTime) + 1
 		} else {
 			g.m.Sectors[sec].Light = fx.maxLight
-			roll := doomrand.PRandom()
+			roll := doomrand.PRandom(doomrand.Lights)
 			if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 				var wantTic int
 				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -335,6 +336,9 @@ func (g *game) tickPlayerViewHeight() {
 	if g.authorityRules == nil && !g.predictionMovement {
 		bob := int64(int32(fixedMul(g.p.momx, g.p.momx)+fixedMul(g.p.momy, g.p.momy))) >> 2
 		bob = min(bob, playerMaxBob)
+		if g.opts.BoomGameOptions != nil && !g.opts.BoomGameOptions.PlayerBobbing {
+			bob = 0
+		}
 		angle := (playerBobPhaseStep * g.worldTic) & doomFineMask
 		bobAmplitude = bob / 2
 		bobOffset = fixedMul(bobAmplitude, doomFineSine[angle])
@@ -422,7 +426,7 @@ func hazardDamage(special int16, hasSuit bool) int {
 		}
 	case 4, 16:
 		// Doom behavior: with suit these sectors still occasionally hurt.
-		if !hasSuit || doomrand.PRandom() < 5 {
+		if !hasSuit || doomrand.PRandom(doomrand.Slimehurt) < 5 {
 			return 20
 		}
 	case 11:
@@ -534,12 +538,12 @@ func (g *game) damagePlayerFromWithInflictorZ(amount int, msg string, attackerX,
 		}
 		// P_KillMobj shortens the death state's tics with P_Random & 3.
 		// Lower the weapon immediately, before another attack state can run.
-		_ = doomrand.PRandom() & 3
+		_ = doomrand.PRandom(doomrand.Killtics) & 3
 		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
 		msg = "You Died"
 		g.emitSoundEvent(soundEventPlayerDeath)
 	} else {
-		if doomrand.PRandom() < playerPainChance {
+		if doomrand.PRandom(doomrand.Painchance) < playerPainChance {
 			g.setPlayerMobjState(doomStatePlayerPain1, 4)
 		}
 	}
@@ -555,7 +559,7 @@ func (g *game) applyPlayerDamageThrust(amount int, attackerX, attackerY, inflict
 	worldAng := doomPointToAngle2(attackerX, attackerY, g.p.x, g.p.y)
 	// P_DamageMobj may throw a fatally hit victim toward an inflictor far
 	// below it. The random draw happens before armor and death-state handling.
-	if amount < 40 && amount > g.stats.Health && g.p.z-inflictorZ > 64*fracUnit && doomrand.PRandom()&1 != 0 {
+	if amount < 40 && amount > g.stats.Health && g.p.z-inflictorZ > 64*fracUnit && doomrand.PRandom(doomrand.Damagemobj)&1 != 0 {
 		worldAng += doomAng180
 		thrust *= 4
 	}

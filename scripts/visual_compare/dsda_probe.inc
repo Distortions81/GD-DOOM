@@ -10,6 +10,7 @@
 #include "p_tick.h"
 #include "dsda/configuration.h"
 
+#include "dsda_rng_vectors.inc"
 #include "dsda_teleport_probe.inc"
 #include "dsda_environment_probe.inc"
 #include "dsda_lock_probe.inc"
@@ -17,6 +18,7 @@
 #include "dsda_legacy_probe.inc"
 #include "dsda_generalized_probe.inc"
 #include "dsda_manual_probe.inc"
+#include "dsda_rng_lifts.inc"
 
 static void GD_VisualProbe(void)
 {
@@ -29,6 +31,8 @@ static void GD_VisualProbe(void)
     unsigned angle;
  unsigned long long usemask;
     const byte *palette;
+    GD_RNGVectors();
+    GD_RNGLifts();
     GD_ManualProbe();
     GD_GeneralizedProbe();
     GD_LegacyProbe();

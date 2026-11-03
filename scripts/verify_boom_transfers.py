@@ -56,6 +56,15 @@ def install_sector_sound_probe(target):
     path.write_text(data)
 
 
+def install_rng_probe(target):
+    for name in ["dsda_rng_vectors.inc", "dsda_rng_demo_probe.inc", "dsda_rng_lifts.inc"]:
+        shutil.copy(ROOT / "scripts/visual_compare" / name, target / "src")
+    replace_once(target / "src/g_game.c", "void G_Ticker (void)",
+                 '#include "dsda_rng_demo_probe.inc"\n\nvoid G_Ticker (void)')
+    replace_once(target / "src/g_game.c", "  if (advance_frame)\n    dsda_UnmaskPause(pause_mask);",
+                 "  if (advance_frame)\n    dsda_UnmaskPause(pause_mask);\n  GD_RNGDemoFrame();")
+
+
 def build_reference(source, out, cmake_args):
     source = source.resolve()
     if (source / "prboom2").is_dir():
@@ -72,6 +81,7 @@ def build_reference(source, out, cmake_args):
     shutil.copy(ROOT / "scripts/visual_compare/dsda_legacy_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_generalized_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_manual_probe.inc", target / "src")
+    install_rng_probe(target)
     install_sector_sound_probe(target)
     messenger = target / "src/dsda/messenger.c"
     messenger.write_text(messenger.read_text() + '\n#include "dsda_lock_messages.inc"\n')

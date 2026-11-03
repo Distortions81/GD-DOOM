@@ -1,5 +1,7 @@
 package doomruntime
 
+import "gddoom/internal/doomrand"
+
 // A_VileTarget creates a normal ordered mobj thinker. Its first state lasts
 // two tics without randomization; P_SpawnMobj consumes only the lastlook draw.
 func (g *game) spawnArchVileFire(source int) {
@@ -11,7 +13,7 @@ func (g *game) spawnArchVileFire(source int) {
 		x: x, y: x, z: z, // Preserve A_VileTarget's original target->x typo.
 		kind: projectileArchVileFire, order: g.allocThinkerOrder(),
 		sourceThing: source, sourceType: 64,
-		lastLook: doomPRandomN(4), tics: 60, totalTics: 60, phaseTics: 2,
+		lastLook: doomPRandomN(4, doomrand.Lastlook), tics: 60, totalTics: 60, phaseTics: 2,
 	}
 	fx.subsector = g.subSectorAtFixed(fx.x, fx.y) + 1
 	sec := g.sectorAt(fx.x, fx.y)

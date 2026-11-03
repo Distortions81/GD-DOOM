@@ -32,11 +32,11 @@ func (a *Authority) AdvanceMap(next *mapdata.Map) error {
 	if next == nil || len(next.Sectors) == 0 {
 		return fmt.Errorf("next authority map requires sectors")
 	}
-	menuRNG, playRNG := doomrand.State()
+	rngState := doomrand.Capture()
 	succeeded := false
 	defer func() {
 		if !succeeded {
-			doomrand.SetState(menuRNG, playRNG)
+			doomrand.Restore(rngState)
 		}
 	}()
 	oldRules := a.g.authorityRules

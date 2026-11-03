@@ -127,6 +127,9 @@ func (g *game) finishSilentTeleport(actorIdx int, isPlayer bool, x, y, z, floor,
 // probes. AI P_Move still refuses ledges. Detect Boom map features for normal
 // play, but retain the recorded demo's movement rules when playing a demo.
 func boomMomentumDropoffEnabled(m *mapdata.Map, opts Options) bool {
+	if opts.BoomGameOptions != nil {
+		return true
+	}
 	if opts.DemoScript != nil {
 		v := opts.DemoScript.Header.Version
 		return v == 201 || v == 202

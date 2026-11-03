@@ -147,7 +147,7 @@ func (a *Authority) spawnAuthoritativePlayer(id byte, respawn bool) error {
 	g.prevPX, g.prevPY, g.prevAngle, g.prevPrevAngle = g.p.x, g.p.y, g.p.angle, g.p.angle
 	// Player mobjs consume their spawn RNG once, independent of which
 	// candidate positions were blocked during the search above.
-	_ = doomrand.PRandom() & 3
+	_ = doomrand.PRandom(doomrand.Lastlook) & 3
 	state := g.captureAuthoritativePlayer()
 	g.applyAuthoritativePlayer(saved)
 	g.clearAuthoritativePlayerTargets(int(id))

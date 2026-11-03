@@ -122,7 +122,7 @@ func (g *game) spawnBossCube(spawnerIdx, targetIdx int) bool {
 	tx, ty := g.thingPosFixed(targetIdx, target)
 	tz, _, _ := g.thingSupportState(targetIdx, target)
 	angle := doomPointToAngle2(sx, sy, tx, ty)
-	lastLook := doomrand.PRandom() & 3
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
 	speed := int64(10 * fracUnit)
 	vx := fixedMul(speed, doomFineCosine(angle))
 	vy := fixedMul(speed, doomFineSineAtAngle(angle))
@@ -281,9 +281,9 @@ func (g *game) resolveBossCube(cube bossSpawnCube) {
 	tx, ty := g.thingPosFixed(cube.targetIdx, target)
 	tz, floorZ, ceilZ := g.thingSupportState(cube.targetIdx, target)
 	floorZ, ceilZ = g.projectileSpawnSupportStateAt(tx, ty)
-	g.bossSpawnFires = append(g.bossSpawnFires, bossSpawnFire{x: tx, y: ty, z: tz, tics: 32, order: g.allocThinkerOrder(), floorz: floorZ, ceilz: ceilZ, lastLook: doomrand.PRandom() & 3})
+	g.bossSpawnFires = append(g.bossSpawnFires, bossSpawnFire{x: tx, y: ty, z: tz, tics: 32, order: g.allocThinkerOrder(), floorz: floorZ, ceilz: ceilZ, lastLook: doomrand.PRandom(doomrand.Lastlook) & 3})
 	g.emitSoundEventAt(soundEventTeleport, tx, ty)
-	typ := bossBrainSpawnType(doomrand.PRandom())
+	typ := bossBrainSpawnType(doomrand.PRandom(doomrand.Spawnfly))
 	idx := g.appendRuntimeThing(mapdata.Thing{
 		X:    int16(tx >> fracBits),
 		Y:    int16(ty >> fracBits),
@@ -366,10 +366,10 @@ func (g *game) damageBossBrain(i, damage int, sourcePlayer bool, sourceThing int
 			g.spawnBossBrainExplosion(bx, y-320*fracUnit, false)
 		}
 		g.emitSoundEventAt(soundEventBossBrainDeath, x, y)
-		g.thingStateTics[i] = max(1, 100-(doomrand.PRandom()&3))
+		g.thingStateTics[i] = max(1, 100-(doomrand.PRandom(doomrand.Killtics)&3))
 		return
 	}
-	if doomrand.PRandom() < 255 {
+	if doomrand.PRandom(doomrand.Painchance) < 255 {
 		g.thingJustHit[i] = true
 		g.thingState[i] = monsterStatePain
 		g.thingStatePhase[i] = 1
@@ -384,13 +384,17 @@ func (g *game) damageBossBrain(i, damage int, sourcePlayer bool, sourceThing int
 // Brain explosions are live MT_ROCKET thinkers in a separate state chain.
 // They retain MF_MISSILE, so hitting a floor or ceiling enters S_EXPLODE1.
 func (g *game) spawnBossBrainExplosion(x, y int64, scattered bool) {
+	class := doomrand.Brainscream
 	if scattered {
-		x += int64(doomrand.PRandom()-doomrand.PRandom()) * 2048
+		class = doomrand.Brainexp
 	}
-	z := int64(128) + int64(doomrand.PRandom())*2*fracUnit
-	lastLook := doomrand.PRandom() & 3
-	vz := int64(doomrand.PRandom()) * 512
-	tics := max(1, 10-(doomrand.PRandom()&7))
+	if scattered {
+		x += int64(doomrand.PRandom(class)-doomrand.PRandom(class)) * 2048
+	}
+	z := int64(128) + int64(doomrand.PRandom(class))*2*fracUnit
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
+	vz := int64(doomrand.PRandom(class)) * 512
+	tics := max(1, 10-(doomrand.PRandom(class)&7))
 	floor, ceil := g.projectileSpawnSupportStateAt(x, y)
 	g.projectiles = append(g.projectiles, projectile{
 		x: x, y: y, z: z, prevX: x, prevY: y, prevZ: z,

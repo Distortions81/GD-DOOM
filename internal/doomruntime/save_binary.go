@@ -862,7 +862,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 35 && v.Version <= saveGameVersion) || (v.Version >= 22 && v.Version <= keyframeVersion) {
 		if err := w.doorThinkerMap(v.Game.ExtraDoors); err != nil {
 			return err
 		}
@@ -874,6 +874,33 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		state := v.RNG.Extended
+		if err := w.bool(state.Boom); err != nil {
+			return err
+		}
+		if err := w.bool(state.Insurance); err != nil {
+			return err
+		}
+		if err := w.u32(state.InitialSeed); err != nil {
+			return err
+		}
+		if err := w.u32(state.LogicTic); err != nil {
+			return err
+		}
+		for _, seed := range state.Seeds {
+			if err := w.u32(seed); err != nil {
+				return err
+			}
+		}
+		if err := w.intSlice(v.Game.BoomLastEnemy); err != nil {
+			return err
+		}
+		if err := w.bytesWithLen(v.BoomOptions); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -1863,7 +1890,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			return v, err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 35 && v.Version <= saveGameVersion) || (v.Version >= 22 && v.Version <= keyframeVersion) {
 		if v.Game.ExtraDoors, err = r.doorThinkerMap(); err != nil {
 			return v, err
 		}
@@ -1881,6 +1908,41 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			}
 		}
 	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		state := &v.RNG.Extended
+		state.MenuIndex = v.RNG.MenuIndex
+		state.PlayIndex = v.RNG.PlayIndex
+		if state.Boom, err = r.bool(); err != nil {
+			return v, err
+		}
+		if state.Insurance, err = r.bool(); err != nil {
+			return v, err
+		}
+		if state.InitialSeed, err = r.u32(); err != nil {
+			return v, err
+		}
+		if state.LogicTic, err = r.u32(); err != nil {
+			return v, err
+		}
+		for i := range state.Seeds {
+			if state.Seeds[i], err = r.u32(); err != nil {
+				return v, err
+			}
+		}
+		if v.Game.BoomLastEnemy, err = readSlice(r, r.int); err != nil {
+			return v, err
+		}
+		if v.BoomOptions, err = r.bytesWithLen(); err != nil {
+			return v, err
+		}
+		if !validBoomEnemyMemory(v.Game.BoomLastEnemy, len(v.Game.Things)) {
+			return v, fmt.Errorf("invalid Boom enemy memory")
+		}
+		if len(v.BoomOptions) != 0 && len(v.BoomOptions) != 64 {
+			return v, fmt.Errorf("invalid Boom game options")
+		}
+	}
+
 	return v, nil
 }
 

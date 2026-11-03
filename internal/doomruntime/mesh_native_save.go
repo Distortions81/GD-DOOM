@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"gddoom/internal/doomrand"
 	"gddoom/internal/music"
 	"gddoom/internal/runtimecfg"
 )
@@ -119,12 +118,13 @@ func (c *NativeCampaign) applyNativeSnapshot(file saveFile) error {
 	opts.RecordDemoPath = ""
 	opts.DemoScript, opts.DemoTracePath = nil, ""
 	applySavedSessionOptions(&opts, file.Game.Session)
+	restoreBoomOptions(&opts, file.BoomOptions)
 	opts.AlwaysRun = file.Game.AlwaysRun
 	fresh := NewNativeMeshGame(loaded, opts)
 	restoreGameSaveState(fresh.g, file.Game)
 	fresh.SetGammaLevel(file.Game.GammaLevel)
 	opts.InitialGammaLevel = fresh.GammaLevel()
-	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
+	restoreSavedRNG(file)
 	sg.g.clearPendingSoundState()
 	sg.opts, sg.g, sg.current = opts, fresh.g, file.Current
 	sg.levelCarryover = nil

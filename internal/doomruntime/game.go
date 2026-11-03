@@ -440,6 +440,7 @@ type game struct {
 	boomPushers                        []boomPusherThinker
 	thingFriction, thingMoveFactor     []int64
 	boomTeleportExits                  map[uint16][]int
+	boomLastEnemy                      []int
 	boomMomentumDropoff                bool
 	textureAnimCachePeriod             int
 	boomCarries                        []boomCarryThinker
@@ -1369,6 +1370,9 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	doomrand.LoadDebugEnvFromOS()
 	if clearRNG {
 		doomrand.Clear()
+		if settings, ok := demoRNGOptions(m, opts); ok {
+			doomrand.ConfigureBoom(settings.Seed, settings.Insurance)
+		}
 	}
 	if opts.DemoScript != nil {
 		opts = runtimecfg.PrepareDemoPlaybackOptions(opts, opts.DemoScript)
@@ -10865,9 +10869,9 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 // Effects remain linked until their state sequence reaches S_NULL, just like
 // original mobj thinkers. Busy fights must not evict older live effects.
 func (g *game) spawnHitscanPuff(x, y, z int64) {
-	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
-	lastLook := doomrand.PRandom() & 3
-	tics := 4 - (doomrand.PRandom() & 3)
+	z += int64((doomrand.PRandom(doomrand.Spawnpuff) - doomrand.PRandom(doomrand.Spawnpuff)) << 10)
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
+	tics := 4 - (doomrand.PRandom(doomrand.Spawnpuff) & 3)
 	if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_FX"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -10913,7 +10917,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 // spawnBFGExtra mirrors P_SpawnMobj(MT_EXTRABFG) in A_BFGSpray. Unlike a
 // regular puff it has no Z jitter and only consumes P_Random for lastlook.
 func (g *game) spawnBFGExtra(x, y, z int64) {
-	lastLook := doomrand.PRandom() & 3
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
 	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)
@@ -10938,9 +10942,9 @@ func (g *game) spawnBFGExtra(x, y, z int64) {
 
 func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 	state := 90
-	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
-	lastLook := doomrand.PRandom() & 3
-	tics := 8 - (doomrand.PRandom() & 3)
+	z += int64((doomrand.PRandom(doomrand.Spawnblood) - doomrand.PRandom(doomrand.Spawnblood)) << 10)
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
+	tics := 8 - (doomrand.PRandom(doomrand.Spawnblood) & 3)
 	if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_FX"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -10986,9 +10990,9 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 
 func (g *game) spawnCrusherBlood(x, y, z int64) {
 	floor, ceil, _ := g.subsectorFloorCeilAt(x, y)
-	lastLook := doomrand.PRandom() & 3
-	momx := int64(doomrand.PRandom()-doomrand.PRandom()) << 12
-	momy := int64(doomrand.PRandom()-doomrand.PRandom()) << 12
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
+	momx := int64(doomrand.PRandom(doomrand.Crush)-doomrand.PRandom(doomrand.Crush)) << 12
+	momy := int64(doomrand.PRandom(doomrand.Crush)-doomrand.PRandom(doomrand.Crush)) << 12
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x: x, y: y, z: z, momx: momx, momy: momy,
 		floorz: floor, ceilz: ceil, lastLook: lastLook,
@@ -11001,8 +11005,8 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 	// position directly, so doing it here as well would consume two extra
 	// P_Random values and desynchronize later thinkers.
 	g.spawnHitscanPuff(x, y, z)
-	lastLook := doomrand.PRandom() & 3
-	tics := 4 - (doomrand.PRandom() & 3)
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
+	tics := 4 - (doomrand.PRandom(doomrand.Tracer) & 3)
 	if tics < 1 {
 		tics = 1
 	}
@@ -11033,7 +11037,7 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 
 func (g *game) spawnTeleportFog(x, y, z int64) {
 	const teleportFogFrameTics = 6
-	lastLook := doomrand.PRandom() & 3
+	lastLook := doomrand.PRandom(doomrand.Lastlook) & 3
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
 	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)

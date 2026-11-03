@@ -257,6 +257,7 @@ type VoiceSettings struct {
 }
 
 type Options struct {
+	BoomGameOptions *demo.GameOptions
 	// Headless suppresses device-backed audio and render asset preparation for
 	// callers that drive the simulation directly without an Ebitengine game loop.
 	Headless                     bool

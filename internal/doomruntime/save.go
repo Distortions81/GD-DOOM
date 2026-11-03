@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 35
+	saveGameVersion     = 36
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 22
+	keyframeVersion     = 23
 	saveGameDirName     = "saves"
 )
 
@@ -62,11 +62,13 @@ type saveFile struct {
 	Description string
 	Current     mapdata.MapName
 	WADSources  []saveWADSource
+	BoomOptions []byte
 	RNG         saveRNGState
 	Game        gameSaveState
 }
 
 type saveRNGState struct {
+	Extended  doomrand.Snapshot
 	MenuIndex int
 	PlayIndex int
 }
@@ -93,6 +95,7 @@ type saveSlotInfo struct {
 }
 
 type gameSaveState struct {
+	BoomLastEnemy        []int
 	CeilingOwners        map[int]int64
 	ExtraDoors           map[int]doorThinkerSaveState
 	BoomStairs           []boomStairState
@@ -1059,17 +1062,19 @@ func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
 	if description == "" {
 		description = "Save Game"
 	}
-	rndIndex, prndIndex := doomrand.State()
+	rngState := doomrand.Capture()
 	file := saveFile{
 		Version:     saveGameVersion,
 		Description: description,
 		Current:     sg.current,
 		WADSources:  captureSaveWADSources(sg.opts.WADSources),
 		RNG: saveRNGState{
-			MenuIndex: rndIndex,
-			PlayIndex: prndIndex,
+			Extended:  rngState,
+			MenuIndex: rngState.MenuIndex,
+			PlayIndex: rngState.PlayIndex,
 		},
-		Game: captureGameSaveState(sg.g),
+		Game:        captureGameSaveState(sg.g),
+		BoomOptions: captureBoomOptions(sg.g.opts),
 	}
 	return encodeSnapshot(saveGameMagic, file)
 }
@@ -1082,17 +1087,19 @@ func (sg *sessionGame) marshalNetplayKeyframe() ([]byte, error) {
 	if sg == nil || sg.g == nil || sg.g.m == nil {
 		return nil, errSaveGameUnavailable
 	}
-	rndIndex, prndIndex := doomrand.State()
+	rngState := doomrand.Capture()
 	file := saveFile{
 		Version:     keyframeVersion,
 		Description: "Netplay Keyframe",
 		Current:     sg.current,
 		WADSources:  captureSaveWADSources(sg.opts.WADSources),
 		RNG: saveRNGState{
-			MenuIndex: rndIndex,
-			PlayIndex: prndIndex,
+			Extended:  rngState,
+			MenuIndex: rngState.MenuIndex,
+			PlayIndex: rngState.PlayIndex,
 		},
-		Game: captureGameSaveState(sg.g),
+		Game:        captureGameSaveState(sg.g),
+		BoomOptions: captureBoomOptions(sg.g.opts),
 	}
 	return encodeSnapshot(keyframeMagic, file)
 }
@@ -1162,6 +1169,7 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 		return fmt.Errorf("save missing current map")
 	}
 	applySavedSessionOptions(&sg.opts, file.Game.Session)
+	restoreBoomOptions(&sg.opts, file.BoomOptions)
 
 	sg.stopAndClearMusic()
 	if sg.g != nil {
@@ -1186,6 +1194,9 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	if !validManualDoorState(file.Game, len(g.m.Sectors)) {
 		return fmt.Errorf("save manual-door state does not match loaded map")
 	}
+	if !validBoomEnemyMemory(file.Game.BoomLastEnemy, len(file.Game.Things)) {
+		return fmt.Errorf("invalid Boom enemy memory")
+	}
 	if !validBoomStairs(file.Game.BoomStairs, len(g.m.Sectors)) {
 		return fmt.Errorf("save stair links do not match loaded map")
 	}
@@ -1199,7 +1210,7 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 		g.inventory.CardKeys = inferred
 	}
 
-	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
+	restoreSavedRNG(file)
 
 	sg.transition.Clear()
 	sg.clearQuitPrompt()
@@ -1309,6 +1320,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingHP:              append([]int(nil), g.thingHP...),
 		ThingAggro:           append([]bool(nil), g.thingAggro...),
 		ThingTargetPlayer:    append([]bool(nil), g.thingTargetPlayer...),
+		BoomLastEnemy:        append([]int(nil), g.boomLastEnemy...),
 		ThingTargetIdx:       append([]int(nil), g.thingTargetIdx...),
 		ThingTracerFireOrder: append([]int64(nil), g.thingTracerFireOrder...),
 		ThingThreshold:       append([]int(nil), g.thingThreshold...),
@@ -1409,6 +1421,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	if g == nil {
 		return
 	}
+	g.boomLastEnemy = append([]int(nil), s.BoomLastEnemy...)
 	g.possession = nil
 	g.possessionFireDown = true
 	applySavedSessionOptions(&g.opts, s.Session)

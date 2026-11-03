@@ -32,8 +32,11 @@ var table = [256]uint8{
 
 // RNG replicates Doom's original dual-index lookup-table RNG state.
 type RNG struct {
-	rndIndex  int
-	prndIndex int
+	rndIndex              int
+	prndIndex             int
+	boom, insurance       bool
+	initialSeed, logicTic uint32
+	seeds                 [ClassCount]uint32
 }
 
 // New returns a cleared RNG state equivalent to M_ClearRandom.
@@ -42,17 +45,19 @@ func New() *RNG {
 }
 
 // PRandom returns the next deterministic play-simulation random byte [0,255].
-func (r *RNG) PRandom() int {
-	r.prndIndex = (r.prndIndex + 1) & 0xff
-	v := int(table[r.prndIndex])
+func (r *RNG) PRandom(classes ...Class) int {
+	class := AllInOne
+	if len(classes) > 0 {
+		class = classes[0]
+	}
+	v := r.Random(class)
 	debugLogCaller("PRandom", r.rndIndex, r.prndIndex, v)
 	return v
 }
 
-// MRandom returns the next menu/misc random byte [0,255].
+// MRandom uses Boom's isolated misc stream, or the vanilla cosmetic table.
 func (r *RNG) MRandom() int {
-	r.rndIndex = (r.rndIndex + 1) & 0xff
-	v := int(table[r.rndIndex])
+	v := r.Random(Misc)
 	debugLogCaller("MRandom", r.rndIndex, r.prndIndex, v)
 	return v
 }
@@ -60,19 +65,28 @@ func (r *RNG) MRandom() int {
 // PRandomOffset returns a play-random value at the given offset without advancing state.
 // offset=0 is the value that a direct call to PRandom would return next.
 func (r *RNG) PRandomOffset(offset int) int {
-	return int(table[(r.prndIndex+1+offset)&0xff])
+	copy := *r
+	value := 0
+	for i := 0; i <= offset; i++ {
+		value = copy.PRandom()
+	}
+	return value
 }
 
 // MRandomOffset returns a menu-random value at the given offset without advancing state.
 // offset=0 is the value that a direct call to MRandom would return next.
 func (r *RNG) MRandomOffset(offset int) int {
-	return int(table[(r.rndIndex+1+offset)&0xff])
+	copy := *r
+	value := 0
+	for i := 0; i <= offset; i++ {
+		value = copy.MRandom()
+	}
+	return value
 }
 
 // Clear resets both indices to Doom's original zero state.
 func (r *RNG) Clear() {
-	r.rndIndex = 0
-	r.prndIndex = 0
+	*r = RNG{}
 }
 
 // SetState restores explicit menu and play random indices.
@@ -102,8 +116,8 @@ func debugEnv(key string) string {
 }
 
 // PRandom is the package-level Doom-compatible P_Random.
-func PRandom() int {
-	return global.PRandom()
+func PRandom(classes ...Class) int {
+	return global.PRandom(classes...)
 }
 
 // MRandom is the package-level Doom-compatible M_Random.

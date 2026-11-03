@@ -1183,6 +1183,9 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		return g.thingReactionTics[i]
 	}
+	if isMonster(typ) && i < len(g.thingDead) && g.thingDead[i] {
+		return -1
+	}
 	return 0
 }
 
