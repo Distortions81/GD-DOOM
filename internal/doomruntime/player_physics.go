@@ -927,7 +927,11 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 // Vanilla calls P_TouchSpecialThing while P_CheckPosition walks the thing
 // blockmap, including slide moves and moving-sector clipping.
 func (g *game) checkPositionForWithPickupTouch(x, y int64, blockMonsterLines bool, touchPickups bool) (int64, int64, int64, bool) {
-	return g.checkPositionForActorWithPickupTouch(x, y, playerRadius, blockMonsterLines, -1, false, false, touchPickups)
+	radius := int64(playerRadius)
+	if g.p.corpseGibbed {
+		radius = 0
+	}
+	return g.checkPositionForActorWithPickupTouch(x, y, radius, blockMonsterLines, -1, false, false, touchPickups)
 }
 
 func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {

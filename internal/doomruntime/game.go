@@ -562,6 +562,7 @@ type game struct {
 	sectorLineAdj           [][]automapSectorLine
 	mapLines                mapview.LineCacheState
 	useSpecialSegScratch    []mapview.Segment
+	boomStairs              []boomStairState
 	sectorFloor             []int64
 	sectorCeil              []int64
 	lineSpecial             []uint16
@@ -1153,6 +1154,9 @@ func (g *game) playerInvulnerable() bool {
 }
 
 func (g *game) playerMobjHeight() int64 {
+	if g.p.corpseGibbed {
+		return 0
+	}
 	if g.isDead {
 		// P_KillMobj quarters the target mobj's height immediately, including
 		// on a tic when a later monster still executes its pending attack.

@@ -82,6 +82,9 @@ type platThinker struct {
 }
 
 type ceilingThinker struct {
+	oldSpeed      int64
+	triggerTag    uint16
+	hasTriggerTag bool
 	finish        floorFinishAction
 	finishFlat    string
 	finishSpecial int16
@@ -138,6 +141,9 @@ func (g *game) activateNonDoorLineSpecial(lineIdx int, side int, info mapdata.Li
 
 func (g *game) activateShootLineSpecial(lineIdx int, info mapdata.LineSpecialInfo) bool {
 	if !lineSpecialSupported(info) || info.Trigger != mapdata.TriggerShoot {
+		return false
+	}
+	if isGeneralizedStairOrCrusher(info) && g.m.Linedefs[lineIdx].Tag == 0 {
 		return false
 	}
 	if info.Exit != mapdata.ExitNone {
@@ -566,6 +572,10 @@ func (g *game) heightClipPlayer(oldFloorz int64) bool {
 		g.p.z = g.p.ceilz - g.playerMobjHeight()
 	}
 	if g.p.ceilz-g.p.floorz < g.playerMobjHeight() {
+		if g.isDead {
+			g.p.corpseGibbed = true
+			return true
+		}
 		return false
 	}
 	return true
@@ -1174,6 +1184,9 @@ func (g *game) freePlatThinker(pt *platThinker) {
 }
 
 func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
+	if info.Generalized != nil {
+		return g.activateGeneralizedStairs(lineIdx, info)
+	}
 	targets := g.taggedSectorsForLine(lineIdx)
 	if len(targets) == 0 {
 		return false
@@ -1618,6 +1631,12 @@ func fixedToDebugFloat(v int64) float64 {
 }
 
 func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
+	if info.Crusher != nil {
+		return g.activateGeneralizedCrusher(lineIdx, info)
+	}
+	if info.Action == mapdata.CeilingCrushStop && g.boomMomentumDropoff {
+		return g.stopBoomCeilings(g.m.Linedefs[lineIdx].Tag)
+	}
 	if info.Generalized != nil {
 		return g.activateGeneralizedCeiling(lineIdx, info)
 	}
@@ -1861,21 +1880,25 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 		}
 	}
 	cur := g.sectorFloor[sec]
+	dest := ft.destHeight
+	if g.boomMomentumDropoff && ft.direction > 0 {
+		dest = min64(dest, g.sectorCeil[sec])
+	}
 	next := cur + int64(ft.direction)*ft.speed
 	done := false
 	if ft.direction < 0 {
-		if next < ft.destHeight {
-			next = ft.destHeight
+		if next < dest {
+			next = dest
 			done = true
 		}
 	} else {
-		if next > ft.destHeight {
-			next = ft.destHeight
+		if next > dest {
+			next = dest
 			done = true
 		}
 	}
 	blocked := g.setSectorFloorHeightWithCrush(sec, next, ft.crush)
-	if blocked && (done || ft.direction < 0 || !ft.crush || g.boomMomentumDropoff) {
+	if blocked && (done || ft.direction < 0 && !g.boomMomentumDropoff || ft.direction > 0 && (!ft.crush || g.boomMomentumDropoff)) {
 		g.setSectorFloorHeightWithCrush(sec, cur, ft.crush)
 	}
 	if !done {
@@ -1889,6 +1912,7 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 		g.markDynamicSectorPlaneCacheDirty(sec)
 	}
 	delete(g.floors, sec)
+	g.finishBoomStair(sec)
 }
 
 func (g *game) tickPlats() {
@@ -1978,6 +2002,10 @@ func (g *game) tickCeilings() {
 }
 
 func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
+	if ct != nil && (ct.action == mapdata.CeilingGenCrusher || ct.action == mapdata.CeilingGenSilentCrusher) {
+		g.tickGeneralizedCrusher(sec, ct)
+		return
+	}
 	if g == nil || ct == nil {
 		return
 	}

@@ -822,7 +822,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 33 && v.Version <= saveGameVersion) || (v.Version >= 20 && v.Version <= keyframeVersion) {
 		for _, key := range sortedSaveIntKeys(v.Game.Floors) {
 			it := v.Game.Floors[key]
 			if err := w.bool(it.Crush); err != nil {
@@ -834,6 +834,32 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			if err := w.i64(it.CeilingDestHeight); err != nil {
 				return err
 			}
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		flat := make([]int, 0, len(v.Game.BoomStairs)*3)
+		for _, st := range v.Game.BoomStairs {
+			flat = append(flat, st.Lock, st.Prev, st.Next)
+		}
+		if err := w.intSlice(flat); err != nil {
+			return err
+		}
+		for _, key := range sortedSaveIntKeys(v.Game.Ceilings) {
+			it := v.Game.Ceilings[key]
+			if err := w.i64(it.OldSpeed); err != nil {
+				return err
+			}
+			if err := w.u16(it.TriggerTag); err != nil {
+				return err
+			}
+			if err := w.bool(it.HasTriggerTag); err != nil {
+				return err
+			}
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if err := w.bool(v.Game.Player.CorpseGibbed); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1777,7 +1803,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 33 && v.Version <= saveGameVersion) || (v.Version >= 20 && v.Version <= keyframeVersion) {
 		for _, key := range sortedSaveIntKeys(v.Game.Floors) {
 			it := v.Game.Floors[key]
 			if it.Crush, err = r.bool(); err != nil {
@@ -1790,6 +1816,39 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 				return v, err
 			}
 			v.Game.Floors[key] = it
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		flat, e := readSlice(r, r.int)
+		if e != nil {
+			return v, e
+		}
+		if len(flat)%3 != 0 {
+			return v, fmt.Errorf("invalid stair state length")
+		}
+		if len(flat) > 0 {
+			v.Game.BoomStairs = make([]boomStairState, len(flat)/3)
+			for i := range v.Game.BoomStairs {
+				v.Game.BoomStairs[i] = boomStairState{Lock: flat[3*i], Prev: flat[3*i+1], Next: flat[3*i+2]}
+			}
+		}
+		for _, key := range sortedSaveIntKeys(v.Game.Ceilings) {
+			it := v.Game.Ceilings[key]
+			if it.OldSpeed, err = r.i64(); err != nil {
+				return v, err
+			}
+			if it.TriggerTag, err = r.u16(); err != nil {
+				return v, err
+			}
+			if it.HasTriggerTag, err = r.bool(); err != nil {
+				return v, err
+			}
+			v.Game.Ceilings[key] = it
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if v.Game.Player.CorpseGibbed, err = r.bool(); err != nil {
+			return v, err
 		}
 	}
 	return v, nil

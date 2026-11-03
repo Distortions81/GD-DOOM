@@ -136,9 +136,19 @@ const (
 	StairsTurbo16 StairsAction = "build_16"
 )
 
+type GeneralizedStairsInfo struct {
+	Speed, Step                 uint8
+	Up, IgnoreTexture, Monsters bool
+}
+type GeneralizedCrusherInfo struct {
+	Speed            uint8
+	Silent, Monsters bool
+}
+
 type StairsInfo struct {
-	Action  StairsAction
-	UsesTag bool
+	Generalized *GeneralizedStairsInfo
+	Action      StairsAction
+	UsesTag     bool
 }
 
 type LightAction string
@@ -179,7 +189,13 @@ const (
 	CeilingCrushStop           CeilingAction = "crush_stop"
 )
 
+const (
+	CeilingGenCrusher       CeilingAction = "gen_crusher"
+	CeilingGenSilentCrusher CeilingAction = "gen_silent_crusher"
+)
+
 type CeilingInfo struct {
+	Crusher     *GeneralizedCrusherInfo
 	Generalized *GeneralizedFloorInfo
 	Action      CeilingAction
 	UsesTag     bool
@@ -428,6 +444,19 @@ func LookupLineSpecial(special uint16) LineSpecialInfo {
 		return LineSpecialInfo{Special: special, Name: "Boom silent teleport", Boom: true, Trigger: trigger, Repeat: repeat, Teleport: &TeleportInfo{UsesTag: true, Silent: true, LineToLine: lineToLine, Reverse: reverse, MonsterOnly: special >= 264}}
 	}
 
+	if special >= 0x2f80 && special <= 0x33ff {
+		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[special&7]
+		info := LineSpecialInfo{Special: special, Boom: true, Name: "generalized stairs", Trigger: trigger, Repeat: special&1 != 0}
+		if special >= 0x3000 {
+			v := special - 0x3000
+			info.Stairs = &StairsInfo{UsesTag: trigger != TriggerManual, Generalized: &GeneralizedStairsInfo{Speed: uint8(v>>3) & 3, Step: uint8(v>>6) & 3, Up: v&256 != 0, IgnoreTexture: v&512 != 0, Monsters: v&32 != 0}}
+		} else {
+			v := special - 0x2f80
+			info.Name = "generalized crusher"
+			info.Ceiling = &CeilingInfo{UsesTag: trigger != TriggerManual, Crusher: &GeneralizedCrusherInfo{Speed: uint8(v>>3) & 3, Silent: v&64 != 0, Monsters: v&32 != 0}}
+		}
+		return info
+	}
 	if special >= 0x3800 && special <= 0x3bff {
 		v := special - 0x3800
 		trigger := [...]TriggerType{TriggerWalk, TriggerWalk, TriggerUse, TriggerUse, TriggerShoot, TriggerShoot, TriggerManual, TriggerManual}[v&7]

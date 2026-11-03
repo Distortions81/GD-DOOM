@@ -356,7 +356,7 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 		if lineIdx < 0 || lineIdx >= len(g.m.Linedefs) {
 			return false
 		}
-		if g.m.Linedefs[lineIdx].Flags&mlSecret != 0 {
+		if g.m.Linedefs[lineIdx].Flags&mlSecret != 0 && !isGeneralizedStairOrCrusher(mapdata.LookupLineSpecial(special)) {
 			return false
 		}
 		info := mapdata.LookupLineSpecial(special)
@@ -367,7 +367,7 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 			doorAllowed := info.Door != nil && info.Door.Generalized != nil && info.Door.Generalized.Monsters
 			ceilingAllowed := info.Ceiling != nil && info.Ceiling.Generalized != nil && info.Ceiling.Generalized.Monsters
 			liftAllowed := info.Plat != nil && info.Plat.Generalized != nil && info.Plat.Generalized.Monsters
-			if !floorAllowed && !doorAllowed && !ceilingAllowed && !liftAllowed {
+			if !floorAllowed && !doorAllowed && !ceilingAllowed && !liftAllowed && !generalizedStairOrCrusherAllowsMonsters(info) {
 				return false
 			}
 		}
@@ -385,6 +385,9 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 			g.useText = fmt.Sprintf("USE: unsupported special %d", special)
 			g.useFlash = 35
 		}
+		return false
+	}
+	if isGeneralizedStairOrCrusher(info) && info.Trigger != mapdata.TriggerManual && g.m.Linedefs[lineIdx].Tag == 0 {
 		return false
 	}
 	if info.Plat != nil && info.Plat.Action == mapdata.PlatToggle && g.m.Linedefs[lineIdx].Tag == 0 {
@@ -428,7 +431,7 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 	if activated {
 		// P_ChangeSwitchTexture clears a successful one-shot use trigger,
 		// including tagged doors. Manual doors handle their own lifetime.
-		if !info.Repeat && (info.Trigger == mapdata.TriggerUse || info.Trigger == mapdata.TriggerManual && ((info.Floor != nil && info.Floor.Generalized != nil) || (info.Door != nil && info.Door.Generalized != nil) || (info.Ceiling != nil && info.Ceiling.Generalized != nil) || (info.Plat != nil && info.Plat.Generalized != nil))) {
+		if !info.Repeat && (info.Trigger == mapdata.TriggerUse || info.Trigger == mapdata.TriggerManual && ((info.Stairs != nil && info.Stairs.Generalized != nil) || (info.Ceiling != nil && info.Ceiling.Crusher != nil) || (info.Floor != nil && info.Floor.Generalized != nil) || (info.Door != nil && info.Door.Generalized != nil) || (info.Ceiling != nil && info.Ceiling.Generalized != nil) || (info.Plat != nil && info.Plat.Generalized != nil))) {
 			g.lineSpecial[lineIdx] = 0
 		}
 		if debugLineTriggerEnabled(lineIdx) {
@@ -442,7 +445,7 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 				g.useText = "USE: special active"
 			}
 		}
-		if (isPlayer || info.Teleport != nil) && shouldPlaySwitchClick(info) {
+		if (isPlayer || info.Teleport != nil || isGeneralizedStairOrCrusher(info)) && shouldPlaySwitchClick(info) {
 			g.animateSwitchTexture(lineIdx, side, info.Repeat)
 			g.emitSoundEvent(soundEventSwitchOn)
 			if info.Repeat {
@@ -460,6 +463,9 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 
 func walkSpecialAllowedForNonPlayer(special uint16) bool {
 	info := mapdata.LookupLineSpecial(special)
+	if isGeneralizedStairOrCrusher(info) {
+		return generalizedStairOrCrusherAllowsMonsters(info)
+	}
 	if info.Plat != nil && info.Plat.Generalized != nil {
 		return info.Plat.Generalized.Monsters
 	}
@@ -601,6 +607,9 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d candidate repeat=%t\n",
 					g.demoTick-1, g.worldTic, ld.idx, info.Repeat)
 			}
+		}
+		if info.Ceiling != nil && info.Ceiling.Crusher != nil {
+			return false
 		}
 		if info.Exit != mapdata.ExitNone {
 			if isPlayer && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {

@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 33
+	saveGameVersion     = 34
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 20
+	keyframeVersion     = 21
 	saveGameDirName     = "saves"
 )
 
@@ -93,6 +93,7 @@ type saveSlotInfo struct {
 }
 
 type gameSaveState struct {
+	BoomStairs           []boomStairState
 	ThingFriction        []int64
 	ThingMoveFactor      []int64
 	BoomScrollers        []boomScrollerState
@@ -226,6 +227,7 @@ type sessionSaveState struct {
 }
 
 type playerSaveState struct {
+	CorpseGibbed    bool
 	Friction        int64
 	MoveFactor      int64
 	X               int64
@@ -307,6 +309,9 @@ type platThinkerSaveState struct {
 }
 
 type ceilingThinkerSaveState struct {
+	OldSpeed      int64
+	TriggerTag    uint16
+	HasTriggerTag bool
 	Finish        floorFinishAction
 	FinishFlat    string
 	FinishSpecial int16
@@ -1176,6 +1181,9 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	if !validBoomFrictionState(&file.Game, len(g.m.Things)) {
 		return fmt.Errorf("save friction state does not match loaded map")
 	}
+	if !validBoomStairs(file.Game.BoomStairs, len(g.m.Sectors)) {
+		return fmt.Errorf("save stair links do not match loaded map")
+	}
 	restoreGameSaveState(g, file.Game)
 	if file.Version == 26 || file.Version == 27 || file.Version == 13 || file.Version == 14 {
 		g.inventory.SkullKeys = g.collectedSkullKeys()
@@ -1350,6 +1358,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		Stats:                g.stats,
 		WorldTic:             g.worldTic,
 		BoomScrollers:        append([]boomScrollerState(nil), g.boomScrollers...),
+		BoomStairs:           append([]boomStairState(nil), g.boomStairs...),
 		LevelKillsTotal:      g.levelKillsTotal,
 		LevelItemsTotal:      g.levelItemsTotal,
 		PlayerKillCount:      g.playerKillCount,
@@ -1540,6 +1549,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.floors = restoreFloorThinkers(s.Floors)
 	g.plats = restorePlatThinkers(s.Plats)
 	g.ceilings = restoreCeilingThinkers(s.Ceilings)
+	g.boomStairs = append([]boomStairState(nil), s.BoomStairs...)
 	g.delayedSwitchReverts = restoreDelayedSwitchTextures(s.DelayedSwitchReverts)
 	g.thingSectorCache = make([]int, len(g.m.Things))
 	for i, th := range g.m.Things {
@@ -1556,7 +1566,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 }
 
 func capturePlayerSaveState(p player) playerSaveState {
-	return playerSaveState{
+	return playerSaveState{CorpseGibbed: p.corpseGibbed,
 		Friction: p.friction, MoveFactor: p.movefactor,
 		X:               p.x,
 		Y:               p.y,
@@ -1577,7 +1587,7 @@ func capturePlayerSaveState(p player) playerSaveState {
 }
 
 func restorePlayerSaveState(s playerSaveState) player {
-	return player{
+	return player{corpseGibbed: s.CorpseGibbed,
 		friction: s.Friction, movefactor: s.MoveFactor,
 		x:               s.X,
 		y:               s.Y,
@@ -1834,6 +1844,7 @@ func captureCeilingThinkers(src map[int]*ceilingThinker) map[int]ceilingThinkerS
 			continue
 		}
 		dst[key] = ceilingThinkerSaveState{
+			OldSpeed: thinker.oldSpeed, TriggerTag: thinker.triggerTag, HasTriggerTag: thinker.hasTriggerTag,
 			Order:         thinker.order,
 			Sector:        thinker.sector,
 			Action:        thinker.action,
@@ -1858,6 +1869,7 @@ func restoreCeilingThinkers(src map[int]ceilingThinkerSaveState) map[int]*ceilin
 	dst := make(map[int]*ceilingThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &ceilingThinker{
+			oldSpeed: thinker.OldSpeed, triggerTag: thinker.TriggerTag, hasTriggerTag: thinker.HasTriggerTag,
 			order:         thinker.Order,
 			sector:        thinker.Sector,
 			action:        thinker.Action,

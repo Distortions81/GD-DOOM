@@ -45,6 +45,7 @@ const (
 )
 
 type player struct {
+	corpseGibbed      bool
 	friction          int64
 	movefactor        int64
 	x                 int64

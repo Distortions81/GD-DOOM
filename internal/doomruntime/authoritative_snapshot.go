@@ -140,6 +140,9 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 		return fmt.Errorf("authority baseline static map mismatch")
 	}
 	s := r.Game
+	if !validBoomStairs(s.BoomStairs, len(g.m.Sectors)) {
+		return fmt.Errorf("authority stair links do not match loaded map")
+	}
 	if !g.validBoomScrollerStates(s.BoomScrollers) {
 		return fmt.Errorf("authority baseline scroller state mismatch")
 	}

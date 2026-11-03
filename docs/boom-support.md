@@ -84,6 +84,13 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   Legacy donut, silent-crusher, combined-mover and repeatable-stair variants
   are also decoded. Elevators reserve both plane slots; ordinary Boom floor
   and ceiling movers can run independently, preserving vanilla demo gating.
+- Generalized stairs (`0x3000`–`0x33ff`): four speeds and step sizes, both
+  directions, texture filtering, monster permissions, all eight triggers,
+  ordered chain selection, whole-chain retrigger locks and alternating direction.
+- Generalized crushers (`0x2f80`–`0x2fff`): four speeds, monster permissions,
+  normal/silent variants, slowdown/recovery while crushing, and tagged stop/resume.
+  Boom complevel 9 intentionally leaves walk-over variants inactive, matching
+  DSDA's preservation of the original missing walk-dispatch branch.
 - Voodoo dolls slide using their own collision shape while collision checks
   retain the real player's position.
 
@@ -715,11 +722,60 @@ stairs, 13136) and one in Sunlust (generalized crusher, 12200), with no unknown
 sector specials. An audit without unknown legacy numbers does not establish
 full compatibility with every mover interaction.
 
+## Generalized stair and crusher verification
+
+`scripts/verify_boom_generalized.py` compares **495,456/495,456 matching rows**
+with DSDA-Doom 0.27.5, complevel 9, across **2,400 cases**. Every one of the
+1,024 stair encodings and 128 crusher encodings is exercised. Longer cases
+check all speeds, stair sizes, directions and texture rules, chain completion,
+early lock rejection and repeat direction changes. Crusher cases include
+stationary players and real imps, crushing/death, bodies across sector edges,
+slowdown and restored speed, stop/resume, and sector retagging while stopped.
+Other cases check monster permissions (including secret lines), zero/missing
+tags, front/back activation, busy floor/ceiling/elevator slots, skipped busy
+stair neighbors, switch changes and button restoration.
+
+Each row compares all sector plane heights, stair locks and links, mover slot
+ownership, floor speeds/destinations/directions, ceiling current/original
+speeds/directions, silent flags, actor height/health, remaining special and
+switch/button state. The harness runs real trigger dispatchers and ordered
+mover functions. Actor AI and horizontal movement are not stepped. Non-selected
+observer bodies do not block planes; stop/resume cases call the unchanged
+crusher action directly so dead player bodies can remain in the test. Sound
+playback is outside this state comparison.
+
+The implementation preserves Boom's generalized walk-crusher dispatcher
+omission: both walk triggers reject activation at complevel 9. It does not
+substitute MBF21's repaired walk behavior. Slow crushers (speeds 1 and 2) reduce
+to 1/8 unit per tic while blocked and restore their original speed at the
+bottom. Faster crushers retain their speed. Generalized stairs do not crush;
+all steps retain their lock until the chain finishes, including completed steps
+whose floor thinker has already been removed. Successful repeat stairs toggle
+the direction bit. Saved state preserves these links/locks, original crusher
+speed and tag, and flattened player-corpse colliders.
+
+```sh
+python3 scripts/make_boom_generalized_cases.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_generalized.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-generalized
+```
+
+The verifier retains both CSVs, input manifest/WAD, hashes and `results.json`.
+Focused tests cover saves/keyframes in a partially completed chain and a slowed,
+stopped crusher, repeat reversal after loading, preserved original tags and
+corpse state. Existing legacy-mover and key-lock matrices still match
+**208,202** and **262,144** rows respectively. The five existing no-monsters
+demos still match **5,772 frames** and all exit tics; the full Go suite passes.
+Ancient Aliens and Sunlust now have **zero unknown linedef and sector specials**
+in the map audit. This describes recognized actions and these tested paths,
+not full-map or combat compatibility.
+
 ## Remaining work
 
-Generalized stairs/crushers, legacy manual-door casts and other unusual mover
-interactions, GL nodes and complete Boom demo/RNG behavior remain outside this
-verified scope.
+Legacy manual-door casts and other unusual mover interactions, moving-sector
+sound fidelity, GL nodes and complete Boom demo/RNG behavior remain outside
+this verified scope.
 Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
@@ -727,10 +783,12 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-13`. Deploy matching clients and servers. Elevator ceiling
-destinations and floor crush state extend the authoritative schema. Save version
-33 reads versions 30–32; keyframe version 20 reads versions 17–19. The older
-card-key and actor friction/movement-factor extensions retain their layouts.
+`gd-doom-authority-dev-14`. Deploy matching clients and servers. Stair-chain
+state, original crusher speeds/tags and flattened player-corpse state extend the
+authoritative schema. Save version 34 reads versions 31–33; keyframe version 21
+reads versions 18–20. Older snapshots cannot contain the previously unsupported
+generalized stair/crusher state. Elevator, card-key and actor friction extensions
+retain their older layouts.
 Older snapshots initialize previously unsupported friction state to defaults.
 Scroller data from version 30/keyframe 17 remains readable; earlier snapshots
 cannot reconstruct the preceding acceleration history of unsupported scrollers.

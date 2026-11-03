@@ -42,6 +42,7 @@ type playerLevelCarryover struct {
 }
 
 func (g *game) initPlayerState() {
+	g.p.corpseGibbed = false
 	// G_PlayerReborn suppresses use until the initial held button is released.
 	g.useButtonDown = true
 	g.weaponAttackDown = true

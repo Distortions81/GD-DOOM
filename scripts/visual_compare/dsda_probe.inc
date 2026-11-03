@@ -14,6 +14,7 @@
 #include "dsda_environment_probe.inc"
 #include "dsda_lock_probe.inc"
 #include "dsda_legacy_probe.inc"
+#include "dsda_generalized_probe.inc"
 
 static void GD_VisualProbe(void)
 {
@@ -26,6 +27,7 @@ static void GD_VisualProbe(void)
     unsigned angle;
  unsigned long long usemask;
     const byte *palette;
+    GD_GeneralizedProbe();
     GD_LegacyProbe();
     GD_LockProbe();
     GD_EnvironmentProbe();

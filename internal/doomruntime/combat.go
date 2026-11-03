@@ -1139,11 +1139,16 @@ func (g *game) shootSpecialLine(lineIdx int, shooterIsPlayer bool) {
 		return
 	}
 	info := mapdata.LookupLineSpecial(g.lineSpecial[lineIdx])
-	if !shooterIsPlayer && info.Special != 46 {
+	if !shooterIsPlayer && info.Special != 46 && !(isGeneralizedStairOrCrusher(info) && generalizedStairOrCrusherAllowsMonsters(info)) {
 		return
 	}
-	if g.activateShootLineSpecial(lineIdx, info) && !info.Repeat {
-		g.lineSpecial[lineIdx] = 0
+	if g.activateShootLineSpecial(lineIdx, info) {
+		if isGeneralizedStairOrCrusher(info) {
+			g.animateSwitchTexture(lineIdx, 0, info.Repeat)
+		}
+		if !info.Repeat {
+			g.lineSpecial[lineIdx] = 0
+		}
 	}
 }
 
