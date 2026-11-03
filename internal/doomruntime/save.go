@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 32
+	saveGameVersion     = 33
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 19
+	keyframeVersion     = 20
 	saveGameDirName     = "saves"
 )
 
@@ -276,14 +276,17 @@ type doorThinkerSaveState struct {
 }
 
 type floorThinkerSaveState struct {
-	Order         int64
-	Sector        int
-	Direction     int
-	Speed         int64
-	DestHeight    int64
-	Finish        uint8
-	FinishFlat    string
-	FinishSpecial int16
+	Crush             bool
+	Elevator          bool
+	CeilingDestHeight int64
+	Order             int64
+	Sector            int
+	Direction         int
+	Speed             int64
+	DestHeight        int64
+	Finish            uint8
+	FinishFlat        string
+	FinishSpecial     int16
 }
 
 type platThinkerSaveState struct {
@@ -1177,7 +1180,7 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	if file.Version == 26 || file.Version == 27 || file.Version == 13 || file.Version == 14 {
 		g.inventory.SkullKeys = g.collectedSkullKeys()
 	}
-	if file.Version != saveGameVersion && file.Version != keyframeVersion {
+	if !((file.Version >= 32 && file.Version <= saveGameVersion) || (file.Version >= 19 && file.Version <= keyframeVersion)) {
 		g.inventory.CardKeys = g.collectedCardKeys()
 		inferred := g.inventory.cardKeys()
 		g.inventory.CardKeys = inferred
@@ -1733,6 +1736,7 @@ func captureFloorThinkers(src map[int]*floorThinker) map[int]floorThinkerSaveSta
 			continue
 		}
 		dst[key] = floorThinkerSaveState{
+			Crush: thinker.crush, Elevator: thinker.elevator, CeilingDestHeight: thinker.ceilingDestHeight,
 			Order:         thinker.order,
 			Sector:        thinker.sector,
 			Direction:     thinker.direction,
@@ -1753,6 +1757,7 @@ func restoreFloorThinkers(src map[int]floorThinkerSaveState) map[int]*floorThink
 	dst := make(map[int]*floorThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &floorThinker{
+			crush: thinker.Crush, elevator: thinker.Elevator, ceilingDestHeight: thinker.CeilingDestHeight,
 			order:         thinker.Order,
 			sector:        thinker.Sector,
 			direction:     thinker.Direction,

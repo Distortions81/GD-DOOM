@@ -23,7 +23,7 @@ func (g *game) activateGeneralizedCeiling(line int, info mapdata.CeilingInfo) bo
 	}
 	active := false
 	for _, sec := range g.generalizedMoverTargets(line, info.UsesTag) {
-		if g.ceilings[sec] != nil || g.doors[sec] != nil {
+		if g.ceilingSlotBusy(sec) {
 			continue
 		}
 		direction := -1

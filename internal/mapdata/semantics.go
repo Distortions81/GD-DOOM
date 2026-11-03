@@ -52,6 +52,8 @@ type LineSpecialInfo struct {
 	Ceiling  *CeilingInfo
 	Combo    ComboAction
 	Donut    bool
+	Change   *ChangeInfo
+	Elevator *ElevatorInfo
 }
 
 type DoorInfo struct {
@@ -84,6 +86,7 @@ const (
 	FloorTurboLower       FloorAction = "turbo_lower"
 	FloorRaiseTurbo       FloorAction = "raise_turbo"
 	FloorRaise512         FloorAction = "raise_512"
+	FloorLowerToNearest   FloorAction = "lower_to_nearest"
 	FloorGeneralized      FloorAction = "generalized"
 )
 
@@ -111,6 +114,7 @@ const (
 	PlatRaiseAndChange32        PlatAction = "raise_and_change_32"
 	PlatBlazeDownWaitUpStay     PlatAction = "blaze_down_wait_up_stay"
 	PlatPerpetualRaise          PlatAction = "perpetual_raise"
+	PlatToggle                  PlatAction = "toggle"
 	PlatStop                    PlatAction = "stop"
 )
 
@@ -163,14 +167,16 @@ type TeleportInfo struct {
 type CeilingAction string
 
 const (
-	CeilingGeneralized      CeilingAction = "generalized"
-	CeilingLowerToFloor     CeilingAction = "lower_to_floor"
-	CeilingCrushRaise       CeilingAction = "crush_and_raise"
-	CeilingLowerAndCrush    CeilingAction = "lower_and_crush"
-	CeilingFastCrushRaise   CeilingAction = "fast_crush_and_raise"
-	CeilingRaiseToHighest   CeilingAction = "raise_to_highest"
-	CeilingSilentCrushRaise CeilingAction = "silent_crush_and_raise"
-	CeilingCrushStop        CeilingAction = "crush_stop"
+	CeilingLowerToLowest       CeilingAction = "lower_to_lowest"
+	CeilingLowerToHighestFloor CeilingAction = "lower_to_highest_floor"
+	CeilingGeneralized         CeilingAction = "generalized"
+	CeilingLowerToFloor        CeilingAction = "lower_to_floor"
+	CeilingCrushRaise          CeilingAction = "crush_and_raise"
+	CeilingLowerAndCrush       CeilingAction = "lower_and_crush"
+	CeilingFastCrushRaise      CeilingAction = "fast_crush_and_raise"
+	CeilingRaiseToHighest      CeilingAction = "raise_to_highest"
+	CeilingSilentCrushRaise    CeilingAction = "silent_crush_and_raise"
+	CeilingCrushStop           CeilingAction = "crush_stop"
 )
 
 type CeilingInfo struct {
@@ -184,6 +190,17 @@ type ComboAction string
 const (
 	ComboRaiseCeilingLowerFloor ComboAction = "raise_ceiling_lower_floor"
 )
+
+type ChangeInfo struct{ Numeric bool }
+type ElevatorAction uint8
+
+const (
+	ElevatorUp ElevatorAction = iota
+	ElevatorDown
+	ElevatorCurrent
+)
+
+type ElevatorInfo struct{ Action ElevatorAction }
 
 type KeyRing struct {
 	Cards, Skulls [3]bool // Blue, yellow, red.
@@ -441,6 +458,11 @@ func LookupLineSpecial(special uint16) LineSpecialInfo {
 		gen := &GeneralizedFloorInfo{Speed: uint8(v>>3) & 3, Target: uint8(v>>7) & 7, Change: uint8(v>>10) & 3, Up: v&64 != 0, NumericModel: v&32 != 0, Crush: v&4096 != 0}
 		gen.Monsters = gen.Change == 0 && gen.NumericModel
 		return LineSpecialInfo{Special: special, Boom: true, Name: "generalized floor", Trigger: trigger, Repeat: v&1 != 0, Floor: &FloorInfo{Action: FloorGeneralized, UsesTag: trigger != TriggerManual, Generalized: gen}}
+	}
+	if info, ok := boomLegacySpecials[special]; ok {
+		info.Special = special
+		info.Boom = true
+		return info
 	}
 	if alias, ok := boomLineAliases[special]; ok {
 		info := LookupLineSpecial(alias.base)

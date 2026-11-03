@@ -18,7 +18,7 @@ func (g *game) activateGeneralizedFloor(line int, info mapdata.FloorInfo) bool {
 	active := false
 	for _, sec := range targets {
 		// Boom owns independent floor and ceiling slots.
-		if g.floors[sec] != nil || g.plats[sec] != nil {
+		if g.floorSlotBusy(sec) {
 			continue
 		}
 		direction := -1

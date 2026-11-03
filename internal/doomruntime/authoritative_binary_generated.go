@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-var authorityBinarySchemaFingerprint = [16]byte{0xd4, 0x52, 0x0b, 0x03, 0x0e, 0x70, 0x44, 0x82, 0x45, 0xba, 0xbd, 0x42, 0x12, 0xb7, 0xa8, 0x18}
+var authorityBinarySchemaFingerprint = [16]byte{0xb2, 0x9f, 0x7f, 0x6f, 0x89, 0xef, 0xd8, 0x21, 0x56, 0x3c, 0x63, 0xf7, 0x76, 0x50, 0x7c, 0x38}
 
 func (w *authorityBinaryWriter) writedoomruntime_AuthorityRules(v *AuthorityRules) {
 	if w.err != nil {
@@ -735,6 +735,9 @@ func (w *authorityBinaryWriter) writedoomruntime_floorThinkerSaveState(v *floorT
 	if w.err != nil {
 		return
 	}
+	w.boolean(bool(v.Crush))
+	w.boolean(bool(v.Elevator))
+	w.signed(int64(v.CeilingDestHeight))
 	w.signed(int64(v.Order))
 	w.signed(int64(v.Sector))
 	w.signed(int64(v.Direction))
@@ -748,6 +751,9 @@ func (r *authorityBinaryReader) readdoomruntime_floorThinkerSaveState(v *floorTh
 	if r.err != nil {
 		return
 	}
+	v.Crush = bool(r.boolean())
+	v.Elevator = bool(r.boolean())
+	v.CeilingDestHeight = int64(r.signed(64))
 	v.Order = int64(r.signed(64))
 	v.Sector = int(r.signed(strconv.IntSize))
 	v.Direction = int(r.signed(strconv.IntSize))
@@ -2330,7 +2336,7 @@ func (r *authorityBinaryReader) readdoomruntime_gameSaveState(v *gameSaveState) 
 			v.Doors[tmp315] = tmp316
 		}
 	}
-	tmp319, tmp320 := r.collection(9, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[floorThinkerSaveState]()+16))
+	tmp319, tmp320 := r.collection(12, 2*(authorityBinarySizeOf[int]()+authorityBinarySizeOf[floorThinkerSaveState]()+16))
 	if r.err != nil {
 		return
 	}

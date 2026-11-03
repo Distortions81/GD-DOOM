@@ -29,16 +29,18 @@ const (
 )
 
 type floorThinker struct {
-	order         int64
-	sector        int
-	typ           int
-	crush         bool
-	direction     int
-	speed         int64
-	destHeight    int64
-	finish        floorFinishAction
-	finishFlat    string
-	finishSpecial int16
+	elevator          bool
+	ceilingDestHeight int64
+	order             int64
+	sector            int
+	typ               int
+	crush             bool
+	direction         int
+	speed             int64
+	destHeight        int64
+	finish            floorFinishAction
+	finishFlat        string
+	finishSpecial     int16
 }
 
 type platStatus uint8
@@ -58,6 +60,7 @@ const (
 	platTypeRaiseAndChange
 	platTypePerpetualRaise
 	platTypeBlazeDownWaitUpStay
+	platTypeToggle
 )
 
 type platThinker struct {
@@ -103,11 +106,15 @@ func lineSpecialSupported(info mapdata.LineSpecialInfo) bool {
 		info.Teleport != nil ||
 		info.Ceiling != nil ||
 		info.Combo != "" ||
-		info.Donut
+		info.Donut || info.Change != nil || info.Elevator != nil
 }
 
 func (g *game) activateNonDoorLineSpecial(lineIdx int, side int, info mapdata.LineSpecialInfo, actorIdx int, isPlayer bool) bool {
 	switch {
+	case info.Change != nil:
+		return g.activateLegacyChange(lineIdx, info.Change.Numeric)
+	case info.Elevator != nil:
+		return g.activateElevator(lineIdx, info.Elevator.Action)
 	case info.Floor != nil:
 		return g.activateFloorLine(lineIdx, *info.Floor)
 	case info.Plat != nil:
@@ -209,7 +216,7 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 	}
 	activated := false
 	for _, sec := range targets {
-		if g.sectorHasActiveMover(sec) {
+		if g.legacyFloorBusy(sec) {
 			continue
 		}
 		ft := &floorThinker{order: g.allocThinkerOrder(), sector: sec}
@@ -879,7 +886,7 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 	}
 	activated := false
 	for _, sec := range targets {
-		if g.sectorHasActiveMover(sec) {
+		if g.legacyFloorBusy(sec) {
 			continue
 		}
 		ft := &floorThinker{order: g.allocThinkerOrder(), sector: sec}
@@ -894,6 +901,11 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findNextHighestFloor(sec, g.sectorFloor[sec])
+		case mapdata.FloorLowerToNearest:
+			ft.typ = 14
+			ft.direction = -1
+			ft.speed = floorMoveSpeed
+			ft.destHeight = g.findNextLowestFloor(sec, g.sectorFloor[sec])
 		case mapdata.FloorLower:
 			ft.typ = 0
 			ft.direction = -1
@@ -1006,8 +1018,11 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		return g.stopTaggedPlats(g.m.Linedefs[lineIdx].Tag)
 	}
 	activated := false
-	if info.Action == mapdata.PlatPerpetualRaise {
+	if info.Action == mapdata.PlatPerpetualRaise || info.Action == mapdata.PlatToggle {
 		activated = g.activateInStasisPlats(g.m.Linedefs[lineIdx].Tag)
+		if info.Action == mapdata.PlatToggle {
+			activated = true
+		}
 	}
 	targets := g.taggedSectorsForLine(lineIdx)
 	if len(targets) == 0 {
@@ -1018,11 +1033,20 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 	}
 	frontSec, _ := g.frontSectorForLine(lineIdx)
 	for _, sec := range targets {
-		if g.sectorHasActiveMover(sec) {
+		if g.legacyFloorBusy(sec) {
 			continue
 		}
 		pt := g.allocPlatThinker(sec)
 		switch info.Action {
+		case mapdata.PlatToggle:
+			pt.typ = platTypeToggle
+			pt.status = platStatusDown
+			pt.speed = fracUnit
+			pt.low = g.sectorCeil[sec]
+			pt.high = g.sectorFloor[sec]
+			pt.wait = platWaitTics
+			pt.triggerTag = g.m.Linedefs[lineIdx].Tag
+			pt.hasTriggerTag = true
 		case mapdata.PlatRaiseToNearestAndChange:
 			pt.typ = platTypeRaiseToNearestAndChange
 			pt.status = platStatusUp
@@ -1170,7 +1194,7 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 	}
 	activated := false
 	for _, start := range targets {
-		if g.sectorHasActiveMover(start) {
+		if g.legacyFloorBusy(start) {
 			continue
 		}
 		texture := g.m.Sectors[start].FloorPic
@@ -1178,11 +1202,12 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 		height := g.sectorFloor[sec] + stepSize
 		visited := map[int]struct{}{start: {}}
 		for {
-			if !g.sectorHasActiveMover(sec) {
+			if !g.legacyFloorBusy(sec) {
 				g.floors[sec] = &floorThinker{
 					order:      g.allocThinkerOrder(),
 					sector:     sec,
 					typ:        3,
+					crush:      g.boomMomentumDropoff && info.Action == mapdata.StairsTurbo16,
 					direction:  1,
 					speed:      speed,
 					destHeight: height,
@@ -1624,11 +1649,17 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 			}
 			continue
 		}
-		if g.sectorHasActiveMover(sec) && info.Action != mapdata.CeilingCrushStop {
+		if g.legacyCeilingBusy(sec) && info.Action != mapdata.CeilingCrushStop {
 			continue
 		}
 		ct := &ceilingThinker{order: g.allocThinkerOrder(), sector: sec, action: info.Action, speed: ceilingMoveSpeed}
 		switch info.Action {
+		case mapdata.CeilingLowerToLowest:
+			ct.direction = -1
+			ct.bottomHeight = g.findLowestCeilingSurrounding(sec)
+		case mapdata.CeilingLowerToHighestFloor:
+			ct.direction = -1
+			ct.bottomHeight = g.findHighestFloorSurrounding(sec)
 		case mapdata.CeilingLowerToFloor:
 			ct.direction = -1
 			ct.bottomHeight = g.sectorFloor[sec]
@@ -1677,8 +1708,15 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 func (g *game) activateComboLine(lineIdx int, action mapdata.ComboAction) bool {
 	switch action {
 	case mapdata.ComboRaiseCeilingLowerFloor:
-		return g.activateCeilingLine(lineIdx, mapdata.CeilingInfo{Action: mapdata.CeilingRaiseToHighest, UsesTag: true}) ||
-			g.activateFloorLine(lineIdx, mapdata.FloorInfo{Action: mapdata.FloorLowerToLowest, UsesTag: true})
+		ceiling := g.activateCeilingLine(lineIdx, mapdata.CeilingInfo{Action: mapdata.CeilingRaiseToHighest, UsesTag: true})
+		if g.lineSpecial[lineIdx] == 151 {
+			floor := g.activateFloorLine(lineIdx, mapdata.FloorInfo{Action: mapdata.FloorLowerToLowest, UsesTag: true})
+			return ceiling || floor
+		}
+		if g.lineSpecial[lineIdx] == 40 && g.boomMomentumDropoff {
+			return ceiling
+		}
+		return ceiling || g.activateFloorLine(lineIdx, mapdata.FloorInfo{Action: mapdata.FloorLowerToLowest, UsesTag: true})
 	default:
 		return false
 	}
@@ -1692,7 +1730,15 @@ func (g *game) activateInStasisPlats(tag uint16) bool {
 		}
 		sec := pt.sector
 		if pt.hasTriggerTag && pt.triggerTag == tag || !pt.hasTriggerTag && sec >= 0 && sec < len(g.m.Sectors) && g.m.Sectors[sec].Tag >= 0 && uint16(g.m.Sectors[sec].Tag) == tag {
-			pt.status = pt.oldStatus
+			if pt.typ == platTypeToggle {
+				if pt.oldStatus == platStatusUp {
+					pt.status = platStatusDown
+				} else {
+					pt.status = platStatusUp
+				}
+			} else {
+				pt.status = pt.oldStatus
+			}
 			activated = true
 		}
 	}
@@ -1725,11 +1771,11 @@ func (g *game) activateDonutLine(lineIdx int) bool {
 	}
 	activated := false
 	for _, s1 := range targets {
-		if g.sectorHasActiveMover(s1) {
+		if g.legacyFloorBusy(s1) {
 			continue
 		}
 		s2, s3, ok := g.findDonutSectors(s1)
-		if !ok || g.sectorHasActiveMover(s2) {
+		if !ok || g.legacyFloorBusy(s2) {
 			continue
 		}
 		dest := g.sectorFloor[s3]
@@ -1758,6 +1804,9 @@ func (g *game) activateDonutLine(lineIdx int) bool {
 }
 
 func (g *game) findDonutSectors(s1 int) (int, int, bool) {
+	if g.boomMomentumDropoff {
+		return g.findBoomDonutSectors(s1)
+	}
 	for _, ld := range g.m.Linedefs {
 		s0, ok0 := g.sectorIndexFromSidedef(ld.SideNum[0])
 		s1b, ok1 := g.sectorIndexFromSidedef(ld.SideNum[1])
@@ -1797,6 +1846,10 @@ func (g *game) tickFloors() {
 }
 
 func (g *game) tickFloor(sec int, ft *floorThinker) {
+	if ft != nil && ft.elevator {
+		g.tickElevator(sec, ft)
+		return
+	}
 	if g == nil || ft == nil {
 		return
 	}
@@ -1822,7 +1875,7 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 		}
 	}
 	blocked := g.setSectorFloorHeightWithCrush(sec, next, ft.crush)
-	if blocked && (done || ft.direction < 0 || !ft.crush) {
+	if blocked && (done || ft.direction < 0 || !ft.crush || g.boomMomentumDropoff) {
 		g.setSectorFloorHeightWithCrush(sec, cur, ft.crush)
 	}
 	if !done {
@@ -1846,6 +1899,10 @@ func (g *game) tickPlats() {
 }
 
 func (g *game) tickPlat(sec int, pt *platThinker) {
+	if pt != nil && pt.typ == platTypeToggle {
+		g.tickTogglePlat(sec, pt)
+		return
+	}
 	if g == nil || pt == nil {
 		return
 	}
@@ -1925,11 +1982,15 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 		return
 	}
 	cur := g.sectorCeil[sec]
+	bottom := ct.bottomHeight
+	if g.boomMomentumDropoff {
+		bottom = max64(bottom, g.sectorFloor[sec])
+	}
 	switch ct.direction {
 	case -1:
 		next := cur - ct.speed
-		if next < ct.bottomHeight {
-			next = ct.bottomHeight
+		if next < bottom {
+			next = bottom
 			if g.setSectorCeilingHeightWithCrush(sec, next, ct.crush) {
 				g.setSectorCeilingHeightWithCrush(sec, cur, ct.crush)
 			}

@@ -78,6 +78,12 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   either variant of a color, any key, all three colors, and all six keys.
   All eight triggers, four speeds and raise/open variants are supported.
   Generalized doors use an independent ceiling slot.
+- Remaining legacy Boom movers: elevators 227–238, lower-to-nearest floors
+  219–222, ceiling targets 199–206, texture/type-only trigger and numeric
+  changes (78, 153–154, 189–190, 239–241), and instant toggles 211–212.
+  Legacy donut, silent-crusher, combined-mover and repeatable-stair variants
+  are also decoded. Elevators reserve both plane slots; ordinary Boom floor
+  and ceiling movers can run independently, preserving vanilla demo gating.
 - Voodoo dolls slide using their own collision shape while collision checks
   retain the real player's position.
 
@@ -662,11 +668,58 @@ The map audit now reports 16 unknown linedefs in Ancient Aliens (previously 21)
 and five in Sunlust (previously 12), with no unknown sector specials in either.
 This removes all five and seven distinct-lock gaps respectively.
 
+## Legacy mover and elevator verification
+
+`scripts/verify_boom_legacy.py` compares **208,202/208,202 matching rows** with
+DSDA-Doom 0.27.5 at complevel 9, across **1,354 cases and 47 added specials**.
+The original three-sector fixture includes a correctly oriented donut layout
+and a malformed variant. Cases cover positive, negative and fractional heights,
+next higher/lower and current-floor elevators, tight clearance, empty sectors,
+stationary players and actual imps (including bodies straddling moving/static
+sector boundaries), numeric models and missing models, zero and
+missing tags, back-side use, monster activation, busy floor/ceiling/elevator
+slots, immediate retries and later repeat activation.
+
+Comparisons include every sector's floor/ceiling height, floor texture, type,
+secret/friction/push transfer flags, actor height and health, plane-slot
+ownership, remaining special, switch texture and button restoration timer.
+The harness runs the actual trigger dispatchers and movers in thinker order;
+actor AI and horizontal movement are not stepped. Use retries stop after player
+death, as they do in the normal input path. Core DSDA dispatch, mover and
+collision code remains unchanged.
+
+The implementation follows Boom's ordered elevator plane moves: ceiling first
+when descending, floor first when ascending, with a blocked leading plane
+suppressing the trailing plane. The original clearance can therefore stall an
+elevator around a standing actor even though its final room height is constant.
+Completion retains Doom's strict destination overshoot timing. WR combined
+special 151 runs both mover functions, whereas switch variants 166/186 use
+short-circuit dispatch. Numeric change-only actions accept a tagged sector even
+when no model exists. Malformed donuts whose first pillar line is one-sided
+are rejected. Turbo stairs retain Boom crushing and rollback behavior; instant
+toggles remain in stasis between activations.
+
+```sh
+python3 scripts/make_boom_legacy_wad.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_legacy.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-legacy
+```
+
+Both CSVs, input manifest/WAD, hashes and `results.json` are retained. Focused
+tests verify elevator slot ownership, save/keyframe continuation, toggle
+reversal after loading, turbo-stair crush state and older card-key extensions.
+The five existing no-monsters demos still match **5,772 frames** and all exit
+tics. The map audit reports one unknown linedef in Ancient Aliens (generalized
+stairs, 13136) and one in Sunlust (generalized crusher, 12200), with no unknown
+sector specials. An audit without unknown legacy numbers does not establish
+full compatibility with every mover interaction.
+
 ## Remaining work
 
-Generalized stairs/crushers, complete independent
-floor/ceiling slot handling for legacy actions, remaining legacy mover variants,
-GL nodes and complete Boom demo/RNG behavior remain outside this scope.
+Generalized stairs/crushers, legacy manual-door casts and other unusual mover
+interactions, GL nodes and complete Boom demo/RNG behavior remain outside this
+verified scope.
 Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
@@ -674,10 +727,10 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-12`. Deploy matching clients and servers. Independent card
-ownership extends the authoritative schema alongside stored actor friction and
-movement factors. Save version 32 reads versions 29–31; keyframe version 19
-reads versions 16–18.
+`gd-doom-authority-dev-13`. Deploy matching clients and servers. Elevator ceiling
+destinations and floor crush state extend the authoritative schema. Save version
+33 reads versions 30–32; keyframe version 20 reads versions 17–19. The older
+card-key and actor friction/movement-factor extensions retain their layouts.
 Older snapshots initialize previously unsupported friction state to defaults.
 Scroller data from version 30/keyframe 17 remains readable; earlier snapshots
 cannot reconstruct the preceding acceleration history of unsupported scrollers.

@@ -815,9 +815,23 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			return err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 32 && v.Version <= saveGameVersion) || (v.Version >= 19 && v.Version <= keyframeVersion) {
 		for _, b := range v.Game.Inventory.CardKeys {
 			if err := w.bool(b); err != nil {
+				return err
+			}
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, key := range sortedSaveIntKeys(v.Game.Floors) {
+			it := v.Game.Floors[key]
+			if err := w.bool(it.Crush); err != nil {
+				return err
+			}
+			if err := w.bool(it.Elevator); err != nil {
+				return err
+			}
+			if err := w.i64(it.CeilingDestHeight); err != nil {
 				return err
 			}
 		}
@@ -1756,11 +1770,26 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			return v, err
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 32 && v.Version <= saveGameVersion) || (v.Version >= 19 && v.Version <= keyframeVersion) {
 		for i := range v.Game.Inventory.CardKeys {
 			if v.Game.Inventory.CardKeys[i], err = r.bool(); err != nil {
 				return v, err
 			}
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		for _, key := range sortedSaveIntKeys(v.Game.Floors) {
+			it := v.Game.Floors[key]
+			if it.Crush, err = r.bool(); err != nil {
+				return v, err
+			}
+			if it.Elevator, err = r.bool(); err != nil {
+				return v, err
+			}
+			if it.CeilingDestHeight, err = r.i64(); err != nil {
+				return v, err
+			}
+			v.Game.Floors[key] = it
 		}
 	}
 	return v, nil

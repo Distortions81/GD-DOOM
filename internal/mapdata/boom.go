@@ -10,6 +10,19 @@ var boomLineAliases = map[uint16]struct {
 	trigger TriggerType
 	repeat  bool
 }{
+	146: {9, TriggerWalk, false}, // donut
+	150: {141, TriggerWalk, true},
+	151: {40, TriggerWalk, true}, // walk variant runs both actions
+	155: {9, TriggerWalk, true},  // donut
+	165: {141, TriggerUse, false},
+	166: {40, TriggerUse, false},
+	185: {141, TriggerUse, true},
+	186: {40, TriggerUse, true},
+	191: {9, TriggerUse, true},
+	256: {8, TriggerWalk, true},
+	257: {100, TriggerWalk, true},
+	258: {7, TriggerUse, true},
+	259: {127, TriggerUse, true},
 	142: {140, TriggerWalk, false}, // raise floor 512
 	143: {15, TriggerWalk, false},  // raise and change 24 (platform)
 	144: {14, TriggerWalk, false},  // raise and change 32 (platform)
@@ -98,3 +111,41 @@ func IsTransferSpecial(s uint16) bool {
 
 // IsEnvironmentSpecial identifies Boom friction and force setup controllers.
 func IsEnvironmentSpecial(s uint16) bool { return s >= 223 && s <= 226 }
+
+// Legacy Boom actions that cannot be expressed as aliases of vanilla actions.
+var boomLegacySpecials = map[uint16]LineSpecialInfo{
+	153: {Name: "Boom change texture/type", Trigger: TriggerWalk, Repeat: false, Change: &ChangeInfo{Numeric: false}},
+	154: {Name: "Boom change texture/type", Trigger: TriggerWalk, Repeat: true, Change: &ChangeInfo{Numeric: false}},
+	189: {Name: "Boom change texture/type", Trigger: TriggerUse, Repeat: false, Change: &ChangeInfo{Numeric: false}},
+	190: {Name: "Boom change texture/type", Trigger: TriggerUse, Repeat: true, Change: &ChangeInfo{Numeric: false}},
+	239: {Name: "Boom change texture/type", Trigger: TriggerWalk, Repeat: false, Change: &ChangeInfo{Numeric: true}},
+	240: {Name: "Boom change texture/type", Trigger: TriggerWalk, Repeat: true, Change: &ChangeInfo{Numeric: true}},
+	241: {Name: "Boom change texture/type", Trigger: TriggerUse, Repeat: false, Change: &ChangeInfo{Numeric: true}},
+	78:  {Name: "Boom change texture/type", Trigger: TriggerUse, Repeat: true, Change: &ChangeInfo{Numeric: true}},
+	199: {Name: "Boom lower ceiling", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerToLowest, UsesTag: true}},
+	201: {Name: "Boom lower ceiling", Trigger: TriggerWalk, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerToLowest, UsesTag: true}},
+	203: {Name: "Boom lower ceiling", Trigger: TriggerUse, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerToLowest, UsesTag: true}},
+	205: {Name: "Boom lower ceiling", Trigger: TriggerUse, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerToLowest, UsesTag: true}},
+	200: {Name: "Boom lower ceiling", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerToHighestFloor, UsesTag: true}},
+	202: {Name: "Boom lower ceiling", Trigger: TriggerWalk, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerToHighestFloor, UsesTag: true}},
+	204: {Name: "Boom lower ceiling", Trigger: TriggerUse, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerToHighestFloor, UsesTag: true}},
+	206: {Name: "Boom lower ceiling", Trigger: TriggerUse, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerToHighestFloor, UsesTag: true}},
+	219: {Name: "Boom lower floor to nearest", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorLowerToNearest, UsesTag: true}},
+	227: {Name: "Boom elevator", Trigger: TriggerWalk, Repeat: false, Elevator: &ElevatorInfo{Action: ElevatorUp}},
+	231: {Name: "Boom elevator", Trigger: TriggerWalk, Repeat: false, Elevator: &ElevatorInfo{Action: ElevatorDown}},
+	235: {Name: "Boom elevator", Trigger: TriggerWalk, Repeat: false, Elevator: &ElevatorInfo{Action: ElevatorCurrent}},
+	220: {Name: "Boom lower floor to nearest", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorLowerToNearest, UsesTag: true}},
+	228: {Name: "Boom elevator", Trigger: TriggerWalk, Repeat: true, Elevator: &ElevatorInfo{Action: ElevatorUp}},
+	232: {Name: "Boom elevator", Trigger: TriggerWalk, Repeat: true, Elevator: &ElevatorInfo{Action: ElevatorDown}},
+	236: {Name: "Boom elevator", Trigger: TriggerWalk, Repeat: true, Elevator: &ElevatorInfo{Action: ElevatorCurrent}},
+	221: {Name: "Boom lower floor to nearest", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorLowerToNearest, UsesTag: true}},
+	229: {Name: "Boom elevator", Trigger: TriggerUse, Repeat: false, Elevator: &ElevatorInfo{Action: ElevatorUp}},
+	233: {Name: "Boom elevator", Trigger: TriggerUse, Repeat: false, Elevator: &ElevatorInfo{Action: ElevatorDown}},
+	237: {Name: "Boom elevator", Trigger: TriggerUse, Repeat: false, Elevator: &ElevatorInfo{Action: ElevatorCurrent}},
+	222: {Name: "Boom lower floor to nearest", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorLowerToNearest, UsesTag: true}},
+	230: {Name: "Boom elevator", Trigger: TriggerUse, Repeat: true, Elevator: &ElevatorInfo{Action: ElevatorUp}},
+	234: {Name: "Boom elevator", Trigger: TriggerUse, Repeat: true, Elevator: &ElevatorInfo{Action: ElevatorDown}},
+	238: {Name: "Boom elevator", Trigger: TriggerUse, Repeat: true, Elevator: &ElevatorInfo{Action: ElevatorCurrent}},
+	211: {Name: "Boom instant toggle", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatToggle, UsesTag: true}},
+	212: {Name: "Boom instant toggle", Trigger: TriggerWalk, Repeat: true, Plat: &PlatInfo{Action: PlatToggle, UsesTag: true}},
+}

@@ -14,7 +14,7 @@ func (g *game) activateGeneralizedDoor(line int, info mapdata.LineSpecialInfo, i
 		}
 		filtered := targets[:0]
 		for _, sec := range targets {
-			if g.activeDoorThinker(sec) == nil && g.ceilings[sec] == nil {
+			if !g.ceilingSlotBusy(sec) {
 				filtered = append(filtered, sec)
 			}
 		}

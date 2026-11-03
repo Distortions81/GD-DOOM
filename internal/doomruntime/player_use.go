@@ -387,6 +387,9 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 		}
 		return false
 	}
+	if info.Plat != nil && info.Plat.Action == mapdata.PlatToggle && g.m.Linedefs[lineIdx].Tag == 0 {
+		return false
+	}
 	if info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse {
 		if isPlayer {
 			g.useText = "USE: no change"
@@ -823,7 +826,7 @@ func (g *game) activateTaggedDoor(tag uint16, action mapdata.DoorAction) bool {
 }
 
 func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) bool {
-	return g.activateDoorSectorsWithFloorSlot(targets, action, false)
+	return g.activateDoorSectorsWithFloorSlot(targets, action, g.boomMomentumDropoff)
 }
 
 func (g *game) activateDoorSectorsWithFloorSlot(targets []int, action mapdata.DoorAction, independentFloor bool) bool {
@@ -843,7 +846,7 @@ func (g *game) activateDoorSectorsWithFloorSlot(targets []int, action mapdata.Do
 		// and height-clips corpses that the original leaves untouched.
 		blocked := g.sectorHasActiveMover(sec)
 		if independentFloor {
-			blocked = g.activeDoorThinker(sec) != nil || g.ceilings[sec] != nil
+			blocked = g.ceilingSlotBusy(sec)
 		}
 		if blocked {
 			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
