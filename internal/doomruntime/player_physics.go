@@ -332,7 +332,7 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 		}
 	case worldThinkerCeiling:
 		if ct := g.ceilings[ref.key]; ct != nil && ct.order == ref.order {
-			g.tickCeiling(ref.key, ct)
+			g.tickCeiling(ct.sector, ct)
 		}
 	case worldThinkerDoor:
 		if ref.key < 0 {
@@ -623,6 +623,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 }
 
 func (g *game) retireDoorThinker(sec int) {
+	g.clearTrackedCeilingSlot(sec)
 	if g == nil || len(g.doors) == 0 {
 		return
 	}
@@ -639,10 +640,14 @@ func (g *game) activeDoorThinker(sec int) *doorThinker {
 	if d == nil || d.pendingRemove {
 		return nil
 	}
+	if owner, tracked := g.ceilingOwners[sec]; tracked && owner != d.order {
+		return nil
+	}
 	return d
 }
 
 func (g *game) removeDoorThinker(sec int) {
+	g.clearTrackedCeilingSlot(sec)
 	if g == nil || len(g.doors) == 0 {
 		return
 	}
@@ -696,6 +701,7 @@ func (g *game) tickDoors() {
 }
 
 func (g *game) removeDoorThinkerInstance(sec int, want *doorThinker) {
+	g.clearTrackedCeilingSlot(sec)
 	if want == nil {
 		return
 	}
@@ -707,6 +713,7 @@ func (g *game) removeDoorThinkerInstance(sec int, want *doorThinker) {
 }
 
 func (g *game) retireDoorThinkerInstance(sec int, want *doorThinker) {
+	g.clearTrackedCeilingSlot(sec)
 	if want == nil {
 		return
 	}
@@ -724,6 +731,9 @@ func (g *game) allocDoorThinker(sec int) *doorThinker {
 	if g.recycledDoors != nil {
 		if d := g.recycledDoors[sec]; d != nil {
 			delete(g.recycledDoors, sec)
+			if g.boomMomentumDropoff {
+				*d = doorThinker{}
+			}
 			d.order = g.allocThinkerOrder()
 			d.sector = sec
 			d.pendingRemove = false

@@ -49,6 +49,7 @@ def build_reference(source, out, cmake_args):
     shutil.copy(ROOT / "scripts/visual_compare/dsda_lock_messages.inc", target / "src/dsda")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_legacy_probe.inc", target / "src")
     shutil.copy(ROOT / "scripts/visual_compare/dsda_generalized_probe.inc", target / "src")
+    shutil.copy(ROOT / "scripts/visual_compare/dsda_manual_probe.inc", target / "src")
     messenger = target / "src/dsda/messenger.c"
     messenger.write_text(messenger.read_text() + '\n#include "dsda_lock_messages.inc"\n')
     replace_once(target / "src/d_main.c", "void D_DoomMain(void)",

@@ -135,14 +135,8 @@ func (g *game) stopBoomCeilings(tag uint16) bool {
 	return active
 }
 func (g *game) activateGeneralizedCrusher(line int, info mapdata.CeilingInfo) bool {
-	active := false
 	tag := g.m.Linedefs[line].Tag
-	for _, ct := range g.ceilings {
-		if ct != nil && g.ceilingTag(ct) == tag && ct.direction == 0 {
-			ct.direction = ct.oldDirection
-			active = true
-		}
-	}
+	active := g.resumeBoomCeilings(tag)
 	if g.ceilings == nil {
 		g.ceilings = make(map[int]*ceilingThinker)
 	}
@@ -155,7 +149,7 @@ func (g *game) activateGeneralizedCrusher(line int, info mapdata.CeilingInfo) bo
 			action = mapdata.CeilingGenSilentCrusher
 		}
 		speed := int64(fracUnit) << info.Crusher.Speed
-		g.ceilings[sec] = &ceilingThinker{order: g.allocThinkerOrder(), sector: sec, action: action, direction: -1, speed: speed, oldSpeed: speed, topHeight: g.sectorCeil[sec], bottomHeight: g.sectorFloor[sec] + 8*fracUnit, crush: true, triggerTag: uint16(g.m.Sectors[sec].Tag), hasTriggerTag: true}
+		g.installCeilingThinker(sec, &ceilingThinker{order: g.allocThinkerOrder(), sector: sec, action: action, direction: -1, speed: speed, oldSpeed: speed, topHeight: g.sectorCeil[sec], bottomHeight: g.sectorFloor[sec] + 8*fracUnit, crush: true, triggerTag: uint16(g.m.Sectors[sec].Tag), hasTriggerTag: true})
 		active = true
 	}
 	return active

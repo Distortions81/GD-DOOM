@@ -836,7 +836,7 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 34 && v.Version <= saveGameVersion) || (v.Version >= 21 && v.Version <= keyframeVersion) {
 		flat := make([]int, 0, len(v.Game.BoomStairs)*3)
 		for _, st := range v.Game.BoomStairs {
 			flat = append(flat, st.Lock, st.Prev, st.Next)
@@ -857,8 +857,20 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 			}
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 34 && v.Version <= saveGameVersion) || (v.Version >= 21 && v.Version <= keyframeVersion) {
 		if err := w.bool(v.Game.Player.CorpseGibbed); err != nil {
+			return err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if err := w.doorThinkerMap(v.Game.ExtraDoors); err != nil {
+			return err
+		}
+		flat := make([]int64, 0, len(v.Game.CeilingOwners)*2)
+		for _, sec := range sortedSaveIntKeys(v.Game.CeilingOwners) {
+			flat = append(flat, int64(sec), v.Game.CeilingOwners[sec])
+		}
+		if err := w.i64Slice(flat); err != nil {
 			return err
 		}
 	}
@@ -1818,7 +1830,7 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			v.Game.Floors[key] = it
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 34 && v.Version <= saveGameVersion) || (v.Version >= 21 && v.Version <= keyframeVersion) {
 		flat, e := readSlice(r, r.int)
 		if e != nil {
 			return v, e
@@ -1846,9 +1858,27 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 			v.Game.Ceilings[key] = it
 		}
 	}
-	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+	if (v.Version >= 34 && v.Version <= saveGameVersion) || (v.Version >= 21 && v.Version <= keyframeVersion) {
 		if v.Game.Player.CorpseGibbed, err = r.bool(); err != nil {
 			return v, err
+		}
+	}
+	if v.Version == saveGameVersion || v.Version == keyframeVersion {
+		if v.Game.ExtraDoors, err = r.doorThinkerMap(); err != nil {
+			return v, err
+		}
+		flat, e := readSlice(r, r.i64)
+		if e != nil {
+			return v, e
+		}
+		if len(flat)%2 != 0 {
+			return v, fmt.Errorf("invalid ceiling owner state")
+		}
+		if len(flat) > 0 {
+			v.Game.CeilingOwners = make(map[int]int64, len(flat)/2)
+			for i := 0; i < len(flat); i += 2 {
+				v.Game.CeilingOwners[int(flat[i])] = flat[i+1]
+			}
 		}
 	}
 	return v, nil

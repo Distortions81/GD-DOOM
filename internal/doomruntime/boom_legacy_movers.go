@@ -5,6 +5,9 @@ import "gddoom/internal/mapdata"
 // Elevators live in the floor thinker list but reserve both plane slots.
 func (g *game) floorSlotBusy(sec int) bool { return g.floors[sec] != nil || g.plats[sec] != nil }
 func (g *game) ceilingSlotBusy(sec int) bool {
+	if owner, tracked := g.ceilingOwners[sec]; tracked {
+		return owner != 0
+	}
 	return g.activeDoorThinker(sec) != nil || g.ceilings[sec] != nil || g.floors[sec] != nil && g.floors[sec].elevator
 }
 func (g *game) legacyFloorBusy(sec int) bool {
@@ -81,6 +84,7 @@ func (g *game) activateElevator(line int, action mapdata.ElevatorAction) bool {
 			}
 		}
 		g.floors[sec] = &floorThinker{order: g.allocThinkerOrder(), sector: sec, elevator: true, direction: direction, speed: 4 * fracUnit, destHeight: dest, ceilingDestHeight: g.sectorCeil[sec] + dest - current}
+		g.assignTrackedCeilingSlot(sec, g.floors[sec].order)
 		active = true
 	}
 	return active
@@ -141,6 +145,7 @@ func (g *game) tickElevator(sec int, ft *floorThinker) {
 		g.moveElevatorPlane(sec, !firstCeiling, ft.speed, second, ft.direction)
 	}
 	if result == boomPlanePast {
+		g.clearTrackedCeilingSlot(sec)
 		delete(g.floors, sec)
 	}
 }

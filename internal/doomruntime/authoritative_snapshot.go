@@ -140,6 +140,9 @@ func validateAuthorityReplica(g *game, r authorityReplica) error {
 		return fmt.Errorf("authority baseline static map mismatch")
 	}
 	s := r.Game
+	if !validManualDoorState(s, len(g.m.Sectors)) {
+		return fmt.Errorf("authority manual-door state does not match loaded map")
+	}
 	if !validBoomStairs(s.BoomStairs, len(g.m.Sectors)) {
 		return fmt.Errorf("authority stair links do not match loaded map")
 	}
@@ -331,7 +334,7 @@ func (g *game) applyValidatedAuthorityReplica(r authorityReplica) {
 	// Do not retain effects or caches from a superseded predicted timeline.
 	g.soundQueue, g.soundQueueOrigin, g.delayedSfx = nil, nil, nil
 	g.switchTextureBlends = nil
-	g.extraDoors, g.recycledDoors = nil, nil
+	g.recycledDoors = nil
 	g.initThingRenderState()
 	g.sectorPlaneCache, g.sectorPlaneTris = nil, nil
 	g.sectorLightCacheValid = false

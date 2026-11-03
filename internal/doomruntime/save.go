@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 34
+	saveGameVersion     = 35
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 21
+	keyframeVersion     = 22
 	saveGameDirName     = "saves"
 )
 
@@ -93,6 +93,8 @@ type saveSlotInfo struct {
 }
 
 type gameSaveState struct {
+	CeilingOwners        map[int]int64
+	ExtraDoors           map[int]doorThinkerSaveState
 	BoomStairs           []boomStairState
 	ThingFriction        []int64
 	ThingMoveFactor      []int64
@@ -1181,6 +1183,9 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	if !validBoomFrictionState(&file.Game, len(g.m.Things)) {
 		return fmt.Errorf("save friction state does not match loaded map")
 	}
+	if !validManualDoorState(file.Game, len(g.m.Sectors)) {
+		return fmt.Errorf("save manual-door state does not match loaded map")
+	}
 	if !validBoomStairs(file.Game.BoomStairs, len(g.m.Sectors)) {
 		return fmt.Errorf("save stair links do not match loaded map")
 	}
@@ -1359,6 +1364,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		WorldTic:             g.worldTic,
 		BoomScrollers:        append([]boomScrollerState(nil), g.boomScrollers...),
 		BoomStairs:           append([]boomStairState(nil), g.boomStairs...),
+		CeilingOwners:        cloneCeilingOwners(g.ceilingOwners), ExtraDoors: captureExtraDoors(g.extraDoors),
 		LevelKillsTotal:      g.levelKillsTotal,
 		LevelItemsTotal:      g.levelItemsTotal,
 		PlayerKillCount:      g.playerKillCount,
@@ -1546,6 +1552,8 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	}
 	g.lineSpecial = restoreSaveSlice(g.lineSpecial, s.LineSpecial)
 	g.doors = restoreDoorThinkers(s.Doors)
+	g.extraDoors = restoreExtraDoors(s.ExtraDoors)
+	g.ceilingOwners = cloneCeilingOwners(s.CeilingOwners)
 	g.floors = restoreFloorThinkers(s.Floors)
 	g.plats = restorePlatThinkers(s.Plats)
 	g.ceilings = restoreCeilingThinkers(s.Ceilings)
@@ -1699,7 +1707,7 @@ func captureDoorThinkers(src map[int]*doorThinker) map[int]doorThinkerSaveState 
 	}
 	dst := make(map[int]doorThinkerSaveState, len(src))
 	for key, thinker := range src {
-		if thinker == nil {
+		if thinker == nil || thinker.pendingRemove {
 			continue
 		}
 		dst[key] = doorThinkerSaveState{

@@ -91,6 +91,11 @@ recorded paths below are verified; complete Boom compatibility is not claimed.
   normal/silent variants, slowdown/recovery while crushing, and tagged stop/resume.
   Boom complevel 9 intentionally leaves walk-over variants inactive, matching
   DSDA's preservation of the original missing walk-dispatch branch.
+- Boom manual-door/mover interactions: repeatable legacy manual doors use the
+  ceiling slot independently of floor-only movers; generalized manual doors
+  reject an occupied ceiling slot. One-shot legacy doors retain displaced
+  thinkers and reproduce actual slot replacement/clearing rather than deleting
+  the older controller. Overlapping controllers survive saves and replication.
 - Voodoo dolls slide using their own collision shape while collision checks
   retain the real player's position.
 
@@ -771,11 +776,59 @@ Ancient Aliens and Sunlust now have **zero unknown linedef and sector specials**
 in the map audit. This describes recognized actions and these tested paths,
 not full-map or combat compatibility.
 
+## Manual-door/mover interaction verification
+
+`scripts/verify_boom_manual.py` compares **500,346/500,346 matching rows** with
+DSDA-Doom 0.27.5 at complevel 9 across **2,042 cases**. The original fixture has
+two independent lines sharing a manual-door sector, with 16 classic/generalized
+manual door specials and 19 idle or active mover setups. Cases include players
+and actual imps, moving/waiting/stopped lifts, ascending/descending elevators,
+fast/slow/stopped crushers, active and partially completed locked stair chains,
+plain floors/ceilings, and opening/closing/waiting/one-shot/generalized doors.
+Other cases check keys, secret lines, back-side use, low targets, tight clearance,
+repeated use at different phases, displaced controllers and later replacements.
+
+Each row compares both line specials, all sector plane heights, actual floor
+and ceiling slot owner kinds, every live controller in thinker order (including
+controllers displaced from their sector slot), door directions/speeds/targets/
+waits/countdowns, lift status and waits, crusher/elevator/floor state, stair
+locks, and actor height/health. The harness calls real use dispatchers and
+ordered movers; it does not step actor AI or approach movement. Non-selected
+observer bodies cannot block the fixture. Return values that only report a
+handled line are not treated as successful movement: rejection is checked through
+unchanged controllers, line consumption and actual slot ownership. Audio is
+outside this state comparison.
+
+The implementation preserves Boom's quirks deliberately. A floor-only lift or
+stair does not trigger the vanilla manual-door platform cast in Boom mode.
+Repeatable legacy doors can reverse an existing door, while generalized manual
+doors reject a busy ceiling slot. One-shot legacy doors overwrite ceilingdata
+without unlinking the displaced thinker. When that older thinker later finishes,
+it clears the pointer even if a newer door owns it; live thinkers can therefore
+exist with an empty sector slot. Sparse ownership records and retained thinkers
+preserve these cases. Upward Boom lifts cap their effective destination at the
+current ceiling, and reused Boom door objects clear stale countdown fields.
+Vanilla demo platform-cast behavior remains intact.
+
+```sh
+python3 scripts/make_boom_manual_cases.py
+GOCACHE=/tmp/gd-doom-go-cache python3 scripts/verify_boom_manual.py \
+  --iwad wads/DOOM2.WAD --reference-source /path/to/pristine/dsda-doom \
+  --out /tmp/gddoom-manual
+```
+
+Both CSVs, input manifest/WAD, hashes and `results.json` are retained. Focused
+tests check saves/keyframes while doors and crushers overlap, explicitly empty
+slots with old controllers still running, canonical retained-door state,
+authority snapshot application, ownership validation, and the older generalized
+state extension. The existing generalized, legacy and lock matrices still match
+**495,456**, **208,202**, and **262,144** rows respectively. All five no-monsters
+demos still match **5,772 frames** and exit tics, and the full Go suite passes.
+
 ## Remaining work
 
-Legacy manual-door casts and other unusual mover interactions, moving-sector
-sound fidelity, GL nodes and complete Boom demo/RNG behavior remain outside
-this verified scope.
+Moving-sector sound fidelity, GL nodes, unusual interactions beyond the fixtures,
+and complete Boom demo/RNG behavior remain outside this verified scope.
 Maps may load while unsupported actions behave incorrectly.
 
 The no-monsters comparisons establish the recorded movement/progression paths,
@@ -783,12 +836,12 @@ not full combat RNG parity, every map route, or large-fight performance. The map
 audit detects unknown specials; it does not detect every unsupported interaction.
 
 These changes advance the multiplayer simulation ID to
-`gd-doom-authority-dev-14`. Deploy matching clients and servers. Stair-chain
-state, original crusher speeds/tags and flattened player-corpse state extend the
-authoritative schema. Save version 34 reads versions 31–33; keyframe version 21
-reads versions 18–20. Older snapshots cannot contain the previously unsupported
-generalized stair/crusher state. Elevator, card-key and actor friction extensions
-retain their older layouts.
+`gd-doom-authority-dev-15`. Deploy matching clients and servers. Explicit ceiling
+ownership and retained doors extend the authoritative schema; displaced ceilings
+remain in the ordered mover state. Save version 35 reads versions 32–34;
+keyframe version 22 reads versions 19–21. Older formats cannot preserve the
+previously unsupported overlapping manual-door state. Generalized mover,
+elevator, card-key and actor friction extensions retain their older layouts.
 Older snapshots initialize previously unsupported friction state to defaults.
 Scroller data from version 30/keyframe 17 remains readable; earlier snapshots
 cannot reconstruct the preceding acceleration history of unsupported scrollers.

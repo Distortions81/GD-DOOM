@@ -88,7 +88,7 @@ func (g *game) activateGeneralizedCeiling(line int, info mapdata.CeilingInfo) bo
 				}
 			}
 		}
-		g.ceilings[sec] = ct
+		g.installCeilingThinker(sec, ct)
 		active = true
 	}
 	return active
@@ -102,7 +102,12 @@ func (g *game) finishCeiling(sec int, ct *ceilingThinker) {
 		}
 		g.markDynamicSectorPlaneCacheDirty(sec)
 	}
-	delete(g.ceilings, sec)
+	g.clearTrackedCeilingSlot(sec)
+	if g.ceilings[sec] == ct {
+		delete(g.ceilings, sec)
+	} else {
+		delete(g.ceilings, -int(ct.order)-1)
+	}
 }
 
 func (g *game) boomShortestUpperTexture(sec int) int64 {

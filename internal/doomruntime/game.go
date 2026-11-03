@@ -568,6 +568,7 @@ type game struct {
 	lineSpecial             []uint16
 	doors                   map[int]*doorThinker
 	extraDoors              []*doorThinker
+	ceilingOwners           map[int]int64
 	recycledDoors           map[int]*doorThinker
 	floors                  map[int]*floorThinker
 	plats                   map[int]*platThinker

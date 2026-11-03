@@ -20,24 +20,6 @@ func (g *game) activateGeneralizedDoor(line int, info mapdata.LineSpecialInfo, i
 		}
 		targets = filtered
 	}
-	if info.Trigger == mapdata.TriggerManual && !gen.Locked {
-		for _, sec := range targets {
-			if d := g.activeDoorThinker(sec); d != nil {
-				if gen.Kind != 0 || d.typ != doorNormal {
-					return false
-				}
-				if d.direction < 0 {
-					d.direction = 1
-				} else if isPlayer {
-					d.direction = -1
-				} else {
-					return false
-				}
-				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				return true
-			}
-		}
-	}
 	firstOrder := g.nextThinkerOrder
 	activated := g.activateDoorSectorsWithFloorSlot(targets, info.Door.Action, true)
 	for _, sec := range targets {

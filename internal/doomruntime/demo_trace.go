@@ -1065,8 +1065,9 @@ func (g *game) demoTraceSpecials() []map[string]any {
 		ordered = append(ordered, orderedSpecial{order: p.order, item: item})
 	}
 	ceilingKeys := sortedIntKeys(g.ceilings)
-	for _, sec := range ceilingKeys {
-		c := g.ceilings[sec]
+	for _, key := range ceilingKeys {
+		c := g.ceilings[key]
+		sec := c.sector
 		if c.direction == 0 {
 			continue
 		}

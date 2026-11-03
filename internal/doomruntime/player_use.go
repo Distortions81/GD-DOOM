@@ -413,7 +413,7 @@ func (g *game) useSpecialLineForActorIndex(lineIdx int, side int, isPlayer bool,
 		activated = g.activateDoorLine(lineIdx, info, isPlayer)
 		if !activated && !isPlayer {
 			switch special {
-			case 32, 33, 34:
+			case 1, 32, 33, 34:
 				// Doom's P_UseSpecialLine returns true for these monster-allowed
 				// keyed manual door specials even though EV_VerticalDoor rejects
 				// non-player activators and does not start the door.
@@ -775,8 +775,10 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		}
 		// Manual open-door specials replace sector->specialdata but leave the
 		// prior door linked as an active thinker in the original runtime.
-		g.extraDoors = append(g.extraDoors, d)
-	} else if pt := g.plats[sec]; pt != nil {
+		if !g.boomMomentumDropoff {
+			g.extraDoors = append(g.extraDoors, d)
+		}
+	} else if pt := g.plats[sec]; pt != nil && !g.boomMomentumDropoff {
 		switch ld.Special {
 		case 1, 26, 27, 28, 117:
 			// Vanilla casts sector->specialdata to vldoor_t even when it
@@ -792,12 +794,21 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		}
 	}
 
+	if g.boomMomentumDropoff && g.ceilingSlotBusy(sec) {
+		switch ld.Special {
+		case 1, 26, 27, 28, 117:
+			return isPlayer
+		}
+	}
+	if g.boomMomentumDropoff && g.ceilingSlotBusy(sec) {
+		g.trackCeilingSlot(sec)
+	}
 	d := g.allocDoorThinker(sec)
 	d.direction = 1
 	d.speed = vDoorSpeed
 	d.topWait = vDoorWaitTic
 	d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
-	if d.topHeight < g.sectorFloor[sec] {
+	if !g.boomMomentumDropoff && d.topHeight < g.sectorFloor[sec] {
 		d.topHeight = g.sectorFloor[sec]
 	}
 	switch ld.Special {
@@ -816,7 +827,7 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 	default:
 		return false
 	}
-	g.doors[sec] = d
+	g.installDoorThinker(sec, d)
 	g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 	g.debugDoorActivate("line=%d sec=%d special=%d spawn dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 	return true
@@ -897,7 +908,7 @@ func (g *game) activateDoorSectorsWithFloorSlot(targets []int, action mapdata.Do
 		default:
 			continue
 		}
-		g.doors[sec] = d
+		g.installDoorThinker(sec, d)
 		g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 		g.debugDoorActivate("tagged sec=%d action=%v spawn dir=%d typ=%d", sec, action, d.direction, d.typ)
 		activated = true

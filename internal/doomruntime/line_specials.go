@@ -1649,8 +1649,11 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 		g.ceilings = make(map[int]*ceilingThinker)
 	}
 	activated := false
+	if g.boomMomentumDropoff && (info.Action == mapdata.CeilingCrushRaise || info.Action == mapdata.CeilingFastCrushRaise || info.Action == mapdata.CeilingSilentCrushRaise) {
+		activated = g.resumeBoomCeilings(g.m.Linedefs[lineIdx].Tag)
+	}
 	for _, sec := range targets {
-		if existing := g.ceilings[sec]; existing != nil {
+		if existing := g.ceilingThinkerOwner(sec); existing != nil {
 			switch info.Action {
 			case mapdata.CeilingCrushRaise, mapdata.CeilingFastCrushRaise, mapdata.CeilingSilentCrushRaise:
 				if existing.direction == 0 {
@@ -1711,7 +1714,7 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 		default:
 			continue
 		}
-		g.ceilings[sec] = ct
+		g.installCeilingThinker(sec, ct)
 		if want := runtimeDebugEnv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
 			var wantSec int
 			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
@@ -1939,10 +1942,14 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 	}
 	switch pt.status {
 	case platStatusUp:
+		high := pt.high
+		if g.boomMomentumDropoff {
+			high = min64(high, g.sectorCeil[sec])
+		}
 		cur := g.sectorFloor[sec]
 		next := cur + pt.speed
-		if next > pt.high {
-			next = pt.high
+		if next > high {
+			next = high
 			if g.setSectorFloorHeightWithCrush(sec, next, false) {
 				g.setSectorFloorHeight(sec, cur)
 			}
@@ -1996,8 +2003,11 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 }
 
 func (g *game) tickCeilings() {
-	for sec, ct := range g.ceilings {
-		g.tickCeiling(sec, ct)
+	for _, ct := range g.ceilings {
+		if ct == nil {
+			continue
+		}
+		g.tickCeiling(ct.sector, ct)
 	}
 }
 
